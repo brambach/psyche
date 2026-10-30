@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { MythComparison, RegionView, Timeline } from "@psyche/engine";
 import { api } from "./api";
+import { coastColors, drawCoast } from "./coastMap";
 
 const KIND: Record<string, string> = { founding: "founding", leader: "leader", law: "law", death: "death", trade: "trade", quarrel: "quarrel", peace: "peace", hunger: "hunger", craft: "craft", lost: "lost" };
 
@@ -157,16 +158,30 @@ export function Century({ tick }: { tick: number }) {
     };
   }, [day]);
   const last = t?.years.at(-1) ?? 1;
-  const timer = useRef<number>();
+  // Playing moves a fractional year forward every frame, so the map can grow smoothly.
+  const [yearF, setYearF] = useState<number>();
   useEffect(() => {
     if (!playing) return;
-    timer.current = window.setInterval(() => setYear((y) => {
-      const n = (y ?? 0) + 1;
-      if (n >= last) setPlaying(false);
-      return Math.min(n, last);
-    }), 350);
-    return () => window.clearInterval(timer.current);
+    let raf = 0;
+    let prev = performance.now();
+    const tick = (now: number) => {
+      const dt = (now - prev) / 1000;
+      prev = now;
+      let done = false;
+      setYearF((y) => {
+        const n = (y ?? 1) + dt * 2.5;
+        if (n >= last) done = true;
+        return Math.min(n, last);
+      });
+      if (done) setPlaying(false);
+      else raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
   }, [playing, last]);
+  useEffect(() => {
+    if (yearF !== undefined) setYear(Math.floor(yearF));
+  }, [yearF]);
   if (!t) return <p className="empty">Gathering the years...</p>;
   const at = year ?? last;
   const total = t.years.map((_, i) => t.towns.reduce((s, x) => s + (x.people[i] ?? 0), 0));
@@ -180,9 +195,10 @@ export function Century({ tick }: { tick: number }) {
       <div className="pane">
         <h3>
           People in the region, year by year
-          <button className="btn" style={{ marginLeft: 12 }} onClick={() => { if (!playing && at >= last) setYear(1); setPlaying(!playing); }}>{playing ? "Pause" : "Play the years"}</button>
+          <button className="btn" style={{ marginLeft: 12 }} onClick={() => { if (!playing) setYearF(at >= last ? 1 : at); setPlaying(!playing); }}>{playing ? "Pause" : "Play the years"}</button>
         </h3>
-        <Line values={total} max={max} at={at} onPick={setYear} label={(i) => `Year ${i + 1}: ${total[i]} people in ${towns[i]} ${towns[i] === 1 ? "town" : "towns"}`} />
+        <Coast t={t} year={playing && yearF !== undefined ? yearF : at} />
+        <Line values={total} max={max} at={at} onPick={(y) => { setPlaying(false); setYear(y); }} label={(i) => `Year ${i + 1}: ${total[i]} people in ${towns[i]} ${towns[i] === 1 ? "town" : "towns"}`} />
         <p className="small">Year {at}: <b>{total[at - 1] ?? 0}</b> people in {towns[at - 1] ?? 0} {towns[at - 1] === 1 ? "town" : "towns"}. Towns nobody is watching run on rules, a season at a time, so a century costs nothing.</p>
       </div>
       <div className="pane">
@@ -214,6 +230,26 @@ export function Century({ tick }: { tick: number }) {
       </div>
     </div>
   );
+}
+
+/** The coast from above at a (fractional) year. */
+function Coast({ t, year }: { t: Timeline; year: number }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const cv = ref.current;
+    if (!cv) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = cv.clientWidth;
+    const h = cv.clientHeight;
+    if (cv.width !== Math.round(w * dpr)) {
+      cv.width = Math.round(w * dpr);
+      cv.height = Math.round(h * dpr);
+    }
+    const ctx = cv.getContext("2d")!;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawCoast(ctx, w, h, t, year, coastColors(cv));
+  }, [t, year]);
+  return <canvas ref={ref} className="coast" role="img" aria-label={`The coast in year ${Math.floor(year)}: ${t.towns.filter((x) => x.people[Math.floor(year) - 1] != null).length} towns`} />;
 }
 
 /** One series over the years, with a crosshair that follows the pointer and a marker on the picked year. */

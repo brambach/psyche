@@ -35,7 +35,9 @@ export interface Town {
   /** Running on the aggregate tier (nobody is watching it). */
   agg?: boolean;
   /** One sample a season. */
-  history: { tick: Tick; year: number; people: number; children: number; food: number; store: number; leader?: AgentId }[];
+  history: { tick: Tick; year: number; people: number; children: number; food: number; store: number; leader?: AgentId; houses?: number; tents?: number; shunned?: string[] }[];
+  /** Where the town sits: how far along the coast (0 to 1) and how far inland (0 to 1). */
+  site?: { along: number; inland: number };
 }
 
 export interface Trade {
@@ -75,6 +77,8 @@ export interface RegionState {
   /** Who left which town for which, and when. */
   departed: Record<AgentId, { from: string; to: string; tick: Tick }>;
   last: { day: number; season: string; feed: Record<string, number> };
+  /** Trade runs between towns, as `from>to` to the count in each year (for the map). */
+  routes?: Record<string, Record<number, number>>;
 }
 
 export interface RegionOptions {
@@ -126,7 +130,7 @@ export class RegionSession {
       tick: w.tick,
       rng: (seed * 2654435761) >>> 0,
       idCounter: 0,
-      towns: [{ id: "hollow", name: w.name, founded: w.tick, founders: [...w.order], history: [] }],
+      towns: [{ id: "hollow", name: w.name, founded: w.tick, founders: [...w.order], history: [], site: { along: 0.5, inland: 0.15 } }],
       regard: {},
       trades: [],
       chronicle: [],
@@ -315,7 +319,7 @@ export class RegionSession {
     const w = this.world(t.id);
     const v = w.village!;
     const food = Object.values(v.households).reduce((s, h) => s + h.food, 0);
-    t.history.push({ tick: w.tick, year: yearOf(w), people: w.order.length, children: w.order.filter((x) => isChild(w, x)).length, food: Math.round(food), store: Math.round(v.store.food), leader: v.civic?.leader });
+    t.history.push({ tick: w.tick, year: yearOf(w), people: w.order.length, children: w.order.filter((x) => isChild(w, x)).length, food: Math.round(food), store: Math.round(v.store.food), leader: v.civic?.leader, houses: Object.values(v.households).filter((h) => h.shelter === "house").length, tents: Object.values(v.households).filter((h) => h.shelter !== "house").length, shunned: this.region.towns.filter((o) => (this.region.regard[`${t.id}>${o.id}`] ?? 0) <= -0.35).map((o) => o.id) });
     if (t.history.length > 800) t.history.splice(0, t.history.length - 800);
   }
 
@@ -366,7 +370,7 @@ export class RegionSession {
     if (size() < 5) return;
     const leavers = group.flatMap((h) => h.members);
     const tname = TOWN_NAMES[r.towns.length - 1] ?? `New ${w.name} ${r.towns.length}`;
-    const town: Town = { id: tname.toLowerCase().replace(/\s+/g, "_"), name: tname, founded: r.tick, from: from.id, founders: leavers, history: [] };
+    const town: Town = { id: tname.toLowerCase().replace(/\s+/g, "_"), name: tname, founded: r.tick, from: from.id, founders: leavers, history: [], site: this.siteNear(from) };
     const why = this.splitWhy(w, seed, belonging(seed), group.slice(1), adults);
     const reason = belonging(seed) < 0.45 ? `${S.name} never felt welcome at the fire in ${w.name}` : `there was no more room at ${w.name} for all of us`;
     const leaving = `ep_leaving_${town.id}`;
@@ -442,6 +446,22 @@ export class RegionSession {
     this.budget();
   }
 
+  /** A new town's place: further along the coast from where they left, on whichever side has room. */
+  private siteNear(from: Town): { along: number; inland: number } {
+    const base = from.site ?? { along: 0.5, inland: 0.15 };
+    const taken = this.region.towns.map((t) => t.site).filter((x): x is { along: number; inland: number } => !!x);
+    const free = (a: number, i: number, gap: number) => taken.every((t) => Math.hypot(t.along - a, (t.inland - i) * 0.7) > gap);
+    for (let k = 0; k < 60; k++) {
+      // Most go along the shore; some go up the valley inland. Later tries look further and accept closer.
+      const reach = 0.12 + this.rand() * 0.14 + k * 0.006;
+      const angle = (this.rand() - 0.5) * Math.PI * 0.9 + (this.rand() < 0.5 ? 0 : Math.PI);
+      const along = base.along + Math.cos(angle) * reach;
+      const inland = Math.min(0.9, Math.max(0.05, base.inland + Math.abs(Math.sin(angle)) * reach * 1.6 * (this.rand() < 0.6 ? 1 : -0.5)));
+      if (along > 0.05 && along < 0.95 && free(along, inland, k < 40 ? 0.11 : 0.07)) return { along: Number(along.toFixed(3)), inland: Number(inland.toFixed(3)) };
+    }
+    return { along: Number((0.05 + this.rand() * 0.9).toFixed(3)), inland: Number((0.3 + this.rand() * 0.6).toFixed(3)) };
+  }
+
   /**
    * Why a group left: the town's size, the one who belonged least and whom they liked least, the
    * memory behind that, the core belief that colours it and whose memory that belief goes back to,
@@ -509,6 +529,9 @@ export class RegionSession {
     const noticed = short && this.rand() < 0.75;
     const trade: Trade = { tick: r.tick, from: a.id, to: b.id, trader, gave: { kind: "food", amount: food }, got: { kind: "timber", amount: timber }, short, noticed };
     r.trades.push(trade);
+    const yr = yearOf(A);
+    const route = ((r.routes ??= {})[`${a.id}>${b.id}`] ??= {});
+    route[yr] = (route[yr] ?? 0) + 1;
     if (r.trades.length > 300) r.trades.splice(0, r.trades.length - 300);
 
     // The trader tells a story at the other town's fire. Its pointer goes home with a remembered copy.

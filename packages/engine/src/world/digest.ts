@@ -4,7 +4,10 @@ import { compareMyths, regionView, type ChronicleEntry, type RegionSession } fro
 
 export interface Timeline {
   years: number[];
-  towns: { id: string; name: string; from?: string; founded: number; tier: "live" | "aggregate"; people: (number | null)[] }[];
+  towns: { id: string; name: string; from?: string; founded: number; tier: "live" | "aggregate"; people: (number | null)[]; houses: (number | null)[]; tents: (number | null)[]; site?: { along: number; inland: number } }[];
+  /** Trade runs between towns per year, and which towns each town refused to trade with that year. */
+  routes: { from: string; to: string; years: Record<number, number> }[];
+  shunned: { year: number; town: string; refuses: string[] }[];
   events: { year: number; town?: string; kind: ChronicleEntry["kind"]; text: string; why?: ChronicleEntry["why"] }[];
 }
 
@@ -14,21 +17,35 @@ export function timeline(rs: RegionSession): Timeline {
   const r = rs.region;
   const byTown = r.towns.map((t) => {
     const per = new Map<number, number>();
-    for (const h of t.history) per.set(h.year, h.people);
-    return { t, per };
+    const houses = new Map<number, number>();
+    const tents = new Map<number, number>();
+    for (const h of t.history) {
+      per.set(h.year, h.people);
+      if (h.houses !== undefined) houses.set(h.year, h.houses);
+      if (h.tents !== undefined) tents.set(h.year, h.tents);
+    }
+    return { t, per, houses, tents };
   });
   const last = Math.max(v.year, ...byTown.flatMap((x) => [...x.per.keys()]));
   const years = Array.from({ length: last }, (_, i) => i + 1);
   return {
     years,
-    towns: byTown.map(({ t, per }) => ({
+    towns: byTown.map(({ t, per, houses, tents }) => ({
       id: t.id,
       name: t.name,
       from: t.from,
       founded: t.history[0]?.year ?? 1,
       tier: t.agg ? "aggregate" : "live",
       people: years.map((y) => per.get(y) ?? null),
+      houses: years.map((y) => houses.get(y) ?? null),
+      tents: years.map((y) => tents.get(y) ?? null),
+      site: t.site,
     })),
+    routes: Object.entries(r.routes ?? {}).map(([k, years]) => {
+      const [from, to] = k.split(">") as [string, string];
+      return { from, to, years };
+    }),
+    shunned: r.towns.flatMap((t) => t.history.filter((h) => h.shunned?.length).map((h) => ({ year: h.year, town: t.id, refuses: h.shunned! }))),
     events: r.chronicle.filter((c) => c.kind !== "trade").map((c) => ({ year: c.year, town: c.town, kind: c.kind, text: c.text, why: c.why })),
   };
 }

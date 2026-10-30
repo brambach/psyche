@@ -86,6 +86,16 @@ describe("the aggregate tier", () => {
     expect(d).toMatch(/The crossing, as each town tells it now/);
   });
 
+  it("gives every town its own place on the coast and records its houses", () => {
+    const t = timeline(rs);
+    const sites = t.towns.map((x) => x.site!);
+    for (const s of sites) expect(s.inland).toBeGreaterThanOrEqual(0.05);
+    for (let i = 0; i < sites.length; i++)
+      for (let j = i + 1; j < sites.length; j++) expect(Math.hypot(sites[i]!.along - sites[j]!.along, sites[i]!.inland - sites[j]!.inland)).toBeGreaterThan(0.06);
+    expect(t.towns[0]!.houses.some((h) => (h ?? 0) > 0)).toBe(true);
+    expect(t.routes.length).toBeGreaterThan(0);
+  });
+
   it("brings a town back to life when someone looks, and lets the old one go", async () => {
     rs.setLive(1);
     const target = rs.region.towns[1]!.id;

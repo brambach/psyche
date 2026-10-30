@@ -456,3 +456,12 @@ a.btn { color: inherit; text-decoration: none; display: inline-block; }
 .kind.k-craft { background: var(--accent-soft); color: var(--accent); }
 .kind.k-lost, .kind.k-hunger, .kind.k-quarrel { background: var(--feel-soft); color: var(--feel); }
 .digest { white-space: pre-wrap; font: 12px/1.5 var(--mono); max-height: 480px; overflow: auto; background: var(--sunk); padding: 10px; border-radius: 8px; }
+
+/* The coast map */
+.coast { display: block; width: 100%; height: 420px; border-radius: 8px; margin-bottom: 10px;
+  --map-sea: #bcd4dc; --map-seaDeep: #8fb3c1; --map-land: #e3e6d6; --map-landDark: #c9d0b8; --map-ink: #15211f; --map-muted: #4d5c58;
+  --map-house: #f5efe2; --map-roof: #8a4b2b; --map-tent: #6f6552; --map-trade: #1d5f73; --map-quarrel: #b23a2a; --map-hunger: #e0892f; }
+@media (prefers-color-scheme: dark) {
+  .coast { --map-sea: #12303a; --map-seaDeep: #0b1f27; --map-land: #1f2a24; --map-landDark: #2b382f; --map-ink: #e3ebe9; --map-muted: #9aa9a5;
+    --map-house: #e8dcc4; --map-roof: #c47a4f; --map-tent: #a99c80; --map-trade: #6fb3c7; --map-quarrel: #ef7a66; --map-hunger: #f0a050; }
+}
