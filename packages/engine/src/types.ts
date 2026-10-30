@@ -173,6 +173,8 @@ export interface Belief {
   retrievals: Tick[];
   /** A claim that can compete with an episode's detail (post-event information). */
   claim?: { slotKey: string; value: string; episodeHint?: string };
+  /** Rumor lineage: beliefs passed along by gossip share the id of the story they came from. */
+  rumor?: string;
 }
 
 /** Context to action link strengthened by repetition (Wood & Neal 2007). */
@@ -268,6 +270,8 @@ export interface Ablations {
   motivatedAttribution: boolean;
   /** Evidence congruent with attitudes gets more weight (Kunda 1990). */
   motivatedUpdating: boolean;
+  /** Hearing the same story again raises confidence in it (Hasher, Goldstein & Toppino 1977). */
+  illusoryTruth: boolean;
   /** Only workspace items influence choices. Off means every retrieved item counts. */
   limitedWorkspace: boolean;
   /** Sleep consolidation, replay and emotional tempering. */
@@ -286,6 +290,7 @@ export const DEFAULT_ABLATIONS: Ablations = {
   negativityAsymmetry: true,
   motivatedAttribution: true,
   motivatedUpdating: true,
+  illusoryTruth: true,
   limitedWorkspace: true,
   sleepConsolidation: true,
   traitDrift: true,
