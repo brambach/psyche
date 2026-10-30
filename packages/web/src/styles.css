@@ -288,3 +288,37 @@ td.gap { color: var(--feel); font-weight: 600; }
 .moments { display: grid; gap: 4px; max-height: 80vh; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px; position: sticky; top: 0; }
 .moments h3 { font: 600 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
 .scan-wrap { min-width: 0; }
+
+/* Founders: the 3D islet on the left, the story and the scan on the right. */
+a.brand { color: inherit; text-decoration: none; }
+a.btn { color: inherit; text-decoration: none; display: inline-block; }
+.chip.storm { border-color: var(--feel); color: var(--feel); }
+.founders { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(400px, 1fr); min-height: 0; }
+.world3d { position: relative; min-height: 0; border-right: 1px solid var(--line); background: var(--night); }
+.voxel { position: absolute; inset: 0; }
+.voxel canvas { display: block; }
+.hud { position: absolute; left: 12px; top: 12px; right: 12px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: flex-start; pointer-events: none; }
+.hud > div { background: color-mix(in srgb, var(--surface) 88%, transparent); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+.hud .who { display: flex; gap: 10px; align-items: center; max-width: 420px; }
+.hud .build { min-width: 220px; }
+.hud .buildbar { height: 8px; border-radius: 99px; background: var(--sunk); overflow: hidden; margin-bottom: 4px; }
+.hud .buildbar i { display: block; height: 100%; background: var(--accent); }
+.world3d .hint { position: absolute; left: 12px; bottom: 6px; margin: 0; color: #dfe8e6; text-shadow: 0 1px 2px #0008; pointer-events: none; }
+.design h2 { font: 700 24px var(--display); margin: 0 0 4px; }
+.design .lead { margin: 0 0 12px; }
+.design blockquote { margin: 0 0 16px; padding: 10px 14px; border-left: 3px solid var(--accent); background: var(--accent-soft); font-style: italic; }
+.design blockquote .small { font-style: normal; margin-left: 6px; }
+.design .pane { margin-bottom: 12px; }
+.design pre { font: 12px/1.4 var(--mono); overflow-x: auto; }
+.because { list-style: none; padding: 0; margin: 0 0 10px; display: grid; gap: 6px; }
+.because li { display: grid; grid-template-columns: 1fr 80px; gap: 8px; align-items: center; font-size: 14px; }
+.bill { width: 100%; border-collapse: collapse; font-size: 14px; }
+.bill td { padding: 3px 0; border-bottom: 1px solid var(--line); }
+.bill td.n { text-align: right; font-family: var(--mono); }
+.stage .about { margin-top: 24px; max-width: 860px; }
+@media (max-width: 900px) {
+  .founders { grid-template-columns: 1fr; grid-template-rows: 60vh auto; }
+  .world3d { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+.founders .agent-body { grid-template-columns: minmax(0, 1fr); }
+.founders .moments { max-height: 300px; position: static; }

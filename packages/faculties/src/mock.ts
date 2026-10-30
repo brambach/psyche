@@ -3,6 +3,9 @@
 // engine, not to write well. Everything it produces is visible as "mock" in the brain scan.
 
 import type {
+  ArchitectRequest,
+  ArchitectResponse,
+  Blueprint,
   DeliberateRequest,
   DeliberateResponse,
   DreamRequest,
@@ -205,6 +208,57 @@ export function mockDream(req: DreamRequest): DreamResponse {
   return { generalizations, lifeStory: req.lifeStory };
 }
 
+/**
+ * A rule-of-thumb architect: temperament and what is in mind set the size, the materials and where
+ * the door faces. Plain, but it makes different people build different houses.
+ */
+export function mockArchitect(req: ArchitectRequest): ArchitectResponse {
+  const t = req.temperament;
+  const stormMemory = req.workspace.find((w) => w.kind === "memory" && /storm/i.test(`${w.label} ${w.text}`));
+  const goal = req.workspace.find((w) => w.kind === "goal");
+  const fear = req.workspace.find((w) => w.kind === "feeling" && /fear|distress/.test(w.id));
+  const wary = t.neuroticism > 0.55 || !!stormMemory;
+  const hours = req.site.hoursOfWorkLeft;
+  let width = Math.round(5 + t.openness * 4 + (t.extraversion > 0.6 ? 1 : 0) - (t.neuroticism > 0.6 ? 1 : 0));
+  // Careful people size the job to the time they have; the rest size it to the house they want.
+  if (t.conscientiousness > 0.55 && hours < 22) width = Math.min(width, 7);
+  width = Math.max(5, Math.min(11, width));
+  const depth = Math.max(5, width - 1);
+  const stone = wary && t.conscientiousness > 0.5;
+  const into = (s: Blueprint["door"]): Blueprint["door"] => s;
+  const lee = into(req.site.weatherFrom === "west" ? "east" : req.site.weatherFrom === "east" ? "west" : req.site.weatherFrom === "north" ? "south" : "north");
+  const door = wary ? lee : req.site.seaTo;
+  const windowCount = Math.round(t.openness * 3 + (t.extraversion > 0.6 ? 1 : 0) - (wary ? 1 : 0));
+  const sides: Blueprint["door"][] = [req.site.seaTo, lee, "north", "south", "east", "west"].filter((s) => s !== req.site.weatherFrom || !wary) as Blueprint["door"][];
+  const windows = Array.from({ length: Math.max(0, Math.min(4, windowCount)) }, (_, i) => sides[i % sides.length]!);
+  const furniture: Blueprint["furniture"] = ["bed"];
+  if (wary || t.conscientiousness > 0.6) furniture.push("hearth");
+  if (t.extraversion > 0.5) furniture.push("table");
+  if (t.conscientiousness > 0.6) furniture.push("chest");
+  const blueprint: Blueprint = {
+    name: stone ? "A low stone house" : t.openness > 0.6 ? "A house with a view" : "A plank cottage",
+    width,
+    depth,
+    wallHeight: t.openness > 0.6 && !wary ? 4 : 3,
+    walls: stone ? "cobble" : "plank",
+    foundation: wary ? "cobble" : "none",
+    corners: t.conscientiousness > 0.6 ? "log" : "same",
+    floor: "plank",
+    roof: { shape: wary ? "hip" : "gable", material: "thatch", overhang: 1 },
+    door,
+    windows,
+    furniture,
+    porch: t.extraversion > 0.6,
+  };
+  const reasons = [
+    stone ? "Stone walls, low. The wind won't shift them." : t.openness > 0.6 ? "Somewhere to see the sea from." : "Plank is quick. Get it up.",
+    wary ? `Door on the ${door} side, out of the wind.` : `Door facing the ${door}.`,
+    furniture.includes("hearth") ? "A hearth, for the nights." : "",
+  ].filter(Boolean);
+  const because = [stormMemory, fear, goal].filter((x) => !!x).map((x, i, all) => ({ item: x!.id, weight: Number((1 / all.length).toFixed(2)) }));
+  return { blueprint, rationale: reasons.join(" "), because };
+}
+
 function cap(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
@@ -216,5 +270,6 @@ export function createMockFaculties(): Faculties {
     speak: async (r) => mockSpeak(r),
     reconstruct: async (r) => mockReconstruct(r),
     dream: async (r) => mockDream(r),
+    architect: async (r) => mockArchitect(r),
   };
 }
