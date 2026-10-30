@@ -3,7 +3,7 @@
 // routines, bump into each other, and talk. Most steps need no language model at all: the engine
 // decides who talks to whom and about what, and the Speak faculty only puts it into words.
 
-import { baseLevel, clamp, reconsolidate, render } from "../memory.js";
+import { baseLevel, clamp, reconsolidate, render, use } from "../memory.js";
 import { dayOf, hourOf, identityOf, perceiveText, runPercept, wait } from "../mind.js";
 import { PARAMS } from "../params.js";
 import type { Claim, Faculties, Percept, SpeakRequest, StyleVector } from "../ports.js";
@@ -185,7 +185,11 @@ export function thirdPerson(text: string, who: string, p: Pronouns): string {
     .replace(/\bmyself\b/g, p.reflexive)
     .replace(/\b[Mm]y\b/g, `${who}'s`)
     .replace(/\bmine\b/g, `${who}'s`)
-    .replace(/\bme\b/g, who);
+    .replace(/\bme\b/g, who)
+    .replace(/\b(Dad|Mum|Mam|Da|Ma)\b/g, (_, k: string) => `${who}'s ${k.toLowerCase().startsWith("d") ? "father" : "mother"}`)
+    .replace(/\b[Oo]ur\b/g, "their")
+    .replace(/\bus\b/g, "them")
+    .replace(/\b[Ww]e\b/g, "they");
 }
 
 // ---------------------------------------------------------------- time
@@ -557,7 +561,7 @@ async function claimFromBelief(world: WorldState, teller: AgentId, bel: Belief, 
       } else bel.proposition = next;
     }
   }
-  bel.retrievals.push(world.tick);
+  use(bel.retrievals, world.tick);
   const text = rumorText(r, value, bel.proposition);
   return {
     claim: {

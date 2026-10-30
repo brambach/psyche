@@ -2,7 +2,7 @@
 
 A plan for growing Psyche from five minds on Kettle Island and one builder on Tern Holm into a self-running civilization of hundreds to thousands of minds, with an analysis layer that lets you trace why anyone does anything, and a cost design that fits the whole journey inside about $1000 of Anthropic API credit.
 
-Status: C0 and C1 built on the mock (see each phase). Written 2026-10-30.
+Status: C0, C1 and C2 built on the mock (see each phase). Written 2026-10-30.
 
 ## Where we are
 
@@ -226,6 +226,8 @@ Founders F1 to F2 and the island's next steps, together.
 - LOD tiers L0 to L2 and the promotion rules.
 - Analysis: Influence query, counterfactual forks, fear and belief atlas.
 - **Done when:** a second generation holds a fear none of them experienced first-hand, and the atlas shows which grandparent's storm it came from.
+
+**Status (2026-10-30):** built on the mock. Aging, pairing, births, deaths and spring newcomers; children inherit temperament from both parents and core beliefs from bedtime and fireside stories, with lineage back through the dead to a first-hand memory; the store norm hardens from sanctions and weighs on later pledges as `norm` nodes; L2 (fast-forward on the mock, free) with session rebasing for bounded memory over decades; the fear atlas and what-if-not counterfactual forks. The done-when holds in the test suite: a ten-year run has children carrying fears traced to a founder's first-hand memory. Moved to C3: emergent roles and the barter economy. About 0.4 seconds per person-year on the mock.
 
 ### C3 Settlements and culture (4 to 6 weeks, ~$260)
 

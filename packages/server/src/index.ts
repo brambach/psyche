@@ -16,6 +16,11 @@ import {
   why,
   divergence,
   saysVsWas,
+  atlas,
+  counterfactual,
+  type CounterfactualEdit,
+  type WorldState,
+  type WorldSessionOptions,
   villageView,
   createVillage,
   CAST_ORDER,
@@ -42,7 +47,7 @@ import {
   type MindState,
   type WorldInput,
 } from "@psyche/engine";
-import { createFaculties } from "@psyche/faculties";
+import { createFaculties, createMockFaculties } from "@psyche/faculties";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const DATA_DIR = resolve(process.env.PSYCHE_DATA ?? "data");
@@ -59,6 +64,8 @@ const SEEDS: Record<Scenario, number> = { island: 7, village: 11 };
 interface Saved {
   scenario?: Scenario;
   seed: number;
+  /** After a fast-forward the world starts again from where the years left it. */
+  base?: WorldState;
   ablations: Partial<Ablations>;
   inputs: WorldInput[];
   log: FacultyCall[];
@@ -75,7 +82,13 @@ function makeWorld() {
   if (scenario === "village") for (const id of CAST_ORDER) governor.core.add(id);
   return scenario === "village" ? createVillage(seed, ablations) : createWorld(seed, ablations);
 }
-let session = new WorldSession(makeWorld(), faculties);
+// A village runs for years: keep fewer snapshots and let the oldest traces go.
+const sessionOpts = (): WorldSessionOptions => (scenario === "village" ? { keepRecent: 24, keepDays: 14, maxTraces: 15_000 } : {});
+let session = new WorldSession(makeWorld(), faculties, sessionOpts());
+/** Years passing on the offline mock, in the background. */
+let fastForward: { from: number; to: number; started: number } | undefined;
+/** True once the session no longer starts from the seed (it was rebased after years passed). */
+let base = false;
 let running = process.env.PSYCHE_AUTOPLAY !== "0";
 /** Simulated minutes per real second. */
 let speed = 10;
@@ -108,7 +121,7 @@ function save(force = false) {
   if (!force && Date.now() - lastSaved < 10_000) return;
   lastSaved = Date.now();
   mkdirSync(DATA_DIR, { recursive: true });
-  const saved: Saved = { scenario, seed, ablations, inputs: session.inputs, log: session.log };
+  const saved: Saved = { scenario, seed, ablations, base: base ? session.initial : undefined, inputs: session.inputs, log: session.log };
   writeFileSync(SAVE, JSON.stringify(saved));
 }
 
@@ -118,7 +131,9 @@ async function restore() {
   scenario = saved.scenario ?? "island";
   seed = saved.seed;
   ablations = saved.ablations;
-  const r = await WorldSession.replay(makeWorld(), saved.inputs, saved.log, faculties);
+  const world = makeWorld();
+  base = !!saved.base;
+  const r = await WorldSession.replay(saved.base ?? world, saved.inputs, saved.log, faculties, sessionOpts());
   session = r.session;
   console.log(`Restored ${saved.inputs.length} inputs${r.divergedAt !== undefined ? ` (diverged at call ${r.divergedAt})` : ""}.`);
 }
@@ -225,8 +240,37 @@ function foundersTrace(id: string) {
   return { trace: founders.traces[pos]!, state, trail: [{ v: founders.initial.mind.affect.mood.valence, a: founders.initial.mind.affect.mood.arousal }, ...trail] };
 }
 
+/** Run the village on for some years, free: every faculty on the offline mock (L2 for everyone). */
+async function passYears(years: number) {
+  const w = session.world;
+  const yearDays = (w.village?.seasonDays ?? 4) * 4;
+  fastForward = { from: w.tick, to: w.tick + Math.round(years * yearDays) * 1440, started: Date.now() };
+  running = false;
+  try {
+    while (session.world.tick < fastForward.to) {
+      // A day per turn of the queue, so the UI can still read the world while years go by.
+      await exclusive(async () => {
+        governor.quiet = true;
+        try {
+          for (let h = 0; h < 4; h++) await session.apply({ type: "advance", minutes: 360 }, { snapshot: false });
+        } finally {
+          governor.quiet = false;
+        }
+        if (session.frames.length > 4 * yearDays) session.rebase();
+      });
+    }
+    await exclusive(async () => {
+      session.rebase();
+      base = true;
+    });
+    save(true);
+  } finally {
+    fastForward = undefined;
+  }
+}
+
 async function tickClock() {
-  if (running) {
+  if (running && !fastForward) {
     await exclusive(async () => {
       const w = session.world;
       // Nights pass in one stride: everyone is asleep, and sleep itself is one step per mind.
@@ -265,6 +309,7 @@ function view() {
     name: w.name,
     places: w.places,
     village: villageView(w),
+    fastForward: fastForward && { ...fastForward, at: w.tick },
     seed,
     running,
     speed,
@@ -301,7 +346,7 @@ let ledgerCache: { session: WorldSession; traces: number; ledger: Ledger } | und
 function ledger(): Ledger {
   if (ledgerCache?.session !== session || ledgerCache.traces !== session.traces.length) {
     const w = session.world;
-    ledgerCache = { session, traces: session.traces.length, ledger: buildLedger({ minds: w.minds, traces: session.traces, rumors: w.rumors, events: w.events }) };
+    ledgerCache = { session, traces: session.traces.length, ledger: buildLedger({ minds: w.minds, traces: session.traces, rumors: w.rumors, events: w.events, village: w.village }) };
   }
   return ledgerCache.ledger;
 }
@@ -417,6 +462,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   }
   if (req.method === "GET") {
     if (p === "/api/divergence") return send(res, 200, { events: divergence(session.world) });
+    if (p === "/api/atlas") return send(res, 200, { beliefs: atlas(session.world) });
     if (p === "/api/account") {
       const v = accountView(url.searchParams.get("agent") ?? "", url.searchParams.get("trace") ?? "");
       return v ? send(res, 200, v) : send(res, 404, { error: "No decision at that moment." });
@@ -488,6 +534,20 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       saveFounders(true);
       return send(res, 200, foundersView());
     }
+    if (p === "/api/years") {
+      const b = await body<{ years?: number }>(req);
+      if (!session.world.village) return send(res, 400, { error: "Only a village can pass years." });
+      if (fastForward) return send(res, 409, { error: "Years are already passing." });
+      void passYears(Math.max(0.25, Math.min(50, b.years ?? 1))).catch((e) => console.error(e));
+      return send(res, 200, view());
+    }
+    if (p === "/api/counterfactual") {
+      // What if not: run on from now twice on the offline mock, once without the item.
+      const b = await body<CounterfactualEdit & { days?: number }>(req);
+      const snapshot = structuredClone(session.world);
+      const r = await counterfactual(snapshot, createMockFaculties(), { agent: b.agent, kind: b.kind, id: b.id }, Math.max(1, Math.min(16, b.days ?? 4)));
+      return r ? send(res, 200, r) : send(res, 404, { error: "Nothing with that id in that mind." });
+    }
     if (p === "/api/focus") {
       // Whoever you are looking at speaks with the model, however small the moment (L0 in the plan).
       const b = await body<{ agents?: string[] }>(req);
@@ -502,12 +562,14 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       return send(res, 200, view());
     }
     if (p === "/api/input") {
+      if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
       const { input } = await body<{ input: WorldInput }>(req);
       await exclusive(() => session.apply(input));
       save(true);
       return send(res, 200, view());
     }
     if (p === "/api/rewind") {
+      if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
       const { index } = await body<{ index: number }>(req);
       await exclusive(async () => session.rewind(index));
       running = false;
@@ -515,6 +577,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       return send(res, 200, view());
     }
     if (p === "/api/reset") {
+      if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
       const b = await body<{ seed?: number; ablations?: Partial<Ablations>; scenario?: Scenario }>(req);
       await exclusive(async () => {
         if (b.scenario && b.scenario !== scenario) {
@@ -522,7 +585,8 @@ async function route(req: IncomingMessage, res: ServerResponse) {
           seed = b.seed ?? SEEDS[scenario];
         } else seed = b.seed ?? seed;
         ablations = b.ablations ?? ablations;
-        session = new WorldSession(makeWorld(), faculties);
+        session = new WorldSession(makeWorld(), faculties, sessionOpts());
+        base = false;
         governor.resetSession();
       });
       save(true);

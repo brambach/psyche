@@ -3,6 +3,7 @@ import { api, type AgentView, type ConcernView, type TraceView } from "./api";
 import { Lineage, type LineageQuery } from "./Lineage";
 import { Scan } from "./Scan";
 import { Account } from "./Village";
+import { WhatIfNot } from "./Generations";
 import { clock, placeName } from "./util";
 
 /** One islander: who they are, how they read everyone else, and every moment of theirs you can open up. */
@@ -13,6 +14,7 @@ export function AgentPanel({ id, tick, names, trace, onTrace, onOpen }: { id: st
   const [worries, setWorries] = useState<ConcernView[]>([]);
   const [lineage, setLineage] = useState<LineageQuery>();
   const [account, setAccount] = useState(false);
+  const [whatIf, setWhatIf] = useState<string>();
   const lineageRef = useRef<HTMLDivElement>(null);
 
   const trace_ = (q: LineageQuery) => {
@@ -109,6 +111,10 @@ export function AgentPanel({ id, tick, names, trace, onTrace, onOpen }: { id: st
                 <span>{c.label}</span>
                 <span className="small">{c.direct > 0 ? `in mind for ${c.direct} choice${c.direct === 1 ? "" : "s"}` : "not acted on yet"}{c.minds.length ? `, reached ${c.minds.map((x) => names[x] ?? x).join(", ")}` : ""}</span>
                 <button className="btn" onClick={() => trace_({ node: c.id })}>Trace it</button>
+                {c.kind !== "emotion" && (
+                  <button className={`btn ${whatIf === c.id ? "on" : ""}`} onClick={() => setWhatIf(whatIf === c.id ? undefined : c.id)} title="Run the next days twice, with and without it, on the offline mock">What if not?</button>
+                )}
+                {whatIf === c.id && <WhatIfNot edit={{ agent: id, kind: c.kind as "schema" | "belief", id: c.id.slice(id.length + 1) }} names={names} />}
               </li>
             ))}
           </ul>

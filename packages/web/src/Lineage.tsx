@@ -19,6 +19,7 @@ const KIND: Record<string, string> = {
   act: "did",
   sleep: "sleep",
   outside: "outside",
+  norm: "norm",
 };
 
 /** Ticks arrive as numbers, or null for things that were always there (JSON has no -Infinity). */

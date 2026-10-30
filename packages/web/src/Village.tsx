@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { DivergenceEntry, SaysVsWas, VillageView } from "@psyche/engine";
 import { api } from "./api";
 import { clock, diffWords } from "./util";
+import { People } from "./Generations";
 
 type Open = (agent: string, trace?: string) => void;
 
@@ -15,11 +16,13 @@ export function Village({ v, names, onOpen }: { v: VillageView; names: Record<st
   return (
     <div className="village">
       <div className="village-stats">
-        <Stat label="Season" value={`${v.season[0]!.toUpperCase()}${v.season.slice(1)}`} note={`day ${v.dayOfSeason} of ${v.seasonDays}`} />
+        <Stat label="Season" value={`${v.season[0]!.toUpperCase()}${v.season.slice(1)}`} note={`year ${v.year}, day ${v.dayOfSeason} of ${v.seasonDays}`} />
         <Stat label="Weather" value={WEATHER[v.weather] ?? v.weather} note={v.blight ? "blight in the barley" : undefined} />
         <Stat label="Common store" value={v.store.food.toFixed(0)} note={`${v.store.put.toFixed(0)} put in, ${v.store.taken.toFixed(0)} taken`} />
         <Stat label="Timber · stone · reeds" value={`${v.stock.timber} · ${v.stock.stone} · ${v.stock.reeds}`} note="cut and waiting" />
       </div>
+
+      <People v={v} names={names} onOpen={onOpen} />
 
       <div className="grid2">
         <div className="pane">
@@ -129,6 +132,7 @@ const MECH: Record<string, string> = {
   "told by": "heard, source forgotten",
   "passed on": "through another head",
   "generalized from": "drawn from one memory",
+  expected: "what the village expects",
 };
 
 /** Says vs was: the reasons in mind at the moment of choosing, against the causes the ledger finds. */

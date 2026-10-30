@@ -13,6 +13,7 @@ import { why, type Ledger, type LedgerNode, type Mechanism, type WhyTree } from 
 import { render, renderOriginal } from "./memory.js";
 import type { AgentId, Episode } from "./types.js";
 import type { WorldState } from "./world/world.js";
+import { schemaLineage } from "./world/life.js";
 
 export interface Account {
   agent: AgentId;
@@ -93,6 +94,7 @@ const HIDDEN: Partial<Record<Mechanism, (n: LedgerNode, whose: string) => string
   "rewrote memory": (n) => `A memory that came to mind had been rewritten by something heard: “${n.label}”.`,
   "lingering feeling": (n) => `A feeling left over from earlier was still running: ${n.label}.`,
   "told by": (n) => `They hold a belief because they were told it, and may not recall who said so: “${n.label}”.`,
+  expected: (n) => `What the village expects pressed on the choice: “${n.label.replace(/^Norm: /, "")}”.`,
   "passed on": (n) => `The story reached them through another head: \u201c${n.label.replace(/\.$/, "")}\u201d.`,
   "generalized from": (n) => `A belief they drew from one memory: “${n.label}”.`,
 };
@@ -136,4 +138,53 @@ export function saysVsWas(L: Ledger, decisionId: string): SaysVsWas | undefined 
   }
   was.sort((a, b) => b.share - a.share);
   return { decision: tree.node, says, was, missed: tree.missed ?? [] };
+}
+
+export interface AtlasHolder {
+  agent: AgentId;
+  /** The core belief's id in this person's mind. */
+  schema: string;
+  name: string;
+  generation: number;
+  alive: boolean;
+  strength: number;
+  /** How the belief reached them: each step a memory, the last the first-hand one. */
+  chain: { agent: AgentId; name: string; gist: string; firstHand: boolean }[];
+  inherited: boolean;
+}
+
+export interface AtlasEntry {
+  text: string;
+  holders: AtlasHolder[];
+  /** Living holders per generation. */
+  byGeneration: Record<number, number>;
+  /** The first-hand memories the belief traces back to, with who lived them. */
+  roots: { agent: AgentId; name: string; gist: string; alive: boolean; holders: number }[];
+}
+
+/** Fears across generations: every core belief in the village, who holds it, and where it began. */
+export function atlas(world: WorldState): AtlasEntry[] {
+  const life = world.village?.life ?? {};
+  const living = new Set(world.order);
+  const by = new Map<string, AtlasEntry>();
+  for (const [id, m] of Object.entries(world.minds)) {
+    for (const s of m.schemas) {
+      if (s.strength < 0.05) continue;
+      const e = by.get(s.text) ?? { text: s.text, holders: [], byGeneration: {}, roots: [] };
+      by.set(s.text, e);
+      const chain = schemaLineage(world, id, s).map((c) => ({ agent: c.agent, name: world.minds[c.agent]?.name ?? c.agent, gist: c.gist, firstHand: c.firstHand }));
+      const generation = life[id]?.generation ?? 0;
+      const alive = living.has(id);
+      e.holders.push({ agent: id, schema: s.id, name: m.name, generation, alive, strength: s.strength, chain, inherited: chain.length > 1 });
+      if (alive) e.byGeneration[generation] = (e.byGeneration[generation] ?? 0) + 1;
+      const root = chain.at(-1);
+      if (root?.firstHand) {
+        const r = e.roots.find((x) => x.agent === root.agent && x.gist === root.gist);
+        if (r) r.holders++;
+        else e.roots.push({ agent: root.agent, name: root.name, gist: root.gist, alive: living.has(root.agent), holders: 1 });
+      }
+    }
+  }
+  const score = (e: AtlasEntry) => e.holders.filter((h) => h.alive && h.inherited).length;
+  return [...by.values()].map((e) => ({ ...e, holders: e.holders.sort((a, b) => a.generation - b.generation || b.strength - a.strength) })).sort((a, b) => score(b) - score(a) || b.holders.length - a.holders.length);
 }

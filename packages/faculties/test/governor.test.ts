@@ -107,4 +107,18 @@ describe("budget governor", () => {
     expect(s.todayUsd).toBe(0);
     expect(s.byModel[SONNET]!.calls).toBe(1);
   });
+
+  it("sends nothing to Claude while years pass quietly (L2)", async () => {
+    const calls: { faculty: FacultyName; model: string }[] = [];
+    const g = new Governor({ mode: "claude", caller: fake(calls), spendFile: null });
+    g.quiet = true;
+    expect(g.tierOf("anyone")).toBe("L2");
+    await g.faculties.deliberate(deliberate);
+    await g.faculties.speak(speak(0.95));
+    expect(calls.length).toBe(0);
+    expect(g.snapshot().sessionUsd).toBe(0);
+    g.quiet = false;
+    await g.faculties.deliberate(deliberate);
+    expect(calls.length).toBe(1);
+  });
 });

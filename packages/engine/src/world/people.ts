@@ -24,8 +24,20 @@ const NAMES: [string, Pronouns][] = [
   ["Ada", SHE], ["Bram", HE], ["Cass", THEY], ["Della", SHE], ["Eamon", HE], ["Fen", THEY], ["Greta", SHE], ["Hal", HE],
   ["Isla", SHE], ["Joss", HE], ["Kit", THEY], ["Lorna", SHE], ["Milo", HE], ["Nell", SHE], ["Oren", HE], ["Pia", SHE],
   ["Quin", THEY], ["Rafe", HE], ["Sorrel", SHE], ["Tam", HE], ["Una", SHE], ["Vik", HE], ["Willa", SHE], ["Yorick", HE],
+  ["Agnes", SHE], ["Bea", SHE], ["Colm", HE], ["Dara", THEY], ["Edie", SHE], ["Finn", HE], ["Gil", HE], ["Hester", SHE],
+  ["Ivo", HE], ["Jem", THEY], ["Kenna", SHE], ["Lew", HE], ["Maud", SHE], ["Ned", HE], ["Orla", SHE], ["Perrin", HE],
+  ["Rhys", HE], ["Sabine", SHE], ["Tobin", HE], ["Ula", SHE], ["Wynn", THEY], ["Ysolde", SHE], ["Zeb", HE], ["Ailsa", SHE],
 ];
-const SURNAMES = ["Ashby", "Brack", "Coyle", "Dunmore", "Fenwick", "Harrow", "Kell", "Lusk", "Moss", "Pardoe", "Rook", "Tarrant"];
+export const FIRST_NAMES = NAMES;
+const SURNAMES = ["Ashby", "Brack", "Coyle", "Dunmore", "Fenwick", "Harrow", "Kell", "Lusk", "Moss", "Pardoe", "Rook", "Tarrant", "Garvey", "Hume", "Locke", "Penhale", "Quarry", "Sallow", "Tull", "Venn"];
+
+/** A fresh id from a name: "ada", or "ada2" if an Ada already lives (or lived) here. */
+export function uniqueId(base: string, taken: Set<string>): string {
+  let id = base;
+  for (let n = 2; taken.has(id); n++) id = `${base}${n}`;
+  taken.add(id);
+  return id;
+}
 const HOMETOWNS = ["Marrow", "the Saltings", "Kilnford", "Upper Dray"];
 
 /** Trades a settler can take up, and how they describe it. */
@@ -115,7 +127,7 @@ export function other(id: AgentId, name: string, benevolence: number, liking: nu
 }
 
 /** How the crossing went, in this mind's telling. Same night, different memories. */
-export function crossingMemory(m: MindState, r: Rng): Episode {
+export function crossingMemory(m: MindState, r: Rng, id = CROSSING, tick = CROSSING_TICK): Episode {
   const n = m.traits.neuroticism;
   const sea = n > 0.6 ? "nearly swamped us in the swell" : n > 0.4 ? "was rough the whole second night" : "was choppy, nothing worse";
   const moments = [
@@ -127,8 +139,8 @@ export function crossingMemory(m: MindState, r: Rng): Episode {
   ];
   const moment = pick(r, moments);
   return episode({
-    id: CROSSING,
-    tick: CROSSING_TICK,
+    id,
+    tick,
     gist: `The crossing to Hollow Bay ${sea}.`,
     template: "The crossing to Hollow Bay {sea}, and {moment}.",
     details: [
@@ -139,11 +151,11 @@ export function crossingMemory(m: MindState, r: Rng): Episode {
     topics: ["crossing", "sea", "bay"],
     valence: Number((0.25 - n * 0.6).toFixed(2)),
     arousal: Number((0.3 + n * 0.4).toFixed(2)),
-    rehearsed: [-3 * DAY],
+    rehearsed: [tick + 3 * DAY],
   });
 }
 
-function routineFor(role: string, home: PlaceId): RoutineEntry[] {
+export function routineFor(role: string, home: PlaceId): RoutineEntry[] {
   const job = { fisher: "fishing the bay", farmer: "working the barley", forager: "foraging the pinewood", woodcutter: "felling pines", quarrier: "cutting stone", builder: "building", thatcher: "cutting reeds" }[role] ?? "working";
   return [
     { from: 7, place: home, activity: "waking up" },
@@ -171,24 +183,34 @@ const ASKS: Record<string, { what: string; topics: string[] }> = {
  * Roll `count` settlers in households of two or three. `known` are minds that already exist
  * (the Kettle five), with their roles, so asks can be aimed at them too.
  */
-export function createSettlers(seed: number, count: number, ablations: Partial<Ablations>, known: { id: AgentId; name: string; role: string }[]): { settlers: Settler[]; households: HouseholdSeed[] } {
+export function createSettlers(
+  seed: number,
+  count: number,
+  ablations: Partial<Ablations>,
+  known: { id: AgentId; name: string; role: string }[],
+  /** For later boats: ids already in use, the crossing's episode id, and when they land. */
+  /** `names` already in use (the living and the remembered dead), avoided while any are left. */
+  opts: { taken?: Set<string>; names?: Set<string>; crossing?: string; now?: number } = {},
+): { settlers: Settler[]; households: HouseholdSeed[] } {
   const r: Rng = { rng: (Math.imul(seed + 17, 2246822519) ^ 0x5bd1e995) >>> 0 };
-  const names = [...NAMES];
+  const taken = opts.taken ?? new Set(known.map((k) => k.id));
+  const now = opts.now ?? 0;
+  const names = NAMES.filter(([n]) => !opts.names?.has(n));
   const settlers: Settler[] = [];
   const households: HouseholdSeed[] = [];
   const surnames = [...SURNAMES];
   let made = 0;
   while (made < count) {
     const size = Math.min(count - made, count - made === 4 ? 2 : nextRandom(r) < 0.5 ? 2 : 3);
-    const surname = surnames.splice(Math.floor(nextRandom(r) * surnames.length), 1)[0]!;
-    const hid = surname.toLowerCase();
+    const surname = surnames.length ? surnames.splice(Math.floor(nextRandom(r) * surnames.length), 1)[0]! : pick(r, SURNAMES);
+    const hid = uniqueId(surname.toLowerCase(), taken);
     const town = pick(r, HOMETOWNS);
     const home = `home_${hid}`;
     const members: AgentId[] = [];
     const past = pick(r, PASTS);
     for (let i = 0; i < size; i++) {
-      const [first, pronouns] = names.splice(Math.floor(nextRandom(r) * names.length), 1)[0]!;
-      const id = first.toLowerCase();
+      const [first, pronouns] = names.length ? names.splice(Math.floor(nextRandom(r) * names.length), 1)[0]! : pick(r, NAMES);
+      const id = uniqueId(first.toLowerCase(), taken);
       const role = SETTLER_TRADES[made % SETTLER_TRADES.length]!;
       const age = Math.round(roll(r, 19, 61));
       const traits = {
@@ -203,14 +225,14 @@ export function createSettlers(seed: number, count: number, ablations: Partial<A
       const mine = i === 0 || nextRandom(r) < 0.7 ? past : pick(r, PASTS);
       const formative = episode({
         id: `ep_${id}_${mine.key}`,
-        tick: -Math.round(roll(r, 2, 15)) * 365 * DAY,
+        tick: now - Math.round(roll(r, 2, 15)) * 365 * DAY,
         gist: mine.gist(town),
         template: "",
         about: [],
         topics: mine.topics,
         valence: mine.valence,
         arousal: 0.6,
-        rehearsed: [-400 * DAY, -60 * DAY],
+        rehearsed: [now - 400 * DAY, now - 60 * DAY],
         agency: "circumstance",
       });
       const schema: Schema = { ...mine.schema, id: `sch_${id}_${mine.key}`, origin: [formative.id] };
@@ -247,7 +269,7 @@ export function createSettlers(seed: number, count: number, ablations: Partial<A
         (Math.imul(seed + 101 + made, 2654435761) ^ 0x2c1b3c6d) >>> 0,
         ablations,
       );
-      mind.episodes.push(crossingMemory(mind, r));
+      mind.episodes.push(crossingMemory(mind, r, opts.crossing, now + CROSSING_TICK));
       settlers.push({ mind, role, household: hid, routine: routineFor(role, home), wants: [], home });
       members.push(id);
       made++;
@@ -272,7 +294,7 @@ export function createSettlers(seed: number, count: number, ablations: Partial<A
     a.mind.episodes.push(
       episode({
         id: `ep_${a.mind.id}_water`,
-        tick: CROSSING_TICK + 20 * 60,
+        tick: now + CROSSING_TICK + 20 * 60,
         gist: `${b.mind.name} took more than ${b.mind.pronouns.possessive} share of the water on the crossing.`,
         template: `${b.mind.name} took {amount} of the water on the crossing.`,
         details: [["amount", "more than a fair share", 0.5]],
@@ -280,7 +302,7 @@ export function createSettlers(seed: number, count: number, ablations: Partial<A
         topics: ["crossing", "water", "fairness", "store"],
         valence: -0.5,
         arousal: 0.55,
-        rehearsed: [-4 * DAY, -1 * DAY],
+        rehearsed: [now - 4 * DAY, now - 1 * DAY],
       }),
     );
     a.mind.others[b.mind.id]!.liking = 0.33;

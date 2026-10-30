@@ -1,4 +1,4 @@
-import type { Ablations, AgentState, Concern, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
+import type { Ablations, AgentState, AtlasEntry, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
 
 export interface AgentSummary {
   id: string;
@@ -50,6 +50,8 @@ export interface WorldView {
   feed: FeedItem[];
   rumors: RumorView[];
   rewind: { index: number; tick: number; dayStart: boolean }[];
+  /** Years passing on the offline mock, when they are. */
+  fastForward?: { from: number; to: number; at: number; started: number };
   calls: number;
   cost: CostView;
   conversations: number;
@@ -128,5 +130,8 @@ export const api = {
   focus: (agents: string[]) => call<{ focus: string[] }>("/api/focus", { agents }),
   reset: (opts: { seed?: number; ablations?: Partial<Ablations>; scenario?: Scenario }) => call<WorldView>("/api/reset", opts),
   divergence: () => call<{ events: DivergenceEntry[] }>("/api/divergence"),
+  atlas: () => call<{ beliefs: AtlasEntry[] }>("/api/atlas"),
+  years: (years: number) => call<WorldView>("/api/years", { years }),
+  counterfactual: (edit: CounterfactualEdit & { days?: number }) => call<Counterfactual>("/api/counterfactual", edit),
   account: (agent: string, trace: string) => call<SaysVsWas>(`/api/account?${new URLSearchParams({ agent, trace })}`),
 };

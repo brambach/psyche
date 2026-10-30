@@ -4,7 +4,7 @@
 import { applyAppraisal, appraise, passTime, updateTrust } from "./affect.js";
 import { decide, nameOf, styleFor } from "./decide.js";
 import { detectBiases, headline } from "./explain.js";
-import { clamp, reconsolidate, render, retrieve } from "./memory.js";
+import { clamp, reconsolidate, render, retrieve, use } from "./memory.js";
 import { PARAMS } from "./params.js";
 import type { Faculties, Percept, PerceiveResponse, StableIdentity } from "./ports.js";
 import { nextId } from "./rng.js";
@@ -73,7 +73,7 @@ function absorbClaims(mind: MindState, p: Percept, episodeId: string): Contribut
         known.confidence = clamp(known.confidence + gain);
         out.push({ name: `heard again: ${known.proposition}`, value: gain, ref: known.id });
       }
-      known.retrievals.push(p.tick);
+      use(known.retrievals, p.tick);
       known.evidence.push(episodeId);
       continue;
     }
@@ -148,7 +148,7 @@ export async function runPercept(mind: MindState, p: Percept, faculties: Faculti
     if (w) w.text = render(ep);
   };
   for (const w of winners) {
-    if (w.kind === "belief") mind.beliefs.find((b) => b.id === w.ref)!.retrievals.push(p.tick);
+    if (w.kind === "belief") use(mind.beliefs.find((b) => b.id === w.ref)!.retrievals, p.tick);
     if (w.kind === "memory") await recall(w.ref, false);
   }
 
@@ -158,7 +158,8 @@ export async function runPercept(mind: MindState, p: Percept, faculties: Faculti
     kind: "perceive",
     percept: p,
     appraisal,
-    retrieval,
+    // Everything retrieved, and the strongest of what was not: a long life has hundreds of candidates.
+    retrieval: [...retrieval.filter((r) => r.retrieved), ...retrieval.filter((r) => !r.retrieved).sort((x, y) => y.activation - x.activation).slice(0, 12)],
     workspace: winners,
     subliminal,
     reconsolidations,

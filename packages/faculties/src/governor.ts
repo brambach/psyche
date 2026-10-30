@@ -82,6 +82,11 @@ export class Governor {
    * their more salient lines are spoken by the model. Empty means everyone is L0.
    */
   readonly core = new Set<string>();
+  /**
+   * Fast-forward (L2 for everyone): while set, every call runs on the offline mock and costs
+   * nothing, so years can pass between the stretches the user watches on Claude.
+   */
+  quiet = false;
   capUsd: number;
   speechThreshold: number;
   private readonly mock = createMockFaculties();
@@ -122,14 +127,19 @@ export class Governor {
     return level;
   }
 
-  /** L0 (focus) or L1 (active, cheaper) for an agent id. */
-  tierOf(id: string | undefined): "L0" | "L1" {
+  /** L0 (focus), L1 (active, cheaper), or L2 (fast-forward, free) for an agent id. */
+  tierOf(id: string | undefined): "L0" | "L1" | "L2" {
+    if (this.quiet) return "L2";
     if (!id || this.core.size === 0) return "L0";
     return this.focus.has(id) || this.core.has(id) ? "L0" : "L1";
   }
 
   private async route(f: FacultyName, req: unknown, caller: FacultyCaller | undefined, models?: Partial<Record<FacultyName, string>>): Promise<unknown> {
     const level = this.level();
+    if (this.quiet) {
+      this.bucket(f).templated++;
+      return (this.mock[f] as (r: unknown) => Promise<unknown>)(req);
+    }
     const mockCall = () => (this.mock[f] as (r: unknown) => Promise<unknown>)(req);
     const self = (req as { self?: StableIdentity }).self;
     const tier = this.tierOf(self?.id);

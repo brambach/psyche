@@ -6,8 +6,9 @@ import { IslandMap } from "./IslandMap";
 import { Cast, Feed, Relations, Rumors } from "./Panels";
 import { agentColors, clock, setPlaces } from "./util";
 import { Divergence, Village } from "./Village";
+import { Atlas } from "./Generations";
 
-type Tab = "feed" | "village" | "rumors" | "memories" | "relations" | "mind";
+type Tab = "feed" | "village" | "atlas" | "rumors" | "memories" | "relations" | "mind";
 
 const SPEEDS = [
   { label: "Slow", value: 5 },
@@ -75,7 +76,8 @@ export function App() {
   };
   const send = (input: WorldInput) => act(() => api.input(input));
 
-  const names = useMemo(() => Object.fromEntries((view?.agents ?? []).map((a) => [a.id, a.name])), [view?.agents]);
+  // The dead keep their names: they still turn up as tellers of stories and roots of fears.
+  const names = useMemo(() => Object.fromEntries([...(view?.village?.people ?? []).map((p) => [p.id, p.name]), ...(view?.agents ?? []).map((a) => [a.id, a.name])]), [view?.agents, view?.village?.people]);
   const pronouns = useMemo(() => Object.fromEntries((view?.agents ?? []).map((a) => [a.id, a.pronoun])), [view?.agents]);
 
   // Whoever you are looking inside speaks with the model however small the moment; everyone else
@@ -117,7 +119,7 @@ export function App() {
           }}
         >
           <option value="island">Kettle Island (5)</option>
-          <option value="village">Hollow Bay village (15)</option>
+          <option value="village">Hollow Bay village</option>
         </select>
         <span className={`chip ${view.faculties === "mock" ? "mock" : "live"}`} title={view.faculties === "mock" ? "No API key found: speech comes from the offline mock. The minds underneath are identical." : "Speech and reflection run on Claude."}>
           {view.faculties === "mock" ? "offline mock language" : "Claude"}
@@ -133,8 +135,28 @@ export function App() {
           <select aria-label="Speed" value={view.speed} onChange={(e) => act(() => api.control({ speed: Number(e.target.value) }))}>
             {SPEEDS.map((s) => <option key={s.value} value={s.value}>{s.label} ({s.value} min/s)</option>)}
           </select>
-          <button className="btn" disabled={busy} onClick={() => send({ type: "advance", minutes: night ? untilMorning : 60 })}>{night ? "Skip to morning" : "+1 hour"}</button>
+          <button className="btn" disabled={busy || !!view.fastForward} onClick={() => send({ type: "advance", minutes: night ? untilMorning : 60 })}>{night ? "Skip to morning" : "+1 hour"}</button>
+          {isVillage && (
+            <select
+              aria-label="Let years pass"
+              value=""
+              disabled={busy || !!view.fastForward}
+              title="Years pass on the offline mock, free. Births, deaths, stories and norms carry on; you can't rewind past them."
+              onChange={(e) => {
+                const years = Number(e.target.value);
+                if (years && confirm(`Let ${years} year${years === 1 ? "" : "s"} pass? This runs on the offline mock (free), and you won't be able to rewind to before it.`)) void act(() => api.years(years));
+              }}
+            >
+              <option value="">Let years pass...</option>
+              {[1, 5, 10, 25].map((y) => <option key={y} value={y}>{y} year{y === 1 ? "" : "s"}</option>)}
+            </select>
+          )}
         </div>
+        {view.fastForward && (
+          <span className="chip live" role="status">
+            Years passing: {Math.round(((view.fastForward.at - view.fastForward.from) / (view.fastForward.to - view.fastForward.from)) * 100)}%
+          </span>
+        )}
         <a className="btn" href="#/founders" title="One mind, an empty islet, a storm on the way: watch it design and build a house">Founders</a>
         <div className="menus">
           {(["events", "talk", "rumor", "rewind", "mechanisms"] as const).map((p) => (
@@ -191,6 +213,7 @@ export function App() {
           <div className="tabs big" role="tablist">
             <button role="tab" aria-selected={tab === "feed"} className={tab === "feed" ? "on" : ""} onClick={() => setTab("feed")}>What's happening</button>
             {view.village && <button role="tab" aria-selected={tab === "village"} className={tab === "village" ? "on" : ""} onClick={() => setTab("village")}>The village</button>}
+            {view.village && <button role="tab" aria-selected={tab === "atlas"} className={tab === "atlas" ? "on" : ""} onClick={() => setTab("atlas")}>Fears across generations</button>}
             <button role="tab" aria-selected={tab === "rumors"} className={tab === "rumors" ? "on" : ""} onClick={() => setTab("rumors")}>Stories going round{view.rumors.length ? ` (${view.rumors.length})` : ""}</button>
             <button role="tab" aria-selected={tab === "memories"} className={tab === "memories" ? "on" : ""} onClick={() => setTab("memories")}>Same event, different memories</button>
             <button role="tab" aria-selected={tab === "relations"} className={tab === "relations" ? "on" : ""} onClick={() => setTab("relations")}>Who feels what</button>
@@ -202,6 +225,7 @@ export function App() {
           </div>
           {tab === "feed" && <Feed feed={view.feed} names={names} onOpen={open} />}
           {tab === "village" && view.village && <Village v={view.village} names={names} onOpen={open} />}
+          {tab === "atlas" && view.village && <Atlas tick={view.tick} names={names} onOpen={open} />}
           {tab === "memories" && <Divergence names={names} tick={view.tick} onOpen={open} />}
           {tab === "rumors" && <Rumors rumors={view.rumors} names={names} onOpen={open} />}
           {tab === "relations" && <Relations order={view.order} relations={view.relations} names={names} pronouns={pronouns} />}

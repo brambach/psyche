@@ -9,6 +9,7 @@
 // Nothing here causes behaviour. It is built from traces and state after the fact, like explain.ts.
 
 import type { Rumor, WorldEventRecord, WorldTrace } from "./world/world.js";
+import type { VillageState } from "./world/village.js";
 import type { Trace, WorkspaceEntry } from "./trace.js";
 import { EMOTION_NAMES, NEGATIVE_EMOTIONS, type AgentId, type EmotionName, type MindState, type Tick } from "./types.js";
 
@@ -27,7 +28,8 @@ export type NodeKind =
   | "utterance"
   | "act"
   | "sleep"
-  | "outside";
+  | "outside"
+  | "norm";
 
 export interface LedgerNode {
   id: string;
@@ -59,7 +61,9 @@ export type Mechanism =
   | "passed on"
   | "rewrote memory"
   | "installed by"
-  | "deepened by";
+  | "deepened by"
+  | "sanctioned"
+  | "expected";
 
 export interface LedgerEdge {
   from: string;
@@ -84,6 +88,8 @@ export interface LedgerInput {
   traces: WorldTrace[];
   rumors?: Record<string, Rumor>;
   events?: WorldEventRecord[];
+  /** A village's norms and pledges, when there is one. */
+  village?: VillageState;
 }
 
 /** Emotions weaker than this are not given their own node. */
@@ -293,6 +299,12 @@ export function buildLedger(input: LedgerInput): Ledger {
       }
     }
     for (const ep of mind.episodes) {
+      // A story heard keeps a pointer to the teller's own memory of it, across minds and generations.
+      if (ep.source.kind === "told" && ep.source.from && ep.source.ref) {
+        const src = episodeNode(ep.source.from, ep.source.ref);
+        const E = episodeNode(a, ep.id);
+        if (src && E) edge({ from: src, to: E, mechanism: "told by", weight: 0.7, tick: ep.tick });
+      }
       for (const v of ep.versions) {
         for (const c of v.changes) {
           if (c.source.ref) {
@@ -312,6 +324,23 @@ export function buildLedger(input: LedgerInput): Ledger {
       for (const d of s.deepenedBy ?? []) {
         const ep = episodeNode(a, d.episode);
         if (ep) edge({ from: ep, to: S, mechanism: "deepened by", weight: 0.5, tick: d.tick });
+      }
+    }
+  }
+
+  // Norms: built from the violations people saw and held against others; felt at later pledges.
+  for (const n of input.village?.norms ?? []) {
+    if (!n.established) continue;
+    const N = node({ id: nodeId.world(n.id), kind: "norm", tick: n.established, label: `Norm: ${n.text}` });
+    for (const c of n.cases) {
+      const ep = episodeNode(c.agent, c.episode);
+      if (ep) edge({ from: ep, to: N, mechanism: "sanctioned", weight: 0.15, tick: n.established });
+    }
+    for (const round of input.village!.pledges.filter((r) => r.tick >= n.established!)) {
+      for (const ans of round.answers) {
+        const held = minds[ans.agent]?.beliefs.find((b) => b.about === "village" && b.proposition === n.text)?.confidence ?? 0;
+        const D = nodeId.decision(ans.agent, ans.trace);
+        if (held > 0.1 && L.nodes.has(D)) edge({ from: N, to: D, mechanism: "expected", weight: Math.min(1, held * 0.6), tick: round.tick });
       }
     }
   }

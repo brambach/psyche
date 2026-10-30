@@ -32,7 +32,7 @@ export {
   type WorldEventRecord,
   type Sink,
 } from "./world/world.js";
-export { WorldSession, type WorldInput, type WorldFrame } from "./world/session.js";
+export { WorldSession, type WorldInput, type WorldFrame, type WorldSessionOptions } from "./world/session.js";
 export {
   createVillage,
   villageView,
@@ -95,4 +95,6 @@ export {
   type Influence,
   type Concern,
 } from "./ledger.js";
-export { divergence, saysVsWas, type Account, type DivergenceEntry, type HiddenCause, type SaysVsWas } from "./analysis.js";
+export { atlas, divergence, saysVsWas, type AtlasEntry, type AtlasHolder, type Account, type DivergenceEntry, type HiddenCause, type SaysVsWas } from "./analysis.js";
+export { ageOf, isChild, yearOf, schemaLineage, STORE_NORM, CHILDHOOD, type Life, type Norm } from "./world/life.js";
+export { counterfactual, type Counterfactual, type CounterfactualEdit, type ChoiceDiff } from "./world/counterfactual.js";

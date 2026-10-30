@@ -2,7 +2,7 @@
 // (McClelland, McNaughton & O'Reilly 1995), emotional tempering (Walker & van der Helm 2009),
 // stress recovery, and nightly trait drift (TESSERA, Wrzus & Roberts 2017).
 
-import { clamp, render, touchEpisode } from "./memory.js";
+import { baseLevel, clamp, render, touchEpisode, use } from "./memory.js";
 import { PARAMS } from "./params.js";
 import type { Faculties } from "./ports.js";
 import { nextId } from "./rng.js";
@@ -50,7 +50,7 @@ export async function sleep(mind: MindState, now: Tick, faculties: Faculties): P
       const existing = mind.beliefs.find((b) => b.about === g.about && b.source.kind === "inferred" && Math.sign(b.valence) === Math.sign(g.valence));
       if (existing) {
         existing.confidence = clamp(existing.confidence + 0.05);
-        existing.retrievals.push(now);
+        use(existing.retrievals, now);
         notes.push(`Strengthened belief: "${existing.proposition}".`);
       } else {
         mind.beliefs.push({
@@ -97,6 +97,24 @@ export async function sleep(mind: MindState, now: Tick, faculties: Faculties): P
       if (shifts.length) notes.push(`Trait drift: ${shifts.join(", ")}.`);
     }
   }
+
+  // Forgetting: past capacity, the faintest ordinary memories go (decay as in Anderson & Schooler 1991).
+  const cap = PARAMS.memory.capacity;
+  if (mind.episodes.length > cap) {
+    const keep = new Set<string>([
+      ...mind.schemas.flatMap((s) => [...(s.origin ?? []), ...(s.deepenedBy ?? []).map((d) => d.episode)]),
+      ...mind.beliefs.flatMap((b) => [...b.evidence, ...(b.claim?.episodeHint ? [b.claim.episodeHint] : [])]),
+    ]);
+    const faint = mind.episodes
+      .filter((e) => !keep.has(e.id))
+      .map((e) => ({ id: e.id, a: baseLevel(e.retrievals, now, PARAMS.memory.gistDecay) + 2 * Math.abs(e.valence) * e.arousal }))
+      .sort((x, y) => x.a - y.a)
+      .slice(0, mind.episodes.length - cap);
+    const drop = new Set(faint.map((x) => x.id));
+    mind.episodes = mind.episodes.filter((e) => !drop.has(e.id));
+    if (drop.size) notes.push(`Forgot ${drop.size} faint ${drop.size === 1 ? "memory" : "memories"}.`);
+  }
+  if (mind.expressions.length > 200) mind.expressions.splice(0, mind.expressions.length - 200);
 
   const af = mind.affect;
   af.stress *= 1 - S.stressRecovery;

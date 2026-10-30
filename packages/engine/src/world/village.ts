@@ -18,6 +18,7 @@ import { nextId, nextRandom } from "../rng.js";
 import type { Ablations, AgentId, Episode, MindState } from "../types.js";
 import { check, describe, PACE, type Blueprint } from "../founders/blueprint.js";
 import { createCast, WORLD_START } from "./cast.js";
+import { ageOf, bedtime, hearStory, initLife, isChild, yearOf, lifeTurn, normHeld, sanction, settleNorms, storeNorm, type Life, type Norm } from "./life.js";
 import { CROSSING, createSettlers, crossingMemory, other } from "./people.js";
 import type { Place, PlaceId, RoutineEntry } from "./places.js";
 import { claimFromEpisode, eventPercept, feed, hop, isNight, personName, record, thirdPerson, type AgentState, type Sink, type WorldState } from "./world.js";
@@ -78,17 +79,21 @@ export interface VillageState {
   weather: Weather;
   blight: boolean;
   stock: Record<Resource, number>;
-  store: { food: number; log: StoreEntry[] };
+  /** `folded` sums the oldest entries, so a long-lived store keeps its totals without its whole log. */
+  store: { food: number; log: StoreEntry[]; folded?: { put: number; take: number } };
   households: Record<string, Household>;
   structures: Structure[];
   /** Pledge rounds, newest last. */
   pledges: { tick: number; season: Season; proposer: AgentId; answers: Pledge[] }[];
   /** Last day each daily thing happened. */
-  last: { meal: number; fireside: number; weather: number; tentNight: number };
+  last: { meal: number; fireside: number; weather: number; tentNight: number; bedtime: number };
   /** Stories told at the fire, as `teller:episode`. */
   told: string[];
   /** Percepts raised inside synchronous bookkeeping (a house finished mid-step), run at the next step. */
   pending: { id: AgentId; p: Percept }[];
+  /** Everyone who has lived here, alive or dead. */
+  life: Record<AgentId, Life>;
+  norms: Norm[];
 }
 
 export type VillageEvent = { kind: "pledge" } | { kind: "blight" } | { kind: "gale" };
@@ -128,6 +133,7 @@ export const VILLAGE_PLACES: Record<PlaceId, Place> = {
   woods: { id: "woods", name: "the pinewood", x: 86, y: 42, social: true, outdoors: true, topics: ["timber", "forage"] },
   quarry: { id: "quarry", name: "the quarry", x: 90, y: 25, social: true, outdoors: true, topics: ["stone"] },
   fields: { id: "fields", name: "the barley field", x: 87, y: 56, social: true, outdoors: true, topics: ["barley", "harvest"] },
+  graveyard: { id: "graveyard", name: "the burial ground", x: 76, y: 12, social: false, outdoors: true, topics: ["death", "grief"] },
   reeds: { id: "reeds", name: "the reedbed", x: 22, y: 56, social: true, outdoors: true, topics: ["reeds", "thatch"] },
 };
 
@@ -189,9 +195,11 @@ export function createVillage(seed = 11, ablations: Partial<Ablations> = {}, set
       households,
       structures: [],
       pledges: [],
-      last: { meal: 0, fireside: 0, weather: 1, tentNight: 0 },
+      last: { meal: 0, fireside: 0, weather: 1, tentNight: 0, bedtime: 0 },
       told: [],
       pending: [],
+      life: {},
+      norms: [],
     },
   };
 
@@ -214,6 +222,7 @@ export function createVillage(seed = 11, ablations: Partial<Ablations> = {}, set
   }
   for (const s of settlers) add(s.mind, s.role, s.home, s.routine, s.wants);
   for (const id of world.order) world.agents[id]!.place = world.agents[id]!.home;
+  initLife(world);
   return world;
 }
 
@@ -256,6 +265,10 @@ export async function villageStep(world: WorldState, dt: number, faculties: Facu
   await startBuilding(world, faculties, sink);
   if (h >= 19 && v.last.meal !== day) await supper(world, faculties, sink);
   if (h >= 19.5 && h < 22 && v.last.fireside !== day) await fireside(world, faculties, sink);
+  if (h >= 20.75 && h < 22 && v.last.bedtime !== day) {
+    v.last.bedtime = day;
+    await bedtime(world, faculties, sink);
+  }
   // The pledge is asked on the second evening, and again when each season turns.
   const seasonStart = (day - 1) % v.seasonDays === 0;
   const due = (day === 2 && v.pledges.length === 0) || (seasonStart && day > 2 && !v.pledges.some((p) => dayOf(p.tick) === day));
@@ -271,6 +284,7 @@ async function newDay(world: WorldState, faculties: Faculties, sink: Sink): Prom
   if (v.season !== before) {
     v.blight = false;
     feed(world, sink, { kind: "event", agents: [], title: `${cap(v.season)} comes to ${world.name}`, text: SEASON_TEXT[v.season] });
+    await lifeTurn(world, faculties, sink);
   }
   const r = nextRandom(world);
   v.weather = r < GALE_CHANCE[v.season] ? "gale" : r < GALE_CHANCE[v.season] + 0.25 ? "rain" : "fair";
@@ -477,7 +491,7 @@ async function supper(world: WorldState, faculties: Faculties, sink: Sink): Prom
   const took: string[] = [];
   const hungry: AgentId[] = [];
   for (const hh of Object.values(v.households)) {
-    const need = ration * hh.members.length;
+    const need = ration * hh.members.reduce((n, m) => n + (isChild(world, m) ? 0.6 : 1), 0);
     // Committed households put a share of what is over two days' needs into the store.
     const surplus = hh.food - need * 3;
     if (hh.rate > 0 && surplus > 0) {
@@ -485,7 +499,7 @@ async function supper(world: WorldState, faculties: Faculties, sink: Sink): Prom
       if (amount >= 0.1) {
         hh.food -= amount;
         v.store.food = Number((v.store.food + amount).toFixed(1));
-        v.store.log.push({ tick: world.tick, household: hh.id, amount, kind: "put" });
+        logStore(v, { tick: world.tick, household: hh.id, amount, kind: "put" });
         put.push(`${hh.name} ${amount}`);
       }
     }
@@ -498,7 +512,7 @@ async function supper(world: WorldState, faculties: Faculties, sink: Sink): Prom
     const take = Math.min(short, v.store.food);
     if (take > 0) {
       v.store.food = Number((v.store.food - take).toFixed(1));
-      v.store.log.push({ tick: world.tick, household: hh.id, amount: Number(take.toFixed(1)), kind: "take" });
+      logStore(v, { tick: world.tick, household: hh.id, amount: Number(take.toFixed(1)), kind: "take" });
       took.push(`${hh.name} ${take.toFixed(1)}`);
       short -= take;
       await tookAfterHolding(world, hh, faculties, sink);
@@ -538,17 +552,20 @@ async function tookAfterHolding(world: WorldState, hh: Household, faculties: Fac
     const p = eventPercept(m, culprit, "other", -0.04, 0.6, ["store", "fairness", "food", "winter"], `${personName(world, culprit)} took from the common store after holding back from it.`, `${personName(world, culprit)} takes a share from the common store.`, nextId(world, "ev_took"), [culprit]);
     p.features.intentional = 0.9;
     p.features.normViolation = 0.75;
-    record(world, sink, w, await runPercept(m, p, faculties));
+    const tr = await runPercept(m, p, faculties);
+    record(world, sink, w, tr);
+    sanction(world, w, tr);
   }
   if (witnesses.length) feed(world, sink, { kind: "event", place: "store", agents: [culprit, ...witnesses], title: `${personName(world, culprit)} takes from the store`, text: `${list(witnesses.map((x) => personName(world, x)))} saw it, and remembers that ${personName(world, culprit)} put nothing in.` });
 }
 
 // ---------------------------------------------------------------- the common store
 
-const PLEDGE_OPTIONS = (share: number): ActionOption[] => [
-  { id: "commit", label: "Put in a full share", verb: "commit to the common store", description: `Pledge a full share, about ${share} days' food from the household's surplus, to feed the builders and the cook and to keep for winter.`, prosocial: 0.85, assertive: 0.1, avoidant: 0, disclosure: 0.3, comply: true },
-  { id: "token", label: "Put in a little", verb: "put in a token amount", description: "Pledge a little, enough to be seen to give, and keep the rest for the household.", prosocial: 0.15, assertive: 0, avoidant: 0.4, disclosure: 0 },
-  { id: "hold", label: "Hold back", verb: "hold back from the store", description: "Keep the household's food for the household. Let others feed the builders.", prosocial: -0.6, assertive: 0.5, avoidant: 0.2, disclosure: 0 },
+/** The choices at the pledge. Someone who believes in the store norm finds holding back costs more (Bicchieri 2006). */
+const PLEDGE_OPTIONS = (share: number, norm = 0): ActionOption[] => [
+  { id: "commit", label: "Put in a full share", verb: "commit to the common store", description: `Pledge a full share, about ${share} days' food from the household's surplus, to feed the builders and the cook and to keep for winter.`, prosocial: Math.min(1, 0.85 + 0.15 * norm), assertive: 0.1, avoidant: 0, disclosure: 0.3, comply: true },
+  { id: "token", label: "Put in a little", verb: "put in a token amount", description: "Pledge a little, enough to be seen to give, and keep the rest for the household.", prosocial: 0.15 - 0.3 * norm, assertive: 0, avoidant: 0.4, disclosure: 0 },
+  { id: "hold", label: "Hold back", verb: "hold back from the store", description: `Keep the household's food for the household. Let others feed the builders.${norm > 0.3 ? " Everyone here expects you to put in." : ""}`, prosocial: -0.6 - 0.5 * norm, assertive: 0.5, avoidant: 0.2, disclosure: 0 },
 ];
 const RATE: Record<Pledge["option"], number> = { commit: 0.6, token: 0.15, hold: 0 };
 
@@ -556,7 +573,7 @@ const RATE: Record<Pledge["option"], number> = { commit: 0.6, token: 0.15, hold:
 async function pledge(world: WorldState, faculties: Faculties, sink: Sink): Promise<void> {
   const v = world.village!;
   const present = world.order.filter((x) => world.agents[x]!.place === "tavern");
-  const everyone = world.order;
+  const everyone = world.order.filter((x) => !isChild(world, x));
   const proposer = world.minds.wren && everyone.includes("wren") ? "wren" : [...everyone].sort((a, b) => world.minds[b]!.traits.agreeableness - world.minds[a]!.traits.agreeableness)[0]!;
   const P = world.minds[proposer]!;
   const first = v.pledges.length === 0;
@@ -604,7 +621,7 @@ async function pledge(world: WorldState, faculties: Faculties, sink: Sink): Prom
       template: "At the fire, {who} asked every household to put by for the common store; {store}.",
       gist: own ? "I asked the village to put by for a common store." : `${P.name} asked every household to put by for the common store.`,
       eventId: evId,
-      options: PLEDGE_OPTIONS(SHARE),
+      options: PLEDGE_OPTIONS(SHARE, normHeld(world, id)),
     };
     p.details.unshift({ key: "who", value: P.name, salience: 0.2 });
     // Hunger tonight weighs: the household's own food changes what giving costs.
@@ -653,10 +670,13 @@ async function pledge(world: WorldState, faculties: Faculties, sink: Sink): Prom
         [hd.agent],
       );
       p.features.intentional = 0.8;
-      p.features.normViolation = severe ? 0.6 : 0.25;
-      record(world, sink, id, await runPercept(m, p, faculties));
+      p.features.normViolation = (severe ? 0.6 : 0.25) + 0.3 * storeNorm(v).strength;
+      const tr = await runPercept(m, p, faculties);
+      record(world, sink, id, tr);
+      if (severe) sanction(world, id, tr);
     }
   }
+  settleNorms(world, sink);
 }
 
 // ---------------------------------------------------------------- nights and stories
@@ -719,6 +739,7 @@ async function fireside(world: WorldState, faculties: Faculties, sink: Sink): Pr
   })).utterance;
   const storyId = nextId(world, "story");
   const refs: { agent: AgentId; trace: string }[] = [];
+  const lessons: string[] = [];
   for (const id of present) {
     if (id === best.who) continue;
     const m = world.minds[id]!;
@@ -739,6 +760,9 @@ async function fireside(world: WorldState, faculties: Faculties, sink: Sink): Pr
       eventId: storyId,
     };
     const tr = await runPercept(m, p, faculties);
+    // Remembered with a pointer to the teller's memory; children can take on the teller's dread with it.
+    const learned = hearStory(world, best.who, best.ep, id, tr, isChild(world, id) ? 0.2 : 0);
+    if (learned) lessons.push(`${m.name} now carries ${T.name}'s core belief: “${learned.text}”.`);
     record(world, sink, id, tr);
     refs.push({ agent: id, trace: tr.id });
     if (built?.claim.rumor) hop(world, built.claim.rumor, best.who, id, built.claim.proposition, false, tr.id);
@@ -749,7 +773,7 @@ async function fireside(world: WorldState, faculties: Faculties, sink: Sink): Pr
     agents: present,
     title: `${T.name} tells a story at the fire`,
     lines: [{ speaker: best.who, text: line }],
-    text: present.length > 2 ? `Listening: ${list(present.filter((x) => x !== best.who).map((x) => personName(world, x)))}.` : undefined,
+    text: [present.length > 2 ? `Listening: ${list(present.filter((x) => x !== best.who).map((x) => personName(world, x)))}.` : "", ...lessons].filter(Boolean).join(" ") || undefined,
     refs: refs.slice(0, 12),
     rumor: built?.claim.rumor,
   });
@@ -835,13 +859,17 @@ export interface VillageView {
   households: { id: string; name: string; members: AgentId[]; home: PlaceId; food: number; shelter: Household["shelter"]; rate: number }[];
   structures: { id: string; name: string; household: string; designer: AgentId; description: string; rationale: string; repairs: string[]; need: Record<Resource, number>; have: Record<Resource, number>; progress: number; done: boolean; trace: string; builders: AgentId[] }[];
   pledges: { tick: number; season: Season; proposer: AgentId; answers: Pledge[] }[];
+  year: number;
+  /** The living, then the most recent dead. */
+  people: { id: AgentId; name: string; age: number; generation: number; parents: AgentId[]; partner?: AgentId; alive: boolean; died?: number; cause?: string; arrived?: number }[];
+  norms: { text: string; sanctions: number; rounds: number; established?: number; strength: number }[];
 }
 
 export function villageView(world: WorldState): VillageView | undefined {
   const v = world.village;
   if (!v) return undefined;
   const day = dayOf(world.tick);
-  const sum = (k: StoreEntry["kind"]) => Number(v.store.log.filter((e) => e.kind === k).reduce((s, e) => s + e.amount, 0).toFixed(1));
+  const sum = (k: StoreEntry["kind"]) => Number(v.store.log.filter((e) => e.kind === k).reduce((s, e) => s + e.amount, v.store.folded?.[k] ?? 0).toFixed(1));
   return {
     season: v.season,
     day,
@@ -853,14 +881,30 @@ export function villageView(world: WorldState): VillageView | undefined {
     store: { food: v.store.food, put: sum("put"), taken: sum("take") },
     households: Object.values(v.households).map((h) => ({ ...h, food: Number(h.food.toFixed(1)) })),
     structures: v.structures.map((s) => ({ id: s.id, name: s.name, household: s.household, designer: s.designer, description: describe(s.blueprint), rationale: s.rationale, repairs: s.repairs, need: s.need, have: s.have, progress: Number((s.work / s.hours).toFixed(2)), done: s.done, trace: s.trace, builders: s.builders })),
-    pledges: v.pledges,
+    pledges: v.pledges.slice(-6),
+    year: yearOf(world),
+    people: [
+      ...world.order.map((id) => ({ id, alive: true })),
+      ...Object.entries(v.life).filter(([, l]) => l.died !== undefined).sort((a, b) => b[1].died! - a[1].died!).slice(0, 40).map(([id]) => ({ id, alive: false })),
+    ].map(({ id, alive }) => {
+      const l = v.life[id]!;
+      return { id, name: world.minds[id]!.name, age: Math.floor(ageOf(world, id)), generation: l.generation, parents: l.parents, partner: l.partner, alive, died: l.died, cause: l.cause, arrived: l.arrived };
+    }),
+    norms: v.norms.map((n) => ({ text: n.text, sanctions: n.sanctions, rounds: n.rounds.length, established: n.established, strength: Number(n.strength.toFixed(2)) })),
   };
+}
+
+function logStore(v: VillageState, e: StoreEntry): void {
+  v.store.log.push(e);
+  if (v.store.log.length <= 500) return;
+  const f = (v.store.folded ??= { put: 0, take: 0 });
+  for (const old of v.store.log.splice(0, 100)) f[old.kind] = Number((f[old.kind] + old.amount).toFixed(1));
 }
 
 // ---------------------------------------------------------------- helpers
 
 /** "Mara's", "the Coyles'". */
-const possessive = (h: Household) => (h.members.length === 1 ? `${h.name}'s` : `${h.name}'`);
+const possessive = (h: Household) => (h.name.startsWith("the ") ? `${h.name}'` : `${h.name}'s`);
 const homeName = (h: Household) => `${possessive(h)} ${h.shelter === "house" ? "house" : h.members.length === 1 ? "tent" : "tents"}`;
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const list = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
