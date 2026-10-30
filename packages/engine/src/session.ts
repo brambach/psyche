@@ -30,7 +30,7 @@ export interface Frame {
 
 export class DivergenceError extends Error {}
 
-const FACULTIES: FacultyName[] = ["perceive", "deliberate", "speak", "reconstruct", "dream"];
+const FACULTIES: FacultyName[] = ["perceive", "deliberate", "speak", "reconstruct", "dream", "architect"];
 
 /** Wraps faculties so every call is appended to a log. */
 export function recording(inner: Faculties, log: FacultyCall[]): Faculties {
