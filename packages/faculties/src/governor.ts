@@ -76,6 +76,12 @@ export class Governor {
   readonly mode: "claude" | "mock";
   /** Agents the user is watching. Their speech always goes to the model. */
   readonly focus = new Set<string>();
+  /**
+   * The world's named characters, always in the focus tier (L0) with the watched agents. When this
+   * is non-empty everyone else is L1 (docs/civilization-plan.md, section 2.3): Haiku only, and only
+   * their more salient lines are spoken by the model. Empty means everyone is L0.
+   */
+  readonly core = new Set<string>();
   capUsd: number;
   speechThreshold: number;
   private readonly mock = createMockFaculties();
@@ -116,19 +122,27 @@ export class Governor {
     return level;
   }
 
+  /** L0 (focus) or L1 (active, cheaper) for an agent id. */
+  tierOf(id: string | undefined): "L0" | "L1" {
+    if (!id || this.core.size === 0) return "L0";
+    return this.focus.has(id) || this.core.has(id) ? "L0" : "L1";
+  }
+
   private async route(f: FacultyName, req: unknown, caller: FacultyCaller | undefined, models?: Partial<Record<FacultyName, string>>): Promise<unknown> {
     const level = this.level();
     const mockCall = () => (this.mock[f] as (r: unknown) => Promise<unknown>)(req);
+    const self = (req as { self?: StableIdentity }).self;
+    const tier = this.tierOf(self?.id);
     if (f === "speak") {
       const r = req as { salience?: number; self: StableIdentity };
-      const threshold = level === "thrifty" ? 0.7 : this.speechThreshold;
+      const threshold = Math.max(level === "thrifty" ? 0.7 : this.speechThreshold, tier === "L1" ? 0.5 : 0);
       const focused = !!r.self.id && this.focus.has(r.self.id);
       if (!focused && (r.salience ?? 1) < threshold) {
         this.bucket(f).templated++;
         return mockCall();
       }
     }
-    const model = level === "economy" || level === "thrifty" ? HAIKU : configuredModel(f, models);
+    const model = level === "economy" || level === "thrifty" || (tier === "L1" && f !== "architect") ? HAIKU : configuredModel(f, models);
     if (level === "offline" || !caller) {
       const res = await mockCall();
       if (this.mode === "mock") this.estimate(f, model, req, res);

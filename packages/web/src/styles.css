@@ -366,3 +366,37 @@ a.btn { color: inherit; text-decoration: none; display: inline-block; }
 .cost-table { width: auto; border-collapse: collapse; font: 12px var(--mono); }
 .cost-table td, .cost-table th { padding: 3px 10px 3px 0; text-align: left; }
 .cost-table td.n { text-align: right; }
+
+/* Village (C1) */
+.scenario { font: 13px var(--body, inherit); padding: 4px 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); max-width: 100%; }
+.village-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.stat { display: grid; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+.stat .label { font: 600 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.stat .value { font: 600 22px var(--display); }
+.houses { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.houses li { display: grid; gap: 4px; }
+.houses .fid { display: block; height: 6px; background: var(--sunk); border-radius: 3px; overflow: hidden; }
+.houses .fid i { display: block; height: 100%; background: var(--accent); }
+.muted { color: var(--muted); }
+.pledges td, .pledges th { white-space: nowrap; }
+.pledge { font: 12px var(--mono); border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 2px 9px; cursor: pointer; }
+.pledge.commit { border-color: var(--accent); color: var(--accent); }
+.pledge.hold { border-color: var(--feel); color: var(--feel); }
+.pledge.on { background: var(--ink); color: var(--surface); }
+.account { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+.account h4 { font: 600 16px var(--display); margin: 0 0 8px; }
+.account h5 { font: 600 11px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+.account ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; }
+.scan-wrap > .account { margin: 0 0 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.divergence { display: grid; gap: 12px; }
+.accounts { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.accounts li { display: grid; grid-template-columns: auto auto 1fr; gap: 2px 10px; align-items: baseline; }
+.accounts li > .small { grid-column: 1 / -1; }
+.accounts .tone { font: 12px var(--mono); color: var(--muted); }
+.accounts .tone.good { color: var(--accent); }
+.accounts .tone.bad { color: var(--feel); }
+.accounts .memory { font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .accounts li { grid-template-columns: auto 1fr; }
+  .accounts .memory { grid-column: 1 / -1; }
+}

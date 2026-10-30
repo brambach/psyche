@@ -33,6 +33,25 @@ export {
   type Sink,
 } from "./world/world.js";
 export { WorldSession, type WorldInput, type WorldFrame } from "./world/session.js";
+export {
+  createVillage,
+  villageView,
+  householdOf,
+  seasonOf,
+  SEASONS,
+  VILLAGE_PLACES,
+  CROSSING,
+  type VillageState,
+  type VillageView,
+  type VillageEvent,
+  type Household,
+  type Structure,
+  type Pledge,
+  type Season,
+  type Weather,
+  type Resource,
+} from "./world/village.js";
+export { createSettlers, TRADES, type Settler } from "./world/people.js";
 export { MATERIALS, M, get, generateIsland, encodeGrid, census, standY, type Material, type Grid, type Plot, type Terrain, type Tree } from "./founders/voxel.js";
 export { check, compile, bill, describe, siteOf, PACE, SIDES, type Blueprint, type Side, type Furniture, type Placement, type Part, type Bill, type Item } from "./founders/blueprint.js";
 export {
@@ -76,3 +95,4 @@ export {
   type Influence,
   type Concern,
 } from "./ledger.js";
+export { divergence, saysVsWas, type Account, type DivergenceEntry, type HiddenCause, type SaysVsWas } from "./analysis.js";

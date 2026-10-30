@@ -14,6 +14,11 @@ import {
   nodeId,
   strongestChain,
   why,
+  divergence,
+  saysVsWas,
+  villageView,
+  createVillage,
+  CAST_ORDER,
   WORLD_START,
   type Ledger,
   createCast,
@@ -48,16 +53,29 @@ const FEED_SHOWN = 250;
 
 const { kind, faculties, governor } = createFaculties();
 
+type Scenario = "island" | "village";
+const SEEDS: Record<Scenario, number> = { island: 7, village: 11 };
+
 interface Saved {
+  scenario?: Scenario;
   seed: number;
   ablations: Partial<Ablations>;
   inputs: WorldInput[];
   log: FacultyCall[];
 }
 
-let seed = 7;
+let scenario: Scenario = process.env.PSYCHE_SCENARIO === "village" ? "village" : "island";
+let seed = SEEDS[scenario];
 let ablations: Partial<Ablations> = {};
-let session = new WorldSession(createWorld(seed, ablations), faculties);
+
+/** Kettle Island (five minds) or Hollow Bay (the five and ten settlers, with food, houses and a common store). */
+function makeWorld() {
+  // In the village the Kettle five are the named characters (L0); settlers are L1 unless watched.
+  governor.core.clear();
+  if (scenario === "village") for (const id of CAST_ORDER) governor.core.add(id);
+  return scenario === "village" ? createVillage(seed, ablations) : createWorld(seed, ablations);
+}
+let session = new WorldSession(makeWorld(), faculties);
 let running = process.env.PSYCHE_AUTOPLAY !== "0";
 /** Simulated minutes per real second. */
 let speed = 10;
@@ -90,16 +108,17 @@ function save(force = false) {
   if (!force && Date.now() - lastSaved < 10_000) return;
   lastSaved = Date.now();
   mkdirSync(DATA_DIR, { recursive: true });
-  const saved: Saved = { seed, ablations, inputs: session.inputs, log: session.log };
+  const saved: Saved = { scenario, seed, ablations, inputs: session.inputs, log: session.log };
   writeFileSync(SAVE, JSON.stringify(saved));
 }
 
 async function restore() {
   if (!existsSync(SAVE)) return;
   const saved = JSON.parse(readFileSync(SAVE, "utf8")) as Saved;
+  scenario = saved.scenario ?? "island";
   seed = saved.seed;
   ablations = saved.ablations;
-  const r = await WorldSession.replay(createWorld(seed, ablations), saved.inputs, saved.log, faculties);
+  const r = await WorldSession.replay(makeWorld(), saved.inputs, saved.log, faculties);
   session = r.session;
   console.log(`Restored ${saved.inputs.length} inputs${r.divergedAt !== undefined ? ` (diverged at call ${r.divergedAt})` : ""}.`);
 }
@@ -242,6 +261,10 @@ function view() {
     });
   return {
     faculties: kind,
+    scenario,
+    name: w.name,
+    places: w.places,
+    village: villageView(w),
     seed,
     running,
     speed,
@@ -250,7 +273,8 @@ function view() {
     order: w.order,
     agents: w.order.map((id) => {
       const a = w.agents[id]!;
-      return { id, name: a.name, role: a.role, place: a.place, activity: a.activity, talking: (a.talkingUntil ?? -1) > w.tick, ...summary(w.minds[id]!) };
+      const household = w.village ? Object.values(w.village.households).find((h) => h.members.includes(id))?.id : undefined;
+      return { id, name: a.name, role: a.role, place: a.place, activity: a.activity, household, talking: (a.talkingUntil ?? -1) > w.tick, ...summary(w.minds[id]!) };
     }),
     relations: w.order.flatMap((from) =>
       w.order
@@ -321,6 +345,11 @@ function whyView(node: string | null, agent: string | null, trace: string | null
   };
 }
 
+/** What the person could say about a choice, against what the ledger finds behind it. */
+function accountView(agent: string, trace: string) {
+  return saysVsWas(ledger(), nodeId.decision(agent, trace));
+}
+
 function agentView(id: AgentId) {
   const w = session.world;
   const mind = w.minds[id];
@@ -387,6 +416,11 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     return;
   }
   if (req.method === "GET") {
+    if (p === "/api/divergence") return send(res, 200, { events: divergence(session.world) });
+    if (p === "/api/account") {
+      const v = accountView(url.searchParams.get("agent") ?? "", url.searchParams.get("trace") ?? "");
+      return v ? send(res, 200, v) : send(res, 404, { error: "No decision at that moment." });
+    }
     if (p === "/api/founders") {
       fWatched = Date.now();
       return send(res, 200, foundersView());
@@ -481,11 +515,14 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       return send(res, 200, view());
     }
     if (p === "/api/reset") {
-      const b = await body<{ seed?: number; ablations?: Partial<Ablations> }>(req);
+      const b = await body<{ seed?: number; ablations?: Partial<Ablations>; scenario?: Scenario }>(req);
       await exclusive(async () => {
-        seed = b.seed ?? seed;
+        if (b.scenario && b.scenario !== scenario) {
+          scenario = b.scenario;
+          seed = b.seed ?? SEEDS[scenario];
+        } else seed = b.seed ?? seed;
         ablations = b.ablations ?? ablations;
-        session = new WorldSession(createWorld(seed, ablations), faculties);
+        session = new WorldSession(makeWorld(), faculties);
         governor.resetSession();
       });
       save(true);
@@ -501,7 +538,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
 await restore();
 await restoreFounders();
 createServer((req, res) => void route(req, res)).listen(PORT, () => {
-  console.log(`Psyche island on http://localhost:${PORT} (faculties: ${kind}, ${running ? "playing" : "paused"})`);
+  console.log(`Psyche (${session.world.name}) on http://localhost:${PORT} (faculties: ${kind}, ${running ? "playing" : "paused"})`);
   console.log(kind === "claude" ? `Daily cap $${governor.capUsd} (PSYCHE_DAILY_CAP). Spend so far today: $${governor.todayUsd().toFixed(4)}.` : "Offline mock: the cost meter shows what the same run would cost on Claude.");
 });
 void tickClock();

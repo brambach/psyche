@@ -4,9 +4,10 @@ import { api, type WorldView } from "./api";
 import { AgentPanel } from "./AgentPanel";
 import { IslandMap } from "./IslandMap";
 import { Cast, Feed, Relations, Rumors } from "./Panels";
-import { clock } from "./util";
+import { agentColors, clock, setPlaces } from "./util";
+import { Divergence, Village } from "./Village";
 
-type Tab = "feed" | "rumors" | "relations" | "mind";
+type Tab = "feed" | "village" | "rumors" | "memories" | "relations" | "mind";
 
 const SPEEDS = [
   { label: "Slow", value: 5 },
@@ -91,13 +92,33 @@ export function App() {
   };
 
   if (!view) return <div className="app"><p className="empty">{error ?? "Connecting to the island..."}</p></div>;
+  setPlaces(view.places);
+  const isVillage = view.scenario === "village";
   const night = isNight(view.tick);
   const untilMorning = Math.round(((7 * 60 - (view.tick % 1440)) + 1440) % 1440) || 1440;
 
   return (
     <div className="app">
+      <style>{agentColors(view.order)}</style>
       <header className="top">
-        <span className="brand">Psyche<small>Kettle Island</small></span>
+        <span className="brand">Psyche<small>{view.name}</small></span>
+        <select
+          className="scenario"
+          aria-label="World"
+          value={view.scenario}
+          disabled={busy}
+          onChange={(e) => {
+            const scenario = e.target.value as WorldView["scenario"];
+            if (confirm(`Start ${scenario === "village" ? "Hollow Bay, the village" : "Kettle Island"} from the beginning? The current world is replaced.`)) {
+              setAgent(undefined);
+              setTab("feed");
+              void act(() => api.reset({ scenario }));
+            }
+          }}
+        >
+          <option value="island">Kettle Island (5)</option>
+          <option value="village">Hollow Bay village (15)</option>
+        </select>
         <span className={`chip ${view.faculties === "mock" ? "mock" : "live"}`} title={view.faculties === "mock" ? "No API key found: speech comes from the offline mock. The minds underneath are identical." : "Speech and reflection run on Claude."}>
           {view.faculties === "mock" ? "offline mock language" : "Claude"}
         </span>
@@ -125,12 +146,12 @@ export function App() {
       </header>
       {panel && (
         <div className="drawer">
-          {panel === "events" && <Events busy={busy} names={names} onSend={(i) => { void send(i); setPanel(""); }} />}
+          {panel === "events" && <Events busy={busy} names={names} village={isVillage} onSend={(i) => { void send(i); setPanel(""); }} />}
           {panel === "talk" && <Talk busy={busy} view={view} onSend={(i) => { void send(i); setPanel(""); }} />}
           {panel === "rumor" && <PlantRumor busy={busy} view={view} onSend={(i) => { void send(i); setPanel(""); setTab("rumors"); }} />}
           {panel === "rewind" && (
             <div className="row">
-              <span className="small">Rewind the whole island. Everything after that point is undone, and the future can play out differently.</span>
+              <span className="small">Rewind the whole world. Everything after that point is undone, and the future can play out differently.</span>
               {view.rewind.filter((r) => r.dayStart).map((r) => (
                 <button key={r.index} className="btn" disabled={busy} onClick={() => act(() => api.rewind(r.index))}>{clock(r.tick)}</button>
               ))}
@@ -152,9 +173,9 @@ export function App() {
                 ))}
               </div>
               <div className="row" style={{ marginTop: 10 }}>
-                <button className="btn primary" disabled={busy} onClick={() => act(() => api.reset({ ablations: mechs }))}>Restart the island with these settings</button>
+                <button className="btn primary" disabled={busy} onClick={() => act(() => api.reset({ ablations: mechs }))}>Restart the world with these settings</button>
                 <button className="btn" disabled={busy} onClick={() => act(() => api.reset({ seed: view.seed + 1, ablations: mechs }))}>Restart with a new seed ({view.seed + 1})</button>
-                <span className="small">Seed {view.seed}. Same seed and settings, same island, every time.</span>
+                <span className="small">Seed {view.seed}. Same seed and settings, same world, every time.</span>
               </div>
             </div>
           )}
@@ -163,13 +184,15 @@ export function App() {
       {error && <div className="error" role="alert">{error}</div>}
       <div className="island">
         <aside className="side">
-          <IslandMap agents={view.agents} tick={view.tick} selected={agent} onSelect={(id) => open(id)} />
+          <IslandMap agents={view.agents} tick={view.tick} selected={agent} onSelect={(id) => open(id)} places={view.places} name={view.name} village={isVillage} />
           <Cast agents={view.agents} selected={agent} onSelect={(id) => open(id)} />
         </aside>
         <main className="stage">
           <div className="tabs big" role="tablist">
             <button role="tab" aria-selected={tab === "feed"} className={tab === "feed" ? "on" : ""} onClick={() => setTab("feed")}>What's happening</button>
+            {view.village && <button role="tab" aria-selected={tab === "village"} className={tab === "village" ? "on" : ""} onClick={() => setTab("village")}>The village</button>}
             <button role="tab" aria-selected={tab === "rumors"} className={tab === "rumors" ? "on" : ""} onClick={() => setTab("rumors")}>Stories going round{view.rumors.length ? ` (${view.rumors.length})` : ""}</button>
+            <button role="tab" aria-selected={tab === "memories"} className={tab === "memories" ? "on" : ""} onClick={() => setTab("memories")}>Same event, different memories</button>
             <button role="tab" aria-selected={tab === "relations"} className={tab === "relations" ? "on" : ""} onClick={() => setTab("relations")}>Who feels what</button>
             {agent && (
               <button role="tab" aria-selected={tab === "mind"} className={tab === "mind" ? "on" : ""} onClick={() => setTab("mind")} style={{ borderColor: `var(--a-${agent})` }}>
@@ -178,6 +201,8 @@ export function App() {
             )}
           </div>
           {tab === "feed" && <Feed feed={view.feed} names={names} onOpen={open} />}
+          {tab === "village" && view.village && <Village v={view.village} names={names} onOpen={open} />}
+          {tab === "memories" && <Divergence names={names} tick={view.tick} onOpen={open} />}
           {tab === "rumors" && <Rumors rumors={view.rumors} names={names} onOpen={open} />}
           {tab === "relations" && <Relations order={view.order} relations={view.relations} names={names} pronouns={pronouns} />}
           {tab === "mind" && agent && <AgentPanel key={agent} id={agent} tick={view.tick} names={names} trace={trace} onTrace={setTrace} onOpen={open} />}
@@ -229,7 +254,17 @@ function Cost({ cost }: { cost: WorldView["cost"] }) {
   );
 }
 
-function Events({ busy, names, onSend }: { busy: boolean; names: Record<string, string>; onSend: (i: WorldInput) => void }) {
+function Events({ busy, names, village, onSend }: { busy: boolean; names: Record<string, string>; village: boolean; onSend: (i: WorldInput) => void }) {
+  if (village)
+    return (
+      <div className="row">
+        <button className="btn" disabled={busy} onClick={() => onSend({ type: "inject", event: { kind: "storm" } })}>A storm hits</button>
+        <button className="btn" disabled={busy} onClick={() => onSend({ type: "inject", event: { kind: "blight" } })}>Blight in the barley</button>
+        <button className="btn" disabled={busy} onClick={() => onSend({ type: "inject", event: { kind: "pledge" } })}>Ask for the store pledge now</button>
+        <button className="btn" disabled={busy} onClick={() => onSend({ type: "inject", event: { kind: "gathering" } })}>Everyone to the fire circle</button>
+        <button className="btn" disabled={busy} onClick={() => onSend({ type: "inject", event: { kind: "catch", who: "mara" } })}>{names.mara} lands a huge catch</button>
+      </div>
+    );
   return (
     <div className="row">
       <button className="btn" disabled={busy} onClick={() => onSend({ type: "inject", event: { kind: "storm" } })}>A storm hits</button>

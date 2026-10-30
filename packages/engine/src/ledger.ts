@@ -208,6 +208,16 @@ export function buildLedger(input: LedgerInput): Ledger {
       }
     }
 
+    // Core beliefs and trust that tilted how the moment was read, whatever feelings came of it.
+    for (const adj of t.appraisal?.adjustments ?? []) {
+      if (!adj.ref || Math.abs(adj.value) < 0.01) continue;
+      if (adj.ref.startsWith("other:")) edge({ from: relationNode(a, adj.ref.slice(6)), to: P, mechanism: "trust coloured blame", weight: Math.min(1, Math.abs(adj.value) * 3), tick: p.tick });
+      else {
+        const s = schemaNode(a, adj.ref);
+        if (s) edge({ from: s, to: P, mechanism: "core belief", weight: Math.min(1, Math.abs(adj.value) * 3), tick: p.tick });
+      }
+    }
+
     // Feelings this moment stirred, and what coloured them.
     for (const [k, v] of Object.entries(t.appraisal?.emotions ?? {}) as [EmotionName, number][]) {
       if (v < EMOTION_FLOOR) continue;

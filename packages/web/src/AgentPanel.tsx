@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { PLACES } from "@psyche/engine";
 import { api, type AgentView, type ConcernView, type TraceView } from "./api";
 import { Lineage, type LineageQuery } from "./Lineage";
 import { Scan } from "./Scan";
-import { clock } from "./util";
+import { Account } from "./Village";
+import { clock, placeName } from "./util";
 
 /** One islander: who they are, how they read everyone else, and every moment of theirs you can open up. */
 export function AgentPanel({ id, tick, names, trace, onTrace, onOpen }: { id: string; tick: number; names: Record<string, string>; trace?: string; onTrace: (t?: string) => void; onOpen: (agent: string, trace?: string) => void }) {
@@ -12,6 +12,7 @@ export function AgentPanel({ id, tick, names, trace, onTrace, onOpen }: { id: st
   const [error, setError] = useState<string>();
   const [worries, setWorries] = useState<ConcernView[]>([]);
   const [lineage, setLineage] = useState<LineageQuery>();
+  const [account, setAccount] = useState(false);
   const lineageRef = useRef<HTMLDivElement>(null);
 
   const trace_ = (q: LineageQuery) => {
@@ -50,7 +51,7 @@ export function AgentPanel({ id, tick, names, trace, onTrace, onOpen }: { id: st
         <span className="swatch big" style={{ background: `var(--a-${id})` }}>{m.name[0]}</span>
         <div>
           <h2>{m.name} <span className="small">{view.agent.role}</span></h2>
-          <p className="small">{view.agent.activity}{view.agent.activity !== "asleep" ? ` at ${PLACES[view.agent.place].name}` : ""}</p>
+          <p className="small">{view.agent.activity}{view.agent.activity !== "asleep" ? ` at ${placeName(view.agent.place)}` : ""}</p>
         </div>
       </header>
       <p className="bio">{m.identity.summary}</p>
@@ -136,8 +137,10 @@ export function AgentPanel({ id, tick, names, trace, onTrace, onOpen }: { id: st
           {scan && scan.trace.kind === "perceive" && (
             <div className="scan-tools">
               <button className="btn" onClick={() => trace_({ agent: id, trace: scan.trace.id })}>Why? Trace this moment back</button>
+              {scan.trace.decision && <button className={`btn ${account ? "on" : ""}`} onClick={() => setAccount(!account)}>What {m.name} would say vs what drove it</button>}
             </div>
           )}
+          {account && scan?.trace.decision && <Account key={scan.trace.id} agent={id} trace={scan.trace.id} names={names} onOpen={(a, t) => (a === id ? onTrace(t) : onOpen(a, t))} />}
           {scan ? <Scan trace={scan.trace} state={scan.state} trail={scan.trail} /> : <p className="empty">Pick a moment to see why {m.name} did what {m.pronouns.subject} did.</p>}
         </section>
       </div>

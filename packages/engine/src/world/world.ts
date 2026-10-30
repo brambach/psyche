@@ -11,11 +11,14 @@ import { nextId, nextRandom } from "../rng.js";
 import type { ReconsolidationTrace, Trace } from "../trace.js";
 import type { Ablations, AgentId, Belief, Episode, MindState, Pronouns, Tick } from "../types.js";
 import { CAST_ORDER, createCast, WORLD_START } from "./cast.js";
-import { PLACES, type PlaceId, type RoutineEntry, type Want } from "./places.js";
+import { PLACES, type Place, type PlaceId, type RoutineEntry, type Want } from "./places.js";
+import { injectVillage, overhear, villageStep, villageWorkplace, type VillageEvent, type VillageState } from "./village.js";
 
 const STEP = 10;
 /** Minutes before the same two people strike up another conversation. */
 const TALK_COOLDOWN = 150;
+/** In a village, a person who just talked is not up for another conversation for this long. */
+const VILLAGE_TALK_REST = 50;
 
 export interface AgentState {
   id: AgentId;
@@ -45,6 +48,8 @@ export interface RumorHop {
   confidence: number;
   mutated: boolean;
   trace?: string;
+  /** Caught by a bystander rather than told to them. */
+  overheard?: boolean;
 }
 
 export interface Rumor {
@@ -67,6 +72,9 @@ export interface WorldEventRecord {
 }
 
 export interface WorldState {
+  /** Shown in the feed and the header. */
+  name: string;
+  places: Record<PlaceId, Place>;
   seed: number;
   tick: Tick;
   rng: number;
@@ -76,6 +84,8 @@ export interface WorldState {
   agents: Record<AgentId, AgentState>;
   rumors: Record<string, Rumor>;
   events: WorldEventRecord[];
+  /** Present when this world is a village with food, houses and a common store. */
+  village?: VillageState;
 }
 
 export interface FeedLine {
@@ -112,13 +122,16 @@ export type WorldEvent =
   | { kind: "storm" }
   | { kind: "catch"; who: AgentId }
   | { kind: "gathering" }
-  | { kind: "rumor"; teller: AgentId; subject: AgentId; text: string; valence: number };
+  | { kind: "rumor"; teller: AgentId; subject: AgentId; text: string; valence: number }
+  | VillageEvent;
 
 // ---------------------------------------------------------------- setup
 
 export function createWorld(seed = 7, ablations: Partial<Ablations> = {}): WorldState {
   const cast = createCast(seed, ablations);
   const world: WorldState = {
+    name: "Kettle Island",
+    places: structuredClone(PLACES),
     seed,
     tick: WORLD_START,
     rng: (seed * 2246822519) >>> 0,
@@ -194,10 +207,11 @@ export async function advance(world: WorldState, minutes: number, faculties: Fac
     }
     for (const s of slept) record(world, sink, s.agent, s.trace);
     if (!night && isNight(world.tick)) {
-      feed(world, sink, { kind: "night", agents: [], title: "Night falls on Kettle Island", text: "Everyone heads home to sleep. Tonight, sleep will replay the day and settle what it meant." });
+      feed(world, sink, { kind: "night", agents: [], title: `Night falls on ${world.name}`, text: "Everyone heads home to sleep. Tonight, sleep will replay the day and settle what it meant." });
     }
     if (slept.length > 0) morning(world, sink, slept);
     updatePositions(world, sink);
+    if (world.village) await villageStep(world, dt, faculties, sink);
     if (isNight(world.tick)) continue;
     await encounters(world, faculties, sink);
   }
@@ -230,6 +244,7 @@ function scheduled(world: WorldState, a: AgentState): { place: PlaceId; activity
   const h = hourOf(t);
   const entry = [...a.routine].reverse().find((e) => e.from <= h);
   if (!entry) return { place: a.home, activity: "at home" };
+  if (entry.place === "@work") return world.village ? villageWorkplace(world, a, entry.activity) : { place: a.home, activity: entry.activity };
   if (entry.evening) {
     const day = dayOf(t);
     if (!a.evening || a.evening.day !== day) {
@@ -267,18 +282,19 @@ function applyCoping(world: WorldState, sink: Sink, id: AgentId, trace: Trace, v
   const a = world.agents[id]!;
   switch (trace.action?.option) {
     case "calm":
-      return setOverride(world, sink, id, "cliffs", "walking the cliff path to cool off", 60, trace);
+      return setOverride(world, sink, id, "cliffs", `walking ${world.places.cliffs!.name} to cool off`, 60, trace);
     case "seek":
-      return setOverride(world, sink, id, "tavern", "looking for company at the Gull", 120, trace);
+      return setOverride(world, sink, id, "tavern", `looking for company at ${world.places.tavern!.name}`, 120, trace);
     case "withdraw":
       return setOverride(world, sink, id, a.home, "shut away at home", 240, trace);
     case "tackle":
       if (id === victim) return setOverride(world, sink, id, "harbour", "patching the boat", 180, trace);
+      if (world.village) return;
       return;
     case "share": {
       const m = world.minds[id]!;
       const friend = world.order
-        .filter((o) => o !== id && !isNight(world.tick) && PLACES[world.agents[o]!.place].social)
+        .filter((o) => o !== id && !isNight(world.tick) && world.places[world.agents[o]!.place]!.social)
         .sort((x, y) => (m.others[y]?.liking ?? 0) - (m.others[x]?.liking ?? 0))[0];
       if (friend) setOverride(world, sink, id, world.agents[friend]!.place, `looking for ${world.agents[friend]!.name} to share the news`, 60, trace);
       return;
@@ -308,14 +324,15 @@ function record(world: WorldState, sink: Sink, agent: AgentId, trace: Trace): vo
 
 async function encounters(world: WorldState, faculties: Faculties, sink: Sink): Promise<void> {
   const busy = new Set<AgentId>();
-  for (const place of Object.keys(PLACES) as PlaceId[]) {
-    if (!PLACES[place].social) continue;
+  for (const place of Object.keys(world.places)) {
+    if (!world.places[place]!.social) continue;
     const present = world.order.filter((id) => world.agents[id]!.place === place);
     for (let i = 0; i < present.length; i++) {
       for (let j = i + 1; j < present.length; j++) {
         const a = present[i]!;
         const b = present[j]!;
         if (busy.has(a) || busy.has(b)) continue;
+        if (world.village && ((world.agents[a]!.talkingUntil ?? 0) > world.tick || (world.agents[b]!.talkingUntil ?? 0) > world.tick)) continue;
         if (world.tick - (world.agents[a]!.lastTalk[b] ?? -1e9) < TALK_COOLDOWN) continue;
         const ma = world.minds[a]!;
         const mb = world.minds[b]!;
@@ -458,11 +475,11 @@ async function chooseOpener(world: WorldState, a: AgentId, b: AgentId, place: Pl
   return {
     kind: "smalltalk",
     label: "Small talk",
-    description: `Pass the time of day with ${bName} at ${PLACES[place].name} this ${partOfDay(world.tick)}.`,
+    description: `Pass the time of day with ${bName} at ${world.places[place]!.name} this ${partOfDay(world.tick)}.`,
     content: [],
-    topics: PLACES[place].topics,
+    topics: world.places[place]!.topics,
     about: [],
-    summary: `${aName} and ${bName} passed the time at ${PLACES[place].name}`,
+    summary: `${aName} and ${bName} passed the time at ${world.places[place]!.name}`,
   };
 }
 
@@ -584,7 +601,7 @@ const REPLY_OUTCOME: Record<string, [number, number]> = {
 
 function replyGist(world: WorldState, b: AgentId, option: string | undefined, o: Opener, place: PlaceId): string {
   const B = name(world, b);
-  const at = ` at ${PLACES[place].name}`;
+  const at = ` at ${world.places[place]!.name}`;
   switch (option) {
     case "grant":
       return o.kind === "offer" ? `${B} let me ${o.want!.what}` : `${B} agreed when I asked to ${o.want!.what.replace(/\bme\b/g, "me").replace(/\byour\b/g, "their")}`;
@@ -623,7 +640,7 @@ async function converse(world: WorldState, a: AgentId, b: AgentId, place: PlaceI
     intent: { option: o.label, description: o.description },
     content: o.content,
     style: openerStyle(A, b),
-    stance: [`You are starting a conversation with ${B.name} at ${PLACES[place].name}. Keep it to one or two lines.`],
+    stance: [`You are starting a conversation with ${B.name} at ${world.places[place]!.name}. Keep it to one or two lines.`],
     salience: OPENER_SALIENCE[o.kind] ?? 0.4,
   };
   const aLine = (await faculties.speak(opening)).utterance;
@@ -661,7 +678,7 @@ async function converse(world: WorldState, a: AgentId, b: AgentId, place: PlaceI
             ? `${A.name} offered to ${o.want!.what.replace(/\byour\b/g, "my").replace(/\byou\b/g, "me")}`
             : o.kind === "ask"
               ? `${A.name} asked me about ${o.event!.label}`
-              : `${A.name} passed the time with me at ${PLACES[place].name}`,
+              : `${A.name} passed the time with me at ${world.places[place]!.name}`,
     eventId: talkId,
   };
   const tB = await runPercept(B, pB, faculties);
@@ -708,7 +725,7 @@ async function converse(world: WorldState, a: AgentId, b: AgentId, place: PlaceI
   const ag = world.agents[a]!;
   const bg = world.agents[b]!;
   ag.lastTalk[b] = bg.lastTalk[a] = world.tick;
-  ag.talkingUntil = bg.talkingUntil = world.tick + 20;
+  ag.talkingUntil = bg.talkingUntil = world.tick + (world.village ? VILLAGE_TALK_REST : 20);
   A.needs.relatedness = clamp(A.needs.relatedness + 0.03);
   B.needs.relatedness = clamp(B.needs.relatedness + 0.03);
   if (o.told) ag.told.push(o.told);
@@ -748,6 +765,7 @@ async function converse(world: WorldState, a: AgentId, b: AgentId, place: PlaceI
   });
 
   if (o.claim?.rumor) hop(world, o.claim.rumor, a, b, o.claim.proposition, !!o.mutated, tB.id);
+  if (world.village && o.claim && (o.kind === "gossip" || o.kind === "confide")) await overhear(world, a, b, place, o.claim, aLine, faculties, sink);
   for (let i = 0; i < replyClaims.length; i++) hop(world, replyRumors[i]!, b, a, replyClaims[i]!.proposition, false, tA.id);
 
   // Help accepted becomes help given.
@@ -809,11 +827,16 @@ export async function say(world: WorldState, to: AgentId, text: string, facultie
 }
 
 export async function inject(world: WorldState, ev: WorldEvent, faculties: Faculties, sink: Sink): Promise<void> {
+  if (ev.kind === "pledge" || ev.kind === "blight" || ev.kind === "gale") {
+    if (!world.village) return;
+    return injectVillage(world, ev, faculties, sink);
+  }
   if (ev.kind === "storm") return storm(world, faculties, sink);
   if (ev.kind === "gathering") {
     if (isNight(world.tick)) return;
-    feed(world, sink, { kind: "event", place: "tavern", agents: [...world.order], title: "Wren rings the bell at the Gull", text: "Drinks on the house tonight. The whole island turns up." });
-    for (const id of world.order) setOverride(world, sink, id, "tavern", "at the gathering at the Gull", 180);
+    const at = world.places.tavern!.name;
+    feed(world, sink, { kind: "event", place: "tavern", agents: [...world.order], title: world.village ? `Everyone gathers at ${at}` : `Wren rings the bell at ${at}`, text: world.village ? "Wren has something hot in the pot. The whole village turns up." : "Drinks on the house tonight. The whole island turns up." });
+    for (const id of world.order) setOverride(world, sink, id, "tavern", `at the gathering at ${at}`, 180);
     return;
   }
   if (ev.kind === "catch") {
@@ -892,7 +915,7 @@ async function storm(world: WorldState, faculties: Faculties, sink: Sink): Promi
   feed(world, sink, {
     kind: "event",
     agents: [...world.order],
-    title: "A storm tears across Kettle Island",
+    title: `A storm tears across ${world.name}`,
     text: `Boats are thrown against the harbour wall. ${name(world, victim)}'s boat takes the worst of it.`,
   });
   for (const who of world.order) {
@@ -907,7 +930,7 @@ async function storm(world: WorldState, faculties: Faculties, sink: Sink): Promi
             template: "The storm {damage}.",
             details: [{ key: "damage", value: "tore my nets and stove in the side of my boat", salience: 0.5 }],
           }
-        : who === "wren"
+        : who === "wren" && !world.village
           ? eventPercept(m, "world", "circumstance", -0.45, 0.6, ["storm", "shutters", "tavern", id], "The storm ripped the Gull's shutters loose.", "The storm rips the Gull's shutters loose.", id)
           : eventPercept(m, "world", "circumstance", -0.3, 0.55, ["storm", "boat", id], `A storm tore through the island and wrecked ${name(world, victim)}'s boat.`, "A storm tears through the island.", id, [victim]);
     const t = await runPercept(m, p, faculties);
@@ -927,3 +950,5 @@ async function storm(world: WorldState, faculties: Faculties, sink: Sink): Promi
   }
   void V;
 }
+
+export { name as personName, feed, record, setOverride, eventPercept, claimFromEpisode, hop };

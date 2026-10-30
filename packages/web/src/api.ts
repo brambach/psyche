@@ -1,9 +1,10 @@
-import type { Ablations, AgentState, Concern, FeedItem, LedgerNode, MindState, PlaceId, Rumor, Trace, WhyTree, WorldInput } from "@psyche/engine";
+import type { Ablations, AgentState, Concern, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
 
 export interface AgentSummary {
   id: string;
   name: string;
   role: string;
+  household?: string;
   place: PlaceId;
   activity: string;
   talking: boolean;
@@ -30,8 +31,14 @@ export interface RumorView extends Rumor {
   believers: { agent: string; confidence: number; text: string }[];
 }
 
+export type Scenario = "island" | "village";
+
 export interface WorldView {
   faculties: "claude" | "mock";
+  scenario: Scenario;
+  name: string;
+  places: Record<PlaceId, Place>;
+  village?: VillageView;
   seed: number;
   running: boolean;
   speed: number;
@@ -119,5 +126,7 @@ export const api = {
   concerns: (id: string) => call<{ concerns: ConcernView[]; nodes: number; edges: number }>(`/api/concerns/${id}`),
   why: (q: { node?: string; agent?: string; trace?: string }) => call<WhyView>(`/api/why?${new URLSearchParams(q as Record<string, string>)}`),
   focus: (agents: string[]) => call<{ focus: string[] }>("/api/focus", { agents }),
-  reset: (opts: { seed?: number; ablations?: Partial<Ablations> }) => call<WorldView>("/api/reset", opts),
+  reset: (opts: { seed?: number; ablations?: Partial<Ablations>; scenario?: Scenario }) => call<WorldView>("/api/reset", opts),
+  divergence: () => call<{ events: DivergenceEntry[] }>("/api/divergence"),
+  account: (agent: string, trace: string) => call<SaysVsWas>(`/api/account?${new URLSearchParams({ agent, trace })}`),
 };

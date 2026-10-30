@@ -2,7 +2,7 @@
 
 A plan for growing Psyche from five minds on Kettle Island and one builder on Tern Holm into a self-running civilization of hundreds to thousands of minds, with an analysis layer that lets you trace why anyone does anything, and a cost design that fits the whole journey inside about $1000 of Anthropic API credit.
 
-Status: plan only, no code. Written 2026-10-30.
+Status: C0 and C1 built on the mock (see each phase). Written 2026-10-30.
 
 ## Where we are
 
@@ -215,6 +215,8 @@ Founders F1 to F2 and the island's next steps, together.
 - Overhearing, conversations of three or more, families and households.
 - Analysis: cross-agent edges, Spread, Divergence, Says vs was.
 - **Done when:** a village stands that nobody scripted, and you can trace a grudge from one person's misremembered night through gossip into who refuses to help build whose house.
+
+**Status (2026-10-30):** built on the mock as Hollow Bay. Fifteen people (the five plus ten generated settlers with formative pasts and core beliefs), households, food, spoilage, seasons and weather, Architect-designed houses built from gathered timber, stone and reeds, a common store with pledges and free riders, overhearing, stories at the fire, and the Divergence and Says vs was views. The L0/L1 split from C2 came forward to keep the village inside budget: about $0.09 to $0.11 per sim day estimated. Still open: the voxel merge (houses are tracked as progress, not blocks) and conversations of three or more beyond the fire and the meeting.
 
 ### C2 Town and generations (3 to 4 weeks, ~$160)
 

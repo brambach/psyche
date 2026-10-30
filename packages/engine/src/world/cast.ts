@@ -27,7 +27,7 @@ function other(id: AgentId, name: string, benevolence: number, liking: number, b
 
 const visitor = (): OtherModel => other("visitor", "the visitor", 0.5, 0.5, 0, 0);
 
-function baseMind(m: Omit<MindState, "tick" | "rng" | "idCounter" | "traitSpread" | "affect" | "expressions" | "lastSleep" | "ablations"> & { mood?: number; stress?: number }, seed: number, ablations: Partial<Ablations>): MindState {
+export function baseMind(m: Omit<MindState, "tick" | "rng" | "idCounter" | "traitSpread" | "affect" | "expressions" | "lastSleep" | "ablations"> & { mood?: number; stress?: number }, seed: number, ablations: Partial<Ablations>): MindState {
   const emotions = Object.fromEntries(EMOTION_NAMES.map((k) => [k, 0])) as MindState["affect"]["emotions"];
   const { mood = 0.05, stress = 0.2, ...rest } = m;
   return {

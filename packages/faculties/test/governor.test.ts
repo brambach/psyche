@@ -54,6 +54,24 @@ describe("budget governor", () => {
     expect(calls.length).toBe(1);
   });
 
+  it("puts named characters and the watched in L0 and everyone else in the cheaper L1 tier", async () => {
+    const calls: { faculty: FacultyName; model: string }[] = [];
+    const g = new Governor({ mode: "claude", caller: fake(calls), spendFile: null });
+    g.core.add("mara");
+    const as = (id: string) => ({ ...deliberate, self: { ...deliberate.self, id } });
+    await g.faculties.deliberate(as("mara"));
+    await g.faculties.deliberate(as("bram"));
+    await g.faculties.speak(speak(0.45, "bram"));
+    g.focus.add("bram");
+    await g.faculties.deliberate(as("bram"));
+    expect(calls).toEqual([
+      { faculty: "deliberate", model: SONNET },
+      { faculty: "deliberate", model: HAIKU },
+      { faculty: "deliberate", model: SONNET },
+    ]);
+    expect(g.snapshot().templated).toBe(1);
+  });
+
   it("steps down as the day's spend nears the cap, and goes offline at it", async () => {
     const calls: { faculty: FacultyName; model: string }[] = [];
     // Each call costs a known amount; set the cap so a few calls cross each threshold.

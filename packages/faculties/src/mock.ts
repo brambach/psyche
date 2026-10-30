@@ -134,6 +134,15 @@ export function mockSpeak(req: SpeakRequest): SpeakResponse {
       return { utterance: question ? "Maybe. Depends." : pick(["Hm.", "If you say so.", "Right."], seed), acts: ["acknowledge"] };
     case "Brush off":
       return { utterance: greeting ? "I'm busy." : "Not my business.", acts: ["dismiss"] };
+    // The village: stories at the fire and the common store.
+    case "Tell a story":
+      return { utterance: `${pick(["Here's one for you. ", "You'll not have heard this. ", "I keep thinking about this. "], seed)}${story}`, acts: ["recount"] };
+    case "Put in a full share":
+      return { utterance: pick(["Put us down for a full share.", "We'll put in our part. Same as anyone.", "A full share from us."], seed), acts: ["commit"] };
+    case "Put in a little":
+      return { utterance: pick(["We can spare a little. Not much.", "Some. We've mouths of our own.", "A bit, for now."], seed), acts: ["hedge"] };
+    case "Hold back":
+      return { utterance: curt ? "We'll keep our own." : pick(["I'll feed my own first. Sorry.", "Not this time. We need what we've got."], seed), acts: ["refuse"] };
     default:
       return { utterance: req.intent.description, acts: [] };
   }
