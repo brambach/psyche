@@ -1,0 +1,14 @@
+{
+  "name": "@psyche/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --conditions=source src/index.ts",
+    "start": "tsx --conditions=source src/index.ts"
+  },
+  "dependencies": {
+    "@psyche/engine": "0.1.0",
+    "@psyche/faculties": "0.1.0"
+  }
+}
