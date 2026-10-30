@@ -57,6 +57,24 @@ export function People({ v, names, onOpen }: { v: VillageView; names: Record<str
             ))}
           </ul>
         )}
+        <h3 style={{ marginTop: 14 }}>Who leads, and the laws</h3>
+        <p className="small">
+          {v.leader ? <>Led by <button className="linkish" style={{ color: `var(--a-${v.leader})` }} onClick={() => onOpen(v.leader!)}><b>{name(v.leader)}</b></button>, chosen each spring by whom people like and trust.</> : "No one leads yet. Each spring the adults name whom they would follow."}
+        </p>
+        {v.laws.length > 0 && (
+          <ul className="laws">
+            {v.laws.map((l) => (
+              <li key={l.id}>
+                <b>{l.passed ? "Law" : "Voted down"}:</b> “{l.text}” <span className="small">Proposed by {name(l.author)} {clock(l.tick).split(" · ")[0]}, {l.votes.for.length} for and {l.votes.against.length} against, after {l.because.held.length} held back from the store.{l.passed && l.compelled.length ? ` Made ${l.compelled.length} people put in against their pledge.` : ""}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {v.foundingDays.length > 0 && (
+          <p className="small">
+            Last founding night, <b>{name(v.foundingDays.at(-1)!.teller)}</b> told it: “{v.foundingDays.at(-1)!.version}”
+          </p>
+        )}
         <h3 style={{ marginTop: 14 }}>Gone</h3>
         {dead.length === 0 ? (
           <p className="small">No one has died yet.</p>

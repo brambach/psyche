@@ -98,3 +98,5 @@ export {
 export { atlas, divergence, saysVsWas, type AtlasEntry, type AtlasHolder, type Account, type DivergenceEntry, type HiddenCause, type SaysVsWas } from "./analysis.js";
 export { ageOf, isChild, yearOf, schemaLineage, STORE_NORM, CHILDHOOD, type Life, type Norm } from "./world/life.js";
 export { counterfactual, type Counterfactual, type CounterfactualEdit, type ChoiceDiff } from "./world/counterfactual.js";
+export { RegionSession, compareMyths, regionView, carryLineage, type RegionState, type RegionOptions, type RegionView, type Town, type Trade, type ChronicleEntry, type MythComparison } from "./world/region.js";
+export { rootOf, foundingVersion, type Law, type Election, type Civic } from "./world/civic.js";

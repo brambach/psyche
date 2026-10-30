@@ -1,4 +1,4 @@
-import type { Ablations, AgentState, AtlasEntry, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
+import type { Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
 
 export interface AgentSummary {
   id: string;
@@ -31,7 +31,7 @@ export interface RumorView extends Rumor {
   believers: { agent: string; confidence: number; text: string }[];
 }
 
-export type Scenario = "island" | "village";
+export type Scenario = "island" | "village" | "region";
 
 export interface WorldView {
   faculties: "claude" | "mock";
@@ -39,6 +39,9 @@ export interface WorldView {
   name: string;
   places: Record<PlaceId, Place>;
   village?: VillageView;
+  /** Present when the world is a region of towns; `town` is the one being watched. */
+  region?: RegionView;
+  town?: string;
   seed: number;
   running: boolean;
   speed: number;
@@ -130,6 +133,8 @@ export const api = {
   focus: (agents: string[]) => call<{ focus: string[] }>("/api/focus", { agents }),
   reset: (opts: { seed?: number; ablations?: Partial<Ablations>; scenario?: Scenario }) => call<WorldView>("/api/reset", opts),
   divergence: () => call<{ events: DivergenceEntry[] }>("/api/divergence"),
+  town: (town: string) => call<WorldView>("/api/town", { town }),
+  myths: () => call<MythComparison>("/api/myths"),
   atlas: () => call<{ beliefs: AtlasEntry[] }>("/api/atlas"),
   years: (years: number) => call<WorldView>("/api/years", { years }),
   counterfactual: (edit: CounterfactualEdit & { days?: number }) => call<Counterfactual>("/api/counterfactual", edit),

@@ -7,8 +7,9 @@ import { Cast, Feed, Relations, Rumors } from "./Panels";
 import { agentColors, clock, setPlaces } from "./util";
 import { Divergence, Village } from "./Village";
 import { Atlas } from "./Generations";
+import { Myths, Towns } from "./Region";
 
-type Tab = "feed" | "village" | "atlas" | "rumors" | "memories" | "relations" | "mind";
+type Tab = "feed" | "village" | "towns" | "myths" | "atlas" | "rumors" | "memories" | "relations" | "mind";
 
 const SPEEDS = [
   { label: "Slow", value: 5 },
@@ -95,7 +96,7 @@ export function App() {
 
   if (!view) return <div className="app"><p className="empty">{error ?? "Connecting to the island..."}</p></div>;
   setPlaces(view.places);
-  const isVillage = view.scenario === "village";
+  const isVillage = view.scenario !== "island";
   const night = isNight(view.tick);
   const untilMorning = Math.round(((7 * 60 - (view.tick % 1440)) + 1440) % 1440) || 1440;
 
@@ -111,7 +112,7 @@ export function App() {
           disabled={busy}
           onChange={(e) => {
             const scenario = e.target.value as WorldView["scenario"];
-            if (confirm(`Start ${scenario === "village" ? "Hollow Bay, the village" : "Kettle Island"} from the beginning? The current world is replaced.`)) {
+            if (confirm(`Start ${scenario === "village" ? "Hollow Bay, the village" : scenario === "region" ? "a region of towns (it begins as Hollow Bay)" : "Kettle Island"} from the beginning? The current world is replaced.`)) {
               setAgent(undefined);
               setTab("feed");
               void act(() => api.reset({ scenario }));
@@ -120,7 +121,13 @@ export function App() {
         >
           <option value="island">Kettle Island (5)</option>
           <option value="village">Hollow Bay village</option>
+          <option value="region">A region of towns</option>
         </select>
+        {view.region && (
+          <select className="scenario" aria-label="Town" value={view.town} disabled={busy} onChange={(e) => { setAgent(undefined); if (tab === "mind") setTab("feed"); void act(() => api.town(e.target.value)); }}>
+            {view.region.towns.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.people})</option>)}
+          </select>
+        )}
         <span className={`chip ${view.faculties === "mock" ? "mock" : "live"}`} title={view.faculties === "mock" ? "No API key found: speech comes from the offline mock. The minds underneath are identical." : "Speech and reflection run on Claude."}>
           {view.faculties === "mock" ? "offline mock language" : "Claude"}
         </span>
@@ -136,7 +143,7 @@ export function App() {
             {SPEEDS.map((s) => <option key={s.value} value={s.value}>{s.label} ({s.value} min/s)</option>)}
           </select>
           <button className="btn" disabled={busy || !!view.fastForward} onClick={() => send({ type: "advance", minutes: night ? untilMorning : 60 })}>{night ? "Skip to morning" : "+1 hour"}</button>
-          {isVillage && (
+          {view.village && (
             <select
               aria-label="Let years pass"
               value=""
@@ -213,6 +220,8 @@ export function App() {
           <div className="tabs big" role="tablist">
             <button role="tab" aria-selected={tab === "feed"} className={tab === "feed" ? "on" : ""} onClick={() => setTab("feed")}>What's happening</button>
             {view.village && <button role="tab" aria-selected={tab === "village"} className={tab === "village" ? "on" : ""} onClick={() => setTab("village")}>The village</button>}
+            {view.region && <button role="tab" aria-selected={tab === "towns"} className={tab === "towns" ? "on" : ""} onClick={() => setTab("towns")}>Towns and chronicle</button>}
+            {view.region && <button role="tab" aria-selected={tab === "myths"} className={tab === "myths" ? "on" : ""} onClick={() => setTab("myths")}>How each town tells it</button>}
             {view.village && <button role="tab" aria-selected={tab === "atlas"} className={tab === "atlas" ? "on" : ""} onClick={() => setTab("atlas")}>Fears across generations</button>}
             <button role="tab" aria-selected={tab === "rumors"} className={tab === "rumors" ? "on" : ""} onClick={() => setTab("rumors")}>Stories going round{view.rumors.length ? ` (${view.rumors.length})` : ""}</button>
             <button role="tab" aria-selected={tab === "memories"} className={tab === "memories" ? "on" : ""} onClick={() => setTab("memories")}>Same event, different memories</button>
@@ -225,6 +234,8 @@ export function App() {
           </div>
           {tab === "feed" && <Feed feed={view.feed} names={names} onOpen={open} />}
           {tab === "village" && view.village && <Village v={view.village} names={names} onOpen={open} />}
+          {tab === "towns" && view.region && <Towns r={view.region} current={view.town} onSwitch={(t) => { setAgent(undefined); void act(() => api.town(t)); }} />}
+          {tab === "myths" && view.region && <Myths tick={view.tick} />}
           {tab === "atlas" && view.village && <Atlas tick={view.tick} names={names} onOpen={open} />}
           {tab === "memories" && <Divergence names={names} tick={view.tick} onOpen={open} />}
           {tab === "rumors" && <Rumors rumors={view.rumors} names={names} onOpen={open} />}

@@ -418,3 +418,22 @@ a.btn { color: inherit; text-decoration: none; display: inline-block; }
 .whatif ul { margin: 6px 0; padding-left: 18px; }
 .concerns .whatif { flex-basis: 100%; }
 @media (max-width: 640px) { .lineage-list li { grid-template-columns: 1fr; } }
+
+/* Region */
+.towns, .myths { display: grid; gap: 14px; }
+.town-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.town-card { display: grid; gap: 4px; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.town-card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.town-card .value { font-size: 28px; font-weight: 600; }
+.spark { width: 100%; height: 28px; color: var(--accent); }
+.regard { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+.regard .tone { margin-left: 8px; }
+.chron-year h4 { margin: 10px 0 4px; font-size: 13px; }
+.chron-year ul, .laws { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
+.kind.k-founding, .kind.k-law { background: var(--accent-soft); color: var(--accent); }
+.kind.k-quarrel, .kind.k-hunger { background: var(--feel-soft); color: var(--feel); }
+.kind.k-peace, .kind.k-leader { background: var(--bel-soft); color: var(--bel); }
+.town-myths { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+.myth { padding: 8px 0; border-top: 1px solid var(--line); }
+.myth p { margin: 0 0 4px; }
+.myth.dominant p:first-child { font-size: 15px; }

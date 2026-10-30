@@ -14,7 +14,7 @@
 // sanctioned, an expectation takes hold, people come to believe in it, and it changes what holding
 // back costs them.
 
-import { clamp } from "../memory.js";
+import { clamp, render } from "../memory.js";
 import { dayOf, identityOf, runPercept } from "../mind.js";
 import type { Faculties, Percept } from "../ports.js";
 import { gaussian, nextId, nextRandom } from "../rng.js";
@@ -178,9 +178,9 @@ async function pair(world: WorldState, a: AgentId, b: AgentId, faculties: Facult
 async function birth(world: WorldState, parents: AgentId[], faculties: Faculties, sink: Sink): Promise<void> {
   const v = world.village!;
   const [p1, p2] = parents.map((p) => world.minds[p]!);
-  const taken = new Set([...Object.keys(world.minds), ...Object.keys(v.households)]);
+  const taken = new Set([...Object.keys(world.minds), ...Object.keys(v.households), ...(v.reserved?.ids ?? [])]);
   // A name nobody living or remembered has had, while there are any left.
-  const used = new Set(Object.values(world.minds).map((m) => m.name));
+  const used = new Set([...Object.values(world.minds).map((m) => m.name), ...(v.reserved?.names ?? [])]);
   const free = FIRST_NAMES.filter(([n]) => !used.has(n));
   const pool = free.length ? free : FIRST_NAMES;
   const [first, pronouns] = pool[Math.floor(nextRandom(world) * pool.length)]!;
@@ -289,7 +289,15 @@ export async function die(world: WorldState, id: AgentId, cause: string, faculti
   world.order = world.order.filter((x) => x !== id);
   const hh = householdOf(v, id);
   if (hh) hh.members = hh.members.filter((m) => m !== id);
-  if (hh && hh.members.length === 0) delete v.households[hh.id];
+  if (hh && hh.members.length === 0) {
+    // Nobody left to live in it: an unfinished house goes back to the piles.
+    const st = v.structures.find((x) => x.household === hh.id && !x.done);
+    if (st) {
+      for (const k of ["timber", "stone", "reeds"] as const) v.stock[k] += st.have[k];
+      v.structures = v.structures.filter((x) => x !== st);
+    }
+    delete v.households[hh.id];
+  }
   if (l.partner) v.life[l.partner]!.partner = undefined;
   const a = world.agents[id]!;
   a.place = "graveyard";
@@ -319,9 +327,9 @@ async function newcomers(world: WorldState, faculties: Faculties, sink: Sink): P
   const n = 2 + Math.floor(nextRandom(world) * 3);
   const year = yearOf(world);
   const known = world.order.map((id) => ({ id, name: world.minds[id]!.name, role: world.agents[id]!.role }));
-  const taken = new Set([...Object.keys(world.minds), ...Object.keys(v.households)]);
+  const taken = new Set([...Object.keys(world.minds), ...Object.keys(v.households), ...(v.reserved?.ids ?? [])]);
   const crossing = `ep_boat_y${year}`;
-  const { settlers, households } = createSettlers(world.seed * 31 + year * 977, n, world.minds[world.order[0]!]!.ablations, known, { taken, names: new Set(Object.values(world.minds).map((m) => m.name)), crossing, now: world.tick });
+  const { settlers, households } = createSettlers(world.seed * 31 + year * 977, n, world.minds[world.order[0]!]!.ablations, known, { taken, names: new Set([...Object.values(world.minds).map((m) => m.name), ...(v.reserved?.names ?? [])]), crossing, now: world.tick });
   const placeCount = Object.keys(v.households).length + Object.keys(world.places).filter((p) => p.startsWith("home_")).length;
   households.forEach((h, i) => {
     const home = `home_${h.id}`;
@@ -365,7 +373,8 @@ export function hearStory(world: WorldState, teller: AgentId, told: Episode, lis
   const heard = trace.encoded ? L.episodes.find((e) => e.id === trace.encoded) : undefined;
   if (!heard) return undefined;
   // Remembered as what happened, in the teller's voice, with the source kept.
-  heard.gist = thirdPerson(told.gist, T.name, T.pronouns);
+  // What is passed on is the memory as the teller has it now, drift and all.
+  heard.gist = thirdPerson(render(told), T.name, T.pronouns);
   heard.source = { kind: "told", from: teller, ref: told.id };
   heard.topics = [...new Set([...told.topics, ...heard.topics.filter((t) => t === "stories")])];
   heard.about = [...new Set([...told.about.filter((x) => x !== listener), ...(told.source.kind === "told" ? [] : [teller])])];
@@ -417,7 +426,7 @@ export async function bedtime(world: WorldState, faculties: Faculties, sink: Sin
     }
     if (!best || best.score < 0.2) continue;
     const T = world.minds[best.teller]!;
-    const story = thirdPerson(best.ep.gist, T.name, T.pronouns);
+    const story = thirdPerson(render(best.ep), T.name, T.pronouns);
     const line = (await faculties.speak({
       self: identityOf(T),
       listener: { id: kids[0]!, name: kids.length > 1 ? "the children" : world.minds[kids[0]!]!.name },

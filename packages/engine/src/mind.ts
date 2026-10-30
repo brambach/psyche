@@ -75,6 +75,7 @@ function absorbClaims(mind: MindState, p: Percept, episodeId: string): Contribut
       }
       use(known.retrievals, p.tick);
       known.evidence.push(episodeId);
+      if (known.evidence.length > 8) known.evidence.splice(0, known.evidence.length - 8);
       continue;
     }
     let confidence = credibility * 0.9;

@@ -80,6 +80,7 @@ export async function sleep(mind: MindState, now: Tick, faculties: Faculties): P
       for (const s of mind.schemas.filter((x) => x.triggers.some((t) => e.topics.includes(t)))) {
         s.strength = clamp(s.strength + 0.08);
         (s.deepenedBy ??= []).push({ episode: e.id, tick: now });
+        if (s.deepenedBy.length > 8) s.deepenedBy.splice(0, s.deepenedBy.length - 8);
         notes.push(`Core belief deepened: "${s.text}".`);
       }
     }
@@ -98,12 +99,24 @@ export async function sleep(mind: MindState, now: Tick, faculties: Faculties): P
     }
   }
 
+  // Beliefs fade too: past sixty, the weakest and least used go first.
+  if (mind.beliefs.length > 60) {
+    const weak = mind.beliefs
+      .map((b) => ({ id: b.id, a: b.confidence + 0.1 * baseLevel(b.retrievals, now, PARAMS.memory.gistDecay) + (b.about === "village" || b.about.startsWith("town:") ? 2 : 0) }))
+      .sort((x, y) => x.a - y.a)
+      .slice(0, mind.beliefs.length - 60);
+    const gone = new Set(weak.map((x) => x.id));
+    mind.beliefs = mind.beliefs.filter((b) => !gone.has(b.id));
+  }
+
   // Forgetting: past capacity, the faintest ordinary memories go (decay as in Anderson & Schooler 1991).
   const cap = PARAMS.memory.capacity;
   if (mind.episodes.length > cap) {
     const keep = new Set<string>([
       ...mind.schemas.flatMap((s) => [...(s.origin ?? []), ...(s.deepenedBy ?? []).map((d) => d.episode)]),
-      ...mind.beliefs.flatMap((b) => [...b.evidence, ...(b.claim?.episodeHint ? [b.claim.episodeHint] : [])]),
+      ...mind.beliefs.filter((b) => b.confidence >= 0.4).flatMap((b) => [...b.evidence.slice(-2), ...(b.claim?.episodeHint ? [b.claim.episodeHint] : [])]),
+      // How the town began is not let go: it is told every year. (Other people's stories of it can be.)
+      ...mind.episodes.filter((e) => (e.source.kind !== "told" && (e.topics.includes("crossing") || e.topics.includes("leaving"))) || e.topics.includes("founding")).map((e) => e.id),
     ]);
     const faint = mind.episodes
       .filter((e) => !keep.has(e.id))

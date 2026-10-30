@@ -18,6 +18,11 @@ import {
   saysVsWas,
   atlas,
   counterfactual,
+  compareMyths,
+  regionView,
+  RegionSession,
+  type RegionState,
+  type FeedItem,
   type CounterfactualEdit,
   type WorldState,
   type WorldSessionOptions,
@@ -58,8 +63,8 @@ const FEED_SHOWN = 250;
 
 const { kind, faculties, governor } = createFaculties();
 
-type Scenario = "island" | "village";
-const SEEDS: Record<Scenario, number> = { island: 7, village: 11 };
+type Scenario = "island" | "village" | "region";
+const SEEDS: Record<Scenario, number> = { island: 7, village: 11, region: 11 };
 
 interface Saved {
   scenario?: Scenario;
@@ -69,9 +74,12 @@ interface Saved {
   ablations: Partial<Ablations>;
   inputs: WorldInput[];
   log: FacultyCall[];
+  /** A region is saved as it stands (towns change each other, so their logs alone can't replay it). */
+  region?: { state: RegionState; worlds: Record<string, WorldState>; feeds: Record<string, FeedItem[]> };
 }
 
-let scenario: Scenario = process.env.PSYCHE_SCENARIO === "village" ? "village" : "island";
+const envScenario = process.env.PSYCHE_SCENARIO;
+let scenario: Scenario = envScenario === "village" || envScenario === "region" ? envScenario : "island";
 let seed = SEEDS[scenario];
 let ablations: Partial<Ablations> = {};
 
@@ -79,12 +87,27 @@ let ablations: Partial<Ablations> = {};
 function makeWorld() {
   // In the village the Kettle five are the named characters (L0); settlers are L1 unless watched.
   governor.core.clear();
-  if (scenario === "village") for (const id of CAST_ORDER) governor.core.add(id);
+  if (scenario !== "island") for (const id of CAST_ORDER) governor.core.add(id);
   return scenario === "village" ? createVillage(seed, ablations) : createWorld(seed, ablations);
 }
 // A village runs for years: keep fewer snapshots and let the oldest traces go.
-const sessionOpts = (): WorldSessionOptions => (scenario === "village" ? { keepRecent: 24, keepDays: 14, maxTraces: 15_000 } : {});
-let session = new WorldSession(makeWorld(), faculties, sessionOpts());
+const sessionOpts = (): WorldSessionOptions => (scenario === "island" ? {} : { keepRecent: 24, keepDays: 14, maxTraces: scenario === "region" ? 8_000 : 15_000 });
+/** In a region, the towns; `session` is the one being watched. */
+let region: RegionSession | undefined;
+let town = "hollow";
+let session: WorldSession;
+function start() {
+  if (scenario === "region") {
+    makeWorld();
+    region = RegionSession.create(seed, faculties, { session: sessionOpts() });
+    town = "hollow";
+    session = region.towns[town]!;
+  } else {
+    region = undefined;
+    session = new WorldSession(makeWorld(), faculties, sessionOpts());
+  }
+}
+start();
 /** Years passing on the offline mock, in the background. */
 let fastForward: { from: number; to: number; started: number } | undefined;
 /** True once the session no longer starts from the seed (it was rebased after years passed). */
@@ -118,9 +141,15 @@ function exclusive<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 function save(force = false) {
-  if (!force && Date.now() - lastSaved < 10_000) return;
+  if (!force && Date.now() - lastSaved < (region ? 60_000 : 10_000)) return;
   lastSaved = Date.now();
   mkdirSync(DATA_DIR, { recursive: true });
+  if (region) {
+    const towns = Object.entries(region.towns);
+    const saved: Saved = { scenario, seed, ablations, inputs: [], log: [], region: { state: region.region, worlds: Object.fromEntries(towns.map(([id, s]) => [id, s.world])), feeds: Object.fromEntries(towns.map(([id, s]) => [id, s.feed.slice(-FEED_SHOWN)])) } };
+    writeFileSync(SAVE, JSON.stringify(saved));
+    return;
+  }
   const saved: Saved = { scenario, seed, ablations, base: base ? session.initial : undefined, inputs: session.inputs, log: session.log };
   writeFileSync(SAVE, JSON.stringify(saved));
 }
@@ -132,6 +161,17 @@ async function restore() {
   seed = saved.seed;
   ablations = saved.ablations;
   const world = makeWorld();
+  if (saved.region) {
+    region = new RegionSession(saved.region.state, saved.region.worlds, faculties, { session: sessionOpts() });
+    for (const [id, s] of Object.entries(region.towns)) {
+      s.feed = saved.region.feeds[id] ?? [];
+      region.region.last.feed[id] = s.feed.length;
+    }
+    town = "hollow";
+    session = region.towns[town]!;
+    console.log(`Restored a region of ${region.region.towns.length} towns.`);
+    return;
+  }
   base = !!saved.base;
   const r = await WorldSession.replay(saved.base ?? world, saved.inputs, saved.log, faculties, sessionOpts());
   session = r.session;
@@ -252,15 +292,18 @@ async function passYears(years: number) {
       await exclusive(async () => {
         governor.quiet = true;
         try {
-          for (let h = 0; h < 4; h++) await session.apply({ type: "advance", minutes: 360 }, { snapshot: false });
+          for (let h = 0; h < 4; h++) {
+            if (region) await region.advance(360, { snapshot: false });
+            else await session.apply({ type: "advance", minutes: 360 }, { snapshot: false });
+          }
         } finally {
           governor.quiet = false;
         }
-        if (session.frames.length > 4 * yearDays) session.rebase();
+        if (session.frames.length > 4 * yearDays) region ? region.rebase() : session.rebase();
       });
     }
     await exclusive(async () => {
-      session.rebase();
+      region ? region.rebase() : session.rebase();
       base = true;
     });
     save(true);
@@ -275,7 +318,8 @@ async function tickClock() {
       const w = session.world;
       // Nights pass in one stride: everyone is asleep, and sleep itself is one step per mind.
       const minutes = isNight(w.tick) ? Math.round(((7 * 60 - (w.tick % 1440)) + 1440) % 1440) || 1440 : speed;
-      await session.apply({ type: "advance", minutes });
+      if (region) await region.advance(minutes);
+      else await session.apply({ type: "advance", minutes });
       save();
     }).catch((e) => console.error(e));
   }
@@ -309,6 +353,8 @@ function view() {
     name: w.name,
     places: w.places,
     village: villageView(w),
+    region: region && regionView(region),
+    town: region ? town : undefined,
     fastForward: fastForward && { ...fastForward, at: w.tick },
     seed,
     running,
@@ -334,7 +380,7 @@ function view() {
       .filter((r) => r.hops.length > 0)
       .map((r) => ({ ...r, believers: believers(r.id) }))
       .sort((a, b) => b.hops[b.hops.length - 1]!.tick - a.hops[a.hops.length - 1]!.tick),
-    rewind: session.frames.filter((f) => f.state && (f.dayStart || f.index >= session.frames.length - 80)).map((f) => ({ index: f.index, tick: f.tick, dayStart: f.dayStart })),
+    rewind: region ? [] : session.frames.filter((f) => f.state && (f.dayStart || f.index >= session.frames.length - 80)).map((f) => ({ index: f.index, tick: f.tick, dayStart: f.dayStart })),
     calls: session.log.length,
     cost: costView(),
     conversations: session.feed.filter((f) => f.kind === "talk").length,
@@ -462,6 +508,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   }
   if (req.method === "GET") {
     if (p === "/api/divergence") return send(res, 200, { events: divergence(session.world) });
+    if (p === "/api/myths") return region ? send(res, 200, compareMyths(region)) : send(res, 404, { error: "Only a region has more than one town." });
     if (p === "/api/atlas") return send(res, 200, { beliefs: atlas(session.world) });
     if (p === "/api/account") {
       const v = accountView(url.searchParams.get("agent") ?? "", url.searchParams.get("trace") ?? "");
@@ -548,6 +595,13 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       const r = await counterfactual(snapshot, createMockFaculties(), { agent: b.agent, kind: b.kind, id: b.id }, Math.max(1, Math.min(16, b.days ?? 4)));
       return r ? send(res, 200, r) : send(res, 404, { error: "Nothing with that id in that mind." });
     }
+    if (p === "/api/town") {
+      const b = await body<{ town?: string }>(req);
+      if (!region || !b.town || !region.towns[b.town]) return send(res, 404, { error: "No such town." });
+      town = b.town;
+      session = region.towns[town]!;
+      return send(res, 200, view());
+    }
     if (p === "/api/focus") {
       // Whoever you are looking at speaks with the model, however small the moment (L0 in the plan).
       const b = await body<{ agents?: string[] }>(req);
@@ -570,6 +624,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     }
     if (p === "/api/rewind") {
       if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
+      if (region) return send(res, 409, { error: "Rewinding isn't available across towns yet." });
       const { index } = await body<{ index: number }>(req);
       await exclusive(async () => session.rewind(index));
       running = false;
@@ -585,7 +640,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
           seed = b.seed ?? SEEDS[scenario];
         } else seed = b.seed ?? seed;
         ablations = b.ablations ?? ablations;
-        session = new WorldSession(makeWorld(), faculties, sessionOpts());
+        start();
         base = false;
         governor.resetSession();
       });

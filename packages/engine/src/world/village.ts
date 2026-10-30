@@ -18,6 +18,7 @@ import { nextId, nextRandom } from "../rng.js";
 import type { Ablations, AgentId, Episode, MindState } from "../types.js";
 import { check, describe, PACE, type Blueprint } from "../founders/blueprint.js";
 import { createCast, WORLD_START } from "./cast.js";
+import { considerLaw, elect, enforceLaws, foundingDay, type Civic, type Election, type Law } from "./civic.js";
 import { ageOf, bedtime, hearStory, initLife, isChild, yearOf, lifeTurn, normHeld, sanction, settleNorms, storeNorm, type Life, type Norm } from "./life.js";
 import { CROSSING, createSettlers, crossingMemory, other } from "./people.js";
 import type { Place, PlaceId, RoutineEntry } from "./places.js";
@@ -86,7 +87,7 @@ export interface VillageState {
   /** Pledge rounds, newest last. */
   pledges: { tick: number; season: Season; proposer: AgentId; answers: Pledge[] }[];
   /** Last day each daily thing happened. */
-  last: { meal: number; fireside: number; weather: number; tentNight: number; bedtime: number };
+  last: { meal: number; fireside: number; weather: number; tentNight: number; bedtime: number; founding?: number };
   /** Stories told at the fire, as `teller:episode`. */
   told: string[];
   /** Percepts raised inside synchronous bookkeeping (a house finished mid-step), run at the next step. */
@@ -94,6 +95,14 @@ export interface VillageState {
   /** Everyone who has lived here, alive or dead. */
   life: Record<AgentId, Life>;
   norms: Norm[];
+  /** Leader, laws and the founding story (absent in worlds saved before C3). */
+  civic?: Civic;
+  /** The memory the founding story grows from: the crossing, or for a daughter town, the leaving. */
+  founding?: string;
+  /** Set when this village is one town of several. */
+  town?: string;
+  /** Ids and names in use anywhere in the region, so a birth in one town never takes another's. */
+  reserved?: { ids: string[]; names: string[] };
 }
 
 export type VillageEvent = { kind: "pledge" } | { kind: "blight" } | { kind: "gale" };
@@ -226,6 +235,78 @@ export function createVillage(seed = 11, ablations: Partial<Ablations> = {}, set
   return world;
 }
 
+/**
+ * A daughter town: households that left another town, with their minds, on a fresh shore. The map is
+ * the same bay's layout under a new name; everything else (store, houses, norms' strength) starts
+ * from what they carried.
+ */
+export function foundVillage(o: {
+  name: string;
+  town: string;
+  seed: number;
+  tick: number;
+  rng: number;
+  from: VillageState;
+  households: Household[];
+  minds: Record<AgentId, MindState>;
+  agents: Record<AgentId, AgentState>;
+  order: AgentId[];
+  food: number;
+  founding: string;
+}): WorldState {
+  const places: Record<PlaceId, Place> = structuredClone(VILLAGE_PLACES);
+  const households: Record<string, Household> = {};
+  o.households.forEach((h, i) => {
+    const hh: Household = { ...structuredClone(h), home: `home_${h.id}`, shelter: "tent", rate: 0 };
+    places[hh.home] = homePlace(hh.home, homeName(hh), i);
+    households[h.id] = hh;
+  });
+  const world: WorldState = {
+    name: o.name,
+    places,
+    seed: o.seed,
+    tick: o.tick,
+    rng: o.rng >>> 0,
+    idCounter: 0,
+    order: [...o.order],
+    minds: o.minds,
+    agents: o.agents,
+    rumors: {},
+    events: [],
+    village: {
+      season: o.from.season,
+      seasonDays: o.from.seasonDays,
+      weather: "fair",
+      blight: false,
+      stock: { timber: 10, stone: 4, reeds: 4 },
+      store: { food: Number(o.food.toFixed(1)), log: [] },
+      households,
+      structures: [],
+      pledges: [],
+      last: { ...o.from.last },
+      told: [],
+      pending: [],
+      life: Object.fromEntries(Object.entries(o.from.life).filter(([id]) => id in o.minds).map(([id, l]) => [id, structuredClone(l)])),
+      norms: structuredClone(o.from.norms),
+      founding: o.founding,
+      town: o.town,
+    },
+  };
+  for (const id of world.order) {
+    const a = world.agents[id]!;
+    const hh = Object.values(households).find((h) => h.members.includes(id))!;
+    const old = a.home;
+    a.home = hh.home;
+    a.place = "harbour";
+    a.activity = "just ashore";
+    a.override = undefined;
+    a.talkingUntil = undefined;
+    a.routine = a.routine.map((e) => ({ ...e, place: e.place === old ? hh.home : e.place, evening: e.evening && { ...e.evening, place: e.evening.place === old ? hh.home : e.evening.place } }));
+    a.wants = a.wants.filter((w) => !w.target || world.order.includes(w.target));
+  }
+  return world;
+}
+
 // ---------------------------------------------------------------- reading the village
 
 export const seasonOf = (v: VillageState, t: number): Season => SEASONS[Math.floor((dayOf(t) - 1) / v.seasonDays) % 4]!;
@@ -264,6 +345,12 @@ export async function villageStep(world: WorldState, dt: number, faculties: Facu
   work(world, dt, sink);
   await startBuilding(world, faculties, sink);
   if (h >= 19 && v.last.meal !== day) await supper(world, faculties, sink);
+  // The first night of summer, from the second year on, belongs to the founding story.
+  if (v.season === "summer" && (day - 1) % v.seasonDays === 0 && day > v.seasonDays && h >= 19.5 && h < 22 && v.last.founding !== day) {
+    v.last.founding = day;
+    // A daughter town tells its own beginning, then the older story of the crossing.
+    for (const f of [...new Set([v.founding ?? CROSSING, CROSSING])]) if (await foundingDay(world, f, faculties, sink)) v.last.fireside = day;
+  }
   if (h >= 19.5 && h < 22 && v.last.fireside !== day) await fireside(world, faculties, sink);
   if (h >= 20.75 && h < 22 && v.last.bedtime !== day) {
     v.last.bedtime = day;
@@ -285,6 +372,7 @@ async function newDay(world: WorldState, faculties: Faculties, sink: Sink): Prom
     v.blight = false;
     feed(world, sink, { kind: "event", agents: [], title: `${cap(v.season)} comes to ${world.name}`, text: SEASON_TEXT[v.season] });
     await lifeTurn(world, faculties, sink);
+    if (v.season === "spring") elect(world, sink);
   }
   const r = nextRandom(world);
   v.weather = r < GALE_CHANCE[v.season] ? "gale" : r < GALE_CHANCE[v.season] + 0.25 ? "rain" : "fair";
@@ -332,7 +420,7 @@ function work(world: WorldState, dt: number, sink: Sink): void {
         v.stock.timber = Number((v.stock.timber + 1 * pace).toFixed(2));
         continue;
       }
-      const site = v.structures.find((s) => !s.done && v.households[s.household]!.home === a.place);
+      const site = v.structures.find((s) => !s.done && v.households[s.household]?.home === a.place);
       if (!site) continue;
       if (!site.builders.includes(id)) site.builders.push(id);
       const next = Math.min(site.hours, site.work + pace);
@@ -574,7 +662,8 @@ async function pledge(world: WorldState, faculties: Faculties, sink: Sink): Prom
   const v = world.village!;
   const present = world.order.filter((x) => world.agents[x]!.place === "tavern");
   const everyone = world.order.filter((x) => !isChild(world, x));
-  const proposer = world.minds.wren && everyone.includes("wren") ? "wren" : [...everyone].sort((a, b) => world.minds[b]!.traits.agreeableness - world.minds[a]!.traits.agreeableness)[0]!;
+  const leader = v.civic?.leader;
+  const proposer = leader && everyone.includes(leader) ? leader : world.minds.wren && everyone.includes("wren") ? "wren" : [...everyone].sort((a, b) => world.minds[b]!.traits.agreeableness - world.minds[a]!.traits.agreeableness)[0]!;
   const P = world.minds[proposer]!;
   const first = v.pledges.length === 0;
   const builders = everyone.filter((x) => ["builder", "woodcutter", "quarrier", "thatcher", "cook", "keeper"].includes(world.agents[x]!.role));
@@ -637,6 +726,7 @@ async function pledge(world: WorldState, faculties: Faculties, sink: Sink): Prom
     const rs = round.answers.filter((a) => hh.members.includes(a.agent)).map((a) => RATE[a.option]);
     hh.rate = rs.length ? Number((rs.reduce((s, x) => s + x, 0) / rs.length).toFixed(2)) : 0;
   }
+  await enforceLaws(world, round.answers, faculties, sink);
   const by = (o: Pledge["option"]) => round.answers.filter((a) => a.option === o).map((a) => personName(world, a.agent));
   feed(world, sink, {
     kind: "talk",
@@ -677,6 +767,7 @@ async function pledge(world: WorldState, faculties: Faculties, sink: Sink): Prom
     }
   }
   settleNorms(world, sink);
+  await considerLaw(world, round.answers, faculties, sink);
 }
 
 // ---------------------------------------------------------------- nights and stories
@@ -863,6 +954,11 @@ export interface VillageView {
   /** The living, then the most recent dead. */
   people: { id: AgentId; name: string; age: number; generation: number; parents: AgentId[]; partner?: AgentId; alive: boolean; died?: number; cause?: string; arrived?: number }[];
   norms: { text: string; sanctions: number; rounds: number; established?: number; strength: number }[];
+  leader?: AgentId;
+  elections: Election[];
+  laws: Law[];
+  /** The founding story as told each summer, latest last. */
+  foundingDays: Civic["foundingDays"];
 }
 
 export function villageView(world: WorldState): VillageView | undefined {
@@ -891,6 +987,10 @@ export function villageView(world: WorldState): VillageView | undefined {
       return { id, name: world.minds[id]!.name, age: Math.floor(ageOf(world, id)), generation: l.generation, parents: l.parents, partner: l.partner, alive, died: l.died, cause: l.cause, arrived: l.arrived };
     }),
     norms: v.norms.map((n) => ({ text: n.text, sanctions: n.sanctions, rounds: n.rounds.length, established: n.established, strength: Number(n.strength.toFixed(2)) })),
+    leader: v.civic?.leader,
+    elections: (v.civic?.elections ?? []).slice(-6),
+    laws: (v.civic?.laws ?? []).map((l) => ({ ...l, compelled: l.compelled.slice(-20) })),
+    foundingDays: (v.civic?.foundingDays ?? []).slice(-8),
   };
 }
 

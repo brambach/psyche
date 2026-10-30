@@ -2,7 +2,7 @@
 
 A plan for growing Psyche from five minds on Kettle Island and one builder on Tern Holm into a self-running civilization of hundreds to thousands of minds, with an analysis layer that lets you trace why anyone does anything, and a cost design that fits the whole journey inside about $1000 of Anthropic API credit.
 
-Status: C0, C1 and C2 built on the mock (see each phase). Written 2026-10-30.
+Status: C0 to C3 built on the mock (see each phase). Written 2026-10-30.
 
 ## Where we are
 
@@ -237,6 +237,8 @@ Founders F1 to F2 and the island's next steps, together.
 - Trade between settlements, scarcity, conflict and reconciliation.
 - Analysis: idea phylogeny, the Chronicle (a batch-written history of the world built from the ledger), population dashboards.
 - **Done when:** two towns have different stories about the same founding event, and you can show exactly where the versions split.
+
+**Status (2026-10-30):** built on the mock, at a smaller scale than planned. Four towns and about 120 people after 22 years, not 300 to 1000; C4's aggregate tier is what makes the larger numbers affordable. Built: towns splitting off by belonging, leaders by approval voting, store laws with compulsion, the founding story told each summer by the eldest, trade that carries stories, grievances and peace gifts as beliefs about other towns, a chronicle, population history, and the myth comparison. The done-when holds: towns tell the crossing from different founders' memories, and the view names whose memory each version grew from and where two versions part. Also fixed: unbounded growth in beliefs, belief evidence and deepenedBy lists, which had let some minds keep 500 memories. Not done: a barter economy inside towns, ritual beyond the founding night, and a Claude-written prose chronicle (the chronicle is assembled from events for now).
 
 ### C4 Civilization (6 to 8 weeks, ~$300 including a long run)
 
