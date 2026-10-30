@@ -2,19 +2,56 @@
 
 A world of artificial minds whose psychology is real machinery you can open up, not a personality written into a prompt.
 
-This is **M0: Specimen**. One mind (Mara Quill, a fisher on Kettle Island), the full cognitive cycle, an event log with exact replay and rewind, and brain scan v0. The design proposal behind it lives at https://claude.ai/artifact/7iL2xRmmVXMeDJYnBxDP7G.
+**Kettle Island** is a live simulation of five people on a small fishing island. Each one runs on the mind engine: real memory that fades and gets rewritten, moods, trust, goals, sleep. Nobody is scripted. You watch them go about their days, bump into each other, gossip and hold grudges, and you can open any of their heads at any moment to see why they did what they did.
+
+The design proposal behind it lives at https://claude.ai/artifact/7iL2xRmmVXMeDJYnBxDP7G.
 
 ## Run it
 
 ```bash
 npm install
-npm run dev        # server on :8787, brain scan UI on http://localhost:5173
-npm run demo       # the six-day demo in the terminal
-npm test           # engine tests, including ablation checks across seeds
-npm run stats -- 60 '{"misinformation":false}'   # tally outcomes across 60 seeds
+npm run dev        # server on :8787, the island on http://localhost:5173
+npm run island -- 3 7 --storm   # three days of island life in the terminal (seed 7, with a storm)
+npm test           # engine and world tests
+npm run demo       # the original single-mind demo (M0)
 ```
 
-With no Anthropic credentials, the language faculties run on an offline mock so everything works out of the box. Set `ANTHROPIC_API_KEY` (or `PSYCHE_FACULTIES=claude`) to use Claude. Every faculty defaults to `claude-opus-5-5`; choose a model per faculty with `PSYCHE_MODEL_PERCEIVE`, `PSYCHE_MODEL_SPEAK`, `PSYCHE_MODEL_RECONSTRUCT`, `PSYCHE_MODEL_DELIBERATE` and `PSYCHE_MODEL_DREAM` (for example a Haiku-class model for the cheap faculties, as in the proposal's cost plan).
+With no Anthropic credentials, speech runs on an offline mock so everything works out of the box. Set `ANTHROPIC_API_KEY` (or `PSYCHE_FACULTIES=claude`) to use Claude. Every faculty defaults to `claude-opus-5-5`; choose a model per faculty with `PSYCHE_MODEL_PERCEIVE`, `PSYCHE_MODEL_SPEAK`, `PSYCHE_MODEL_RECONSTRUCT`, `PSYCHE_MODEL_DELIBERATE` and `PSYCHE_MODEL_DREAM`. Set `PSYCHE_AUTOPLAY=0` to start paused.
+
+## The island
+
+| Who | |
+| --- | --- |
+| **Mara**, fisher | Guarded, proud of managing alone. Holds it against Theo that he arrived late the night of the big storm. |
+| **Theo**, boatwright | Easygoing, always late. Was late that night because he was pulling Jun's skiff off the rocks, and has never told Mara. |
+| **Jun**, fisher | Talks to everyone. Owes Theo her skiff. |
+| **Corran**, fish buyer | Thin-skinned, keeps score, has stories about everybody. |
+| **Wren**, keeps the Gull | Everyone's confidant. Remembers Theo coming in soaked after the storm and saying nothing. |
+
+Each has a routine (the harbour at dawn, the fish shed at noon, maybe the Gull at night), goals, things they want from each other, and memories of a shared past that don't agree.
+
+**What happens is decided by the engine, not by a prompt.** Who is where comes from routines and moods (lonely people go out in the evening; stressed ones stay home). When two people are in the same place, the engine decides whether they talk and what about: a favour they want, an offer of help, something they've been meaning to explain, a story about someone else, or the weather. The listener then runs a full cognitive cycle and decides how to respond. The language model only turns those decisions into words, so most of the simulation needs no model calls at all.
+
+**What you can do:** play, pause and change speed; trigger a storm, a gathering at the Gull, or a big catch; plant a rumor with one person and follow it round the island; talk to anyone yourself; rewind the whole island to any morning and let it play out differently; restart with mechanisms switched off.
+
+**What you can see:**
+
+- *What's happening*: the live feed. Click any line to open that person's brain scan for that moment.
+- *Stories going round*: every story that has changed hands, who told whom, how much each listener believed it, and how the wording drifted.
+- *Who feels what*: liking and trust between everyone, and the biggest misreadings (Theo thinks Mara can't stand him; she's warmer than he thinks).
+- *Inside someone's head*: how they read each person against how that person actually feels, their goals, their life story, and the M0 brain scan for every moment.
+
+### How stories move
+
+When someone tells a story, they recall it in full, and recall rewrites memory. The story becomes a claim with a lineage. A listener weighs it by how much they trust the teller and whether it fits how they already feel about its subject. Hearing the same story again from someone new makes it feel truer. When a story has faded and gets retold, the teller rebuilds it from mood and attitude, so it drifts toward what they already think. And if the story is about an event the listener lived through, it competes with their own memory of it: once they've forgotten where they heard it, they may come to remember it that way themselves.
+
+That last part is the engine at its most interesting. Theo explaining himself can quietly repair Mara's memory of the storm night. Mara telling her version can just as easily overwrite Theo's, until he remembers only that he was late and not why.
+
+| Mechanism added for the island | Source |
+| --- | --- |
+| Illusory truth: repetition raises belief | Hasher, Goldstein & Toppino 1977 |
+| Rumor transmission: levelling, sharpening, assimilation | Allport & Postman 1947; Bartlett 1932 |
+| Gossip as reputation information | Dunbar 2004 |
 
 ## The idea in one paragraph
 
@@ -26,8 +63,9 @@ The psychology lives in a deterministic engine (`packages/engine`). Memory stren
 | --- | --- |
 | `packages/engine` | The mind: memory, appraisal and affect, workspace, decisions, sleep, explanation, event-sourced sessions. No runtime dependencies; runs in Node or the browser. |
 | `packages/faculties` | Claude-backed faculties with structured outputs, plus a deterministic offline mock. |
-| `packages/server` | A small HTTP server hosting one live session, saved as seed + inputs + recorded calls. |
-| `packages/web` | Brain scan v0 (React + Vite). |
+| `packages/engine/src/world` | Kettle Island: places, the cast, routines, encounters, conversations, gossip, events, and event-sourced world sessions. |
+| `packages/server` | Hosts the island with a running clock, saved as seed + inputs + recorded calls. |
+| `packages/web` | The island UI: map, feed, stories, relationships and the brain scan (React + Vite). |
 
 ## One cognitive cycle
 
@@ -69,8 +107,10 @@ Every number is in `packages/engine/src/params.ts` with its source, or marked as
 
 ## What the tests show
 
-Across 30 seeds of the demo, Mara adopts Jun's rumor ("Theo never showed up") as her own memory in a fraction of runs, and never when the misinformation mechanism is off. She never adopts it at the moment she hears it, because the source is still vivid. Replays from the recorded log are byte-identical, rewinds restore exact state, and changing a mechanism is reported as a divergence instead of silently reusing stale responses.
+Across 30 seeds of the M0 demo, Mara adopts Jun's rumor ("Theo never showed up") as her own memory in a fraction of runs, and never when the misinformation mechanism is off. She never adopts it at the moment she hears it, because the source is still vivid. Replays from the recorded log are byte-identical, rewinds restore exact state, and changing a mechanism is reported as a divergence instead of silently reusing stale responses.
 
-## Not in M0 yet
+On the island, the same seed always gives the same island, replay from the log is exact, and rewinding to a morning restores it exactly. Across eight seeds, stories pass beyond the person who first told them, a planted rumor travels on its own in most runs, and people come to remember what they were told about shared events, but never when the misinformation mechanism is switched off.
 
-Says-vs-was (confabulation) and the counterfactual button come in M1 with the second mind. The mock faculties write plain language and extract little from free text; real perception and speech need Claude. Several parameters are engineering choices that M3's validation suite should calibrate.
+## Not here yet
+
+Says-vs-was (confabulation) and the counterfactual button are still to come. Overhearing, more than two people in one conversation, and a bigger cast are the next steps for the island. The mock faculties write plain language and extract little from free text; real perception and speech need Claude. Several parameters are engineering choices that M3's validation suite should calibrate.

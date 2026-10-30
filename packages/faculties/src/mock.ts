@@ -70,21 +70,47 @@ export function mockDeliberate(req: DeliberateRequest): DeliberateResponse {
   };
 }
 
+/** Deterministic pick so the same moment always says the same thing. */
+function pick<T>(xs: T[], seed: string): T {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (Math.imul(h, 31) + seed.charCodeAt(i)) | 0;
+  return xs[Math.abs(h) % xs.length]!;
+}
+
 export function mockSpeak(req: SpeakRequest): SpeakResponse {
   const name = req.listener.name.startsWith("the ") ? "" : `, ${req.listener.name}`;
+  const seed = `${req.self.name}|${req.listener.name}|${req.heard}|${req.intent.option}|${req.content.map((c) => c.id).join()}`;
   const curt = req.style.curtness > 0.55;
   const warm = req.style.warmth > 0.55;
   const story = req.content.map((c) => c.text).join(" ");
   const heard = req.heard.toLowerCase();
-  const greeting = /\b(morning|hello|hi|evening|new on the island)\b/.test(heard);
-  const question = heard.includes("?");
+  const greeting = /\b(morning|afternoon|hello|hi|evening|new on the island)\b/.test(heard);
+  const gossip = /did you hear|didn't hear it from me|here's a thing/.test(heard);
+  const question = heard.includes("?") && !gossip;
+  const part = /this (morning|afternoon|evening)/.exec(req.intent.description)?.[1];
+  const what = /^(?:Ask \S+ to|Offer to) (.*)\.$/.exec(req.intent.description)?.[1] ?? "";
   switch (req.intent.option) {
+    // Conversation openers, used when one islander starts talking to another.
+    case "Small talk":
+      return { utterance: pick(curt ? ["Busy?", "Weather's turning."] : [`${part === "evening" ? "Evening" : part === "afternoon" ? "Afternoon" : "Morning"}${name}.`, "Wind's coming round to the east.", `Quiet one today${name}.`, "Fish are running deep this week, they say."], seed), acts: ["greet"] };
+    case "Share gossip":
+      return { utterance: `${pick(["Did you hear? ", "You didn't hear it from me, but ", "Here's a thing. "], seed)}${story}`, acts: ["gossip"] };
+    case "Ask a favour":
+      return { utterance: `${req.listener.name}, could you ${what}?${req.style.hedging > 0.3 ? " Only if it's no trouble." : ""}`, acts: ["request"] };
+    case "Offer help":
+      return { utterance: `I could ${what}, if you want.`, acts: ["offer"] };
+    case "Clear the air": {
+      const toYou = story.replaceAll(`${req.listener.name}'s`, "your").replace(/\bshe had\b/g, "you had").replace(/\bshe\b/g, "you");
+      return { utterance: `About the storm night${name}. ${toYou} I should have said so before.`, acts: ["confide"] };
+    }
+    case "Ask about":
+      return { utterance: pick([`How did you get on${name}? With all that.`, "Bad business. You all right?"], seed), acts: ["ask"] };
     case "Agree":
-      return { utterance: curt ? "Fine. Bring it back how you found it." : `All right${name}. Take it. Look after her.`, acts: ["grant"] };
+      return { utterance: curt ? "Fine. Just this once." : `All right${name}.${heard.includes("boat") ? " Take her. Look after her." : ""}`, acts: ["grant"] };
     case "Refuse flatly":
       return { utterance: curt ? "No." : `No${name}. Not this time.`, acts: ["refuse"] };
     case "Refuse and explain":
-      return { utterance: `I can't${name}. I need her this week, and the nets are half gone.`, acts: ["refuse", "explain"] };
+      return { utterance: heard.includes("boat") || heard.includes("crew") ? `I can't${name}. I need her this week, and I work better alone.` : `I can't${name}. Not right now.`, acts: ["refuse", "explain"] };
     case "Put it off":
       return { utterance: "Let me think on it.", acts: ["defer"] };
     case "Tell the whole story":
@@ -94,11 +120,15 @@ export function mockSpeak(req: SpeakRequest): SpeakResponse {
     case "Deflect":
       return { utterance: "Long night. Ask someone else.", acts: ["deflect"] };
     case "Reply warmly":
-      if (greeting) return { utterance: "Welcome, then. Ask me anything about the boats.", acts: ["greet"] };
-      return { utterance: question ? "Happy to help where I can." : "Is that right? I hadn't heard.", acts: ["engage"] };
+      if (greeting && req.listener.id === "visitor") return { utterance: "Welcome, then. Ask me anything about the boats.", acts: ["greet"] };
+      if (greeting) return { utterance: pick(["Morning to you.", "Evening yourself. Sit down a minute.", "There you are."], seed), acts: ["greet"] };
+      if (story) return { utterance: `${pick(["I'll tell you what I remember. ", "Funny you say that. ", ""], seed)}${story}`, acts: ["engage", "recount"] };
+      if (!gossip && !question && !/hadn't heard|go on|that's something|said yes|well, now/.test(heard) && !story) return { utterance: pick(["Isn't it.", "Can't complain.", "True enough.", "Same as ever."], seed), acts: ["engage"] };
+      if (/hadn't heard|go on|that's something/.test(heard)) return { utterance: pick(["Thought you should know.", "That's what they're saying.", "Well, now you know."], seed), acts: ["engage"] };
+      return { utterance: question ? "Happy to help where I can." : pick(["Is that right? I hadn't heard.", "Go on.", "Well. That's something."], seed), acts: ["engage"] };
     case "Reply politely":
       if (greeting) return { utterance: "Morning.", acts: ["greet"] };
-      return { utterance: question ? "Maybe. Depends." : "Hm.", acts: ["acknowledge"] };
+      return { utterance: question ? "Maybe. Depends." : pick(["Hm.", "If you say so.", "Right."], seed), acts: ["acknowledge"] };
     case "Brush off":
       return { utterance: greeting ? "I'm busy." : "Not my business.", acts: ["dismiss"] };
     default:
@@ -116,9 +146,31 @@ const HARSHER: [RegExp, string][] = [
   [/half of what he promised/, "next to nothing"],
   [/three days/, "a day or so"],
   [/he wouldn't take any money for it/, "he didn't ask for much"],
+  // Stories passed along drift in the direction the teller already leans (Allport & Postman 1947).
+  [/was hours late/, "never showed up"],
+  [/\bstagger\b/, "get carried"],
+  [/drinks more than he lets on/, "is drunk most nights"],
+  [/skims every catch he buys/, "robs every fisher on the island"],
+  [/only pays when he's pushed/, "never pays what he owes"],
+  [/a cheat\b/, "a thief and a liar"],
+  [/thinks she's better than everyone/, "looks down on the whole island"],
+  [/was late, pulling/, "was off pulling"],
+  [/and it made him late for Mara/, "and left Mara to fend for herself"],
+  [/is the kindest man on the island/, "is a soft touch"],
+  [/has a soft spot for Mara/, "is chasing after Mara"],
+  [/only paid half of it/, "never paid a penny"],
+  [/eleven shillings/, "a small fortune"],
+  [/wouldn't take money for it/, "made sure everyone knew it"],
 ];
 const SOFTER: [RegExp, string][] = [
+  [/never showed up/, "was late"],
+  [/\bstagger\b/, "wander"],
+  [/is drunk most nights/, "likes a drink"],
   [/was hours late/, "was a bit late"],
+  [/waded out and pulled/, "swam out in the dark and dragged"],
+  [/is the kindest man on the island/, "would give you the shirt off his back"],
+  [/fixed the Gull's roof beam/, "rebuilt half the Gull"],
+  [/thinks she's better than everyone/, "keeps to herself"],
   [/was an hour late/, "was a little late"],
   [/three days/, "most of a week"],
 ];
@@ -135,7 +187,7 @@ export function mockReconstruct(req: ReconstructRequest): ReconstructResponse {
 
 export function mockDream(req: DreamRequest): DreamResponse {
   const byEntity = new Map<string, { id: string; valence: number }[]>();
-  for (const r of req.replay) for (const a of r.about) byEntity.set(a, [...(byEntity.get(a) ?? []), { id: r.id, valence: r.valence }]);
+  for (const r of req.replay) for (const a of r.about.slice(0, 1)) byEntity.set(a, [...(byEntity.get(a) ?? []), { id: r.id, valence: r.valence }]);
   const generalizations: DreamResponse["generalizations"] = [];
   for (const [about, items] of byEntity) {
     for (const sign of [-1, 1]) {

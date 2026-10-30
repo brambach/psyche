@@ -16,6 +16,8 @@ export interface Claim {
   slotKey?: string;
   value?: string;
   episodeHint?: string;
+  /** Lineage id when the claim is a story being passed along. */
+  rumor?: string;
 }
 
 /** Objective features of an event, before this particular mind appraises it. */
@@ -55,6 +57,13 @@ export interface Percept {
   /** Rendering template for those details, e.g. "The buyer paid {amount}." */
   template?: string;
   gist: string;
+  /**
+   * Id for the episode this percept becomes. Minds that live through the same event share it,
+   * so what one tells another about it can compete with the listener's own memory.
+   */
+  eventId?: string;
+  /** Memories already told in this conversation, which a reply should not repeat. */
+  alreadySaid?: string[];
 }
 
 // ---------------------------------------------------------------- faculty requests

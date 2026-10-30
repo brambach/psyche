@@ -1,32 +1,47 @@
-// A small HTTP server that hosts one live session for the brain scan UI.
+// Hosts the living island. The clock runs on the server: while the world is playing, it advances
+// a few simulated minutes every second, and the web UI polls for what happened.
 // The session is saved as seed + inputs + recorded LLM calls, and restored by exact replay.
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
-import { createMara, demoScript, Session, type Ablations, type FacultyCall, type Input } from "@psyche/engine";
+import { createWorld, isNight, WorldSession, type Ablations, type AgentId, type FacultyCall, type MindState, type WorldInput } from "@psyche/engine";
 import { createFaculties } from "@psyche/faculties";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const DATA_DIR = resolve(process.env.PSYCHE_DATA ?? "data");
-const SAVE = join(DATA_DIR, "session.json");
+const SAVE = join(DATA_DIR, "island.json");
 const WEB_DIST = resolve(process.env.PSYCHE_WEB ?? "packages/web/dist");
+const FEED_SHOWN = 250;
 
 const { kind, faculties } = createFaculties();
 
 interface Saved {
   seed: number;
   ablations: Partial<Ablations>;
-  inputs: Input[];
+  inputs: WorldInput[];
   log: FacultyCall[];
 }
 
-let seed = 52;
+let seed = 7;
 let ablations: Partial<Ablations> = {};
-let session = new Session(createMara(seed, ablations), faculties);
-let busy = false;
+let session = new WorldSession(createWorld(seed, ablations), faculties);
+let running = process.env.PSYCHE_AUTOPLAY !== "0";
+/** Simulated minutes per real second. */
+let speed = 10;
+let lastSaved = 0;
 
-function save() {
+// Every change to the world goes through one queue, so the clock and user actions never interleave.
+let queue: Promise<unknown> = Promise.resolve();
+function exclusive<T>(fn: () => Promise<T>): Promise<T> {
+  const next = queue.then(fn, fn);
+  queue = next.catch(() => undefined);
+  return next;
+}
+
+function save(force = false) {
+  if (!force && Date.now() - lastSaved < 10_000) return;
+  lastSaved = Date.now();
   mkdirSync(DATA_DIR, { recursive: true });
   const saved: Saved = { seed, ablations, inputs: session.inputs, log: session.log };
   writeFileSync(SAVE, JSON.stringify(saved));
@@ -37,20 +52,112 @@ async function restore() {
   const saved = JSON.parse(readFileSync(SAVE, "utf8")) as Saved;
   seed = saved.seed;
   ablations = saved.ablations;
-  const r = await Session.replay(createMara(seed, ablations), saved.inputs, saved.log, faculties);
+  const r = await WorldSession.replay(createWorld(seed, ablations), saved.inputs, saved.log, faculties);
   session = r.session;
   console.log(`Restored ${saved.inputs.length} inputs${r.divergedAt !== undefined ? ` (diverged at call ${r.divergedAt})` : ""}.`);
 }
 
+async function tickClock() {
+  if (running) {
+    await exclusive(async () => {
+      const w = session.world;
+      // Nights pass in one stride: everyone is asleep, and sleep itself is one step per mind.
+      const minutes = isNight(w.tick) ? Math.round(((7 * 60 - (w.tick % 1440)) + 1440) % 1440) || 1440 : speed;
+      await session.apply({ type: "advance", minutes });
+      save();
+    }).catch((e) => console.error(e));
+  }
+  setTimeout(() => void tickClock(), 1000);
+}
+
+function summary(m: MindState) {
+  const top = Object.entries(m.affect.emotions).sort((a, b) => b[1] - a[1])[0]!;
+  return {
+    mood: m.affect.mood.valence,
+    valence: m.affect.valence,
+    arousal: m.affect.arousal,
+    stress: m.affect.stress,
+    fatigue: m.affect.fatigue,
+    emotion: top[1] > 0.12 ? { name: top[0], value: top[1] } : undefined,
+    needs: m.needs,
+    pronoun: m.pronouns.object,
+  };
+}
+
 function view() {
+  const w = session.world;
+  const believers = (rumor: string) =>
+    w.order.flatMap((id) => {
+      const b = w.minds[id]!.beliefs.find((x) => x.rumor === rumor);
+      return b ? [{ agent: id, confidence: b.confidence, text: b.proposition }] : [];
+    });
   return {
     faculties: kind,
     seed,
-    ablations: session.initial.ablations,
-    initial: session.initial,
-    frames: session.frames,
+    running,
+    speed,
+    tick: w.tick,
+    ablations: w.minds[w.order[0]!]!.ablations,
+    order: w.order,
+    agents: w.order.map((id) => {
+      const a = w.agents[id]!;
+      return { id, name: a.name, role: a.role, place: a.place, activity: a.activity, talking: (a.talkingUntil ?? -1) > w.tick, ...summary(w.minds[id]!) };
+    }),
+    relations: w.order.flatMap((from) =>
+      w.order
+        .filter((to) => to !== from)
+        .map((to) => {
+          const o = w.minds[from]!.others[to]!;
+          return { from, to, liking: o.liking, benevolence: o.trust.benevolence, integrity: o.trust.integrity, believedRegard: o.believedRegard };
+        }),
+    ),
+    feed: session.feed.slice(-FEED_SHOWN),
+    rumors: Object.values(w.rumors)
+      .filter((r) => r.hops.length > 0)
+      .map((r) => ({ ...r, believers: believers(r.id) }))
+      .sort((a, b) => b.hops[b.hops.length - 1]!.tick - a.hops[a.hops.length - 1]!.tick),
+    rewind: session.frames.filter((f) => f.state && (f.dayStart || f.index >= session.frames.length - 80)).map((f) => ({ index: f.index, tick: f.tick, dayStart: f.dayStart })),
     calls: session.log.length,
+    conversations: session.feed.filter((f) => f.kind === "talk").length,
   };
+}
+
+function agentView(id: AgentId) {
+  const w = session.world;
+  const mind = w.minds[id];
+  if (!mind) return undefined;
+  const traces = session.traces
+    .filter((t) => t.agent === id)
+    .slice(-200)
+    .map(({ trace: t }) => ({
+      id: t.id,
+      tick: t.tick,
+      kind: t.kind,
+      question: t.headline.question,
+      heard: t.percept?.rawText,
+      action: t.action?.text,
+      actionKind: t.action?.kind,
+      system: t.decision?.system,
+      changed: t.reconsolidations.some((r) => r.version.changes.length > 0),
+    }));
+  // How others actually feel about this person, to set against what this person believes.
+  const actual = Object.fromEntries(w.order.filter((o) => o !== id).map((o) => [o, w.minds[o]!.others[id]?.liking ?? 0.5]));
+  return { mind, agent: w.agents[id], traces, actual };
+}
+
+function traceView(agent: AgentId, traceId: string) {
+  const pos = session.traces.findIndex((t) => t.agent === agent && t.trace.id === traceId);
+  if (pos < 0) return undefined;
+  const frame = session.frameOfTrace(pos);
+  const later = frame ? session.frames.slice(frame.index).find((f) => f.state) : undefined;
+  const state = later?.state?.minds[agent] ?? session.world.minds[agent]!;
+  const upto = frame?.index ?? session.frames.length - 1;
+  const trail = session.frames
+    .slice(0, upto + 1)
+    .filter((f) => f.state)
+    .slice(-40)
+    .map((f) => ({ v: f.state!.minds[agent]!.affect.mood.valence, a: f.state!.minds[agent]!.affect.mood.arousal }));
+  return { trace: session.traces[pos]!.trace, state, trail: [{ v: session.initial.minds[agent]!.affect.mood.valence, a: session.initial.minds[agent]!.affect.mood.arousal }, ...trail] };
 }
 
 async function body<T>(req: IncomingMessage): Promise<T> {
@@ -80,41 +187,60 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     } else send(res, 404, { error: "Web UI not built. Run npm run dev, or npm run build first." });
     return;
   }
-  if (req.method === "GET" && p === "/api/session") return send(res, 200, view());
-  if (req.method !== "POST") return send(res, 405, { error: "Use POST" });
-  if (busy) return send(res, 409, { error: "The mind is still thinking. Try again in a moment." });
-  busy = true;
+  if (req.method === "GET") {
+    if (p === "/api/world") return send(res, 200, view());
+    const agent = /^\/api\/agent\/(\w+)$/.exec(p);
+    if (agent) {
+      const v = agentView(agent[1]!);
+      return v ? send(res, 200, v) : send(res, 404, { error: "No such islander" });
+    }
+    const trace = /^\/api\/trace\/(\w+)\/(\w+)$/.exec(p);
+    if (trace) {
+      const v = traceView(trace[1]!, trace[2]!);
+      return v ? send(res, 200, v) : send(res, 404, { error: "That moment is gone (it was rewound)." });
+    }
+    return send(res, 404, { error: `No route ${p}` });
+  }
+  if (req.method !== "POST") return send(res, 405, { error: "Use GET or POST" });
   try {
+    if (p === "/api/control") {
+      const b = await body<{ running?: boolean; speed?: number }>(req);
+      if (b.running !== undefined) running = b.running;
+      if (b.speed !== undefined) speed = Math.max(1, Math.min(120, Math.round(b.speed)));
+      return send(res, 200, view());
+    }
     if (p === "/api/input") {
-      const { input } = await body<{ input: Input }>(req);
-      await session.apply(input);
-    } else if (p === "/api/rewind") {
+      const { input } = await body<{ input: WorldInput }>(req);
+      await exclusive(() => session.apply(input));
+      save(true);
+      return send(res, 200, view());
+    }
+    if (p === "/api/rewind") {
       const { index } = await body<{ index: number }>(req);
-      session.rewind(index);
-    } else if (p === "/api/reset") {
-      const b = await body<{ seed?: number; ablations?: Partial<Ablations>; demo?: boolean }>(req);
-      seed = b.seed ?? seed;
-      ablations = b.ablations ?? ablations;
-      session = new Session(createMara(seed, ablations), faculties);
-      if (b.demo) for (const input of demoScript()) await session.apply(input);
-    } else if (p === "/api/rerun") {
-      // Same history, different mechanisms: replay recorded calls until the mind asks for something new.
-      const b = await body<{ ablations: Partial<Ablations> }>(req);
-      ablations = b.ablations;
-      const r = await Session.replay(createMara(seed, ablations), session.inputs, session.log, faculties);
-      session = r.session;
-    } else return send(res, 404, { error: `No route ${p}` });
-    save();
-    send(res, 200, view());
+      await exclusive(async () => session.rewind(index));
+      running = false;
+      save(true);
+      return send(res, 200, view());
+    }
+    if (p === "/api/reset") {
+      const b = await body<{ seed?: number; ablations?: Partial<Ablations> }>(req);
+      await exclusive(async () => {
+        seed = b.seed ?? seed;
+        ablations = b.ablations ?? ablations;
+        session = new WorldSession(createWorld(seed, ablations), faculties);
+      });
+      save(true);
+      return send(res, 200, view());
+    }
+    return send(res, 404, { error: `No route ${p}` });
   } catch (e) {
     console.error(e);
     send(res, 500, { error: e instanceof Error ? e.message : String(e) });
-  } finally {
-    busy = false;
   }
 }
 
 await restore();
 createServer((req, res) => void route(req, res)).listen(PORT, () => {
-  console.log(`Psyche server on http://localhost:${PORT} (faculties: ${kind})`);
+  console.log(`Psyche island on http://localhost:${PORT} (faculties: ${kind}, ${running ? "playing" : "paused"})`);
 });
+void tickClock();

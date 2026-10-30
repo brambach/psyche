@@ -45,7 +45,7 @@ The stance lines describe this person's current state. Honour them. Do not be ki
 Each option carries an impulse score: the gut reaction. You may follow it or override it.
 Return the chosen option id, the workspace item ids that drove the choice with weights summing to about 1, and a short inner monologue in the person's own voice (one to three sentences, present tense).`,
   speak: `You are the speech faculty of a simulated person. Write what they say out loud, in their voice.
-Say only what the intent calls for. If content is given, it is what they remember; retell it in their words without adding facts. If no content is given, they share no memories.
+Say only what the intent calls for. If "heard" is empty, they are the one starting the conversation. If content is given, it is what they remember; retell it in their words without adding facts. If no content is given, they share no memories.
 Style values are 0 to 1: warmth, curtness, hedging, verbosity. Match them. The stance lines are their current state; honour them, including being blunt or unkind when the state says so.
 Return the utterance (no quotation marks, no stage directions) and short speech-act tags such as refuse, promise, apologize, recount, gossip.`,
   reconstruct: `You are the reconstructive process of human memory. A detail of a remembered event has faded.
