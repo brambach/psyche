@@ -8,7 +8,7 @@ export { compete } from "./workspace.js";
 export { decide, generateOptions, scoreOption, expressTraits, stanceFor, styleFor, type OptionSpec } from "./decide.js";
 export { detectBiases, headline } from "./explain.js";
 export { sleep } from "./sleep.js";
-export { runPercept, perceiveText, wait, identityOf, dayOf, hourOf } from "./mind.js";
+export { runPercept, perceiveText, wait, identityOf, dayOf, hourOf, speechSalience } from "./mind.js";
 export { Session, step, recording, replaying, DivergenceError, type Input, type Frame, type FacultyCall } from "./session.js";
 export { createMara } from "./seed.js";
 export { demoScript } from "./demo.js";
@@ -29,6 +29,7 @@ export {
   type FeedLine,
   type WorldEvent,
   type WorldTrace,
+  type WorldEventRecord,
   type Sink,
 } from "./world/world.js";
 export { WorldSession, type WorldInput, type WorldFrame } from "./world/session.js";
@@ -56,3 +57,22 @@ export {
   type FounderSink,
 } from "./founders/founder.js";
 export { FounderSession, type FounderInput, type FounderFrame } from "./founders/session.js";
+export {
+  buildLedger,
+  why,
+  genealogy,
+  influence,
+  concerns,
+  strongestChain,
+  nodeId,
+  type Ledger,
+  type LedgerNode,
+  type LedgerEdge,
+  type LedgerInput,
+  type NodeKind,
+  type Mechanism,
+  type WhyTree,
+  type Genealogy,
+  type Influence,
+  type Concern,
+} from "./ledger.js";

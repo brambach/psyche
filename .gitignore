@@ -3,3 +3,4 @@ dist/
 *.tsbuildinfo
 data/
 .env
+.psyche/

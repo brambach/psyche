@@ -6,7 +6,16 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import {
+  buildLedger,
   BUILDERS,
+  concerns,
+  genealogy,
+  influence,
+  nodeId,
+  strongestChain,
+  why,
+  WORLD_START,
+  type Ledger,
   createCast,
   createFounder,
   createWorld,
@@ -37,7 +46,7 @@ const FOUNDERS_SAVE = join(DATA_DIR, "founders.json");
 const WEB_DIST = resolve(process.env.PSYCHE_WEB ?? "packages/web/dist");
 const FEED_SHOWN = 250;
 
-const { kind, faculties } = createFaculties();
+const { kind, faculties, governor } = createFaculties();
 
 interface Saved {
   seed: number;
@@ -258,7 +267,57 @@ function view() {
       .sort((a, b) => b.hops[b.hops.length - 1]!.tick - a.hops[a.hops.length - 1]!.tick),
     rewind: session.frames.filter((f) => f.state && (f.dayStart || f.index >= session.frames.length - 80)).map((f) => ({ index: f.index, tick: f.tick, dayStart: f.dayStart })),
     calls: session.log.length,
+    cost: costView(),
     conversations: session.feed.filter((f) => f.kind === "talk").length,
+  };
+}
+
+// The causal ledger is rebuilt from the session when someone asks and the island has moved on.
+let ledgerCache: { session: WorldSession; traces: number; ledger: Ledger } | undefined;
+function ledger(): Ledger {
+  if (ledgerCache?.session !== session || ledgerCache.traces !== session.traces.length) {
+    const w = session.world;
+    ledgerCache = { session, traces: session.traces.length, ledger: buildLedger({ minds: w.minds, traces: session.traces, rumors: w.rumors, events: w.events }) };
+  }
+  return ledgerCache.ledger;
+}
+
+function costView() {
+  const days = (session.world.tick - WORLD_START) / 1440;
+  const snap = governor.snapshot();
+  return { ...snap, perSimDay: days > 0.05 ? snap.sessionUsd / days : undefined };
+}
+
+function concernsView(id: AgentId) {
+  const mind = session.world.minds[id];
+  if (!mind) return undefined;
+  const L = ledger();
+  return {
+    concerns: concerns(L, mind, session.world.tick).map((c) => {
+      const inf = influence(L, c.id);
+      return { ...c, decisions: inf?.decisions.length ?? 0, direct: inf?.direct ?? 0, minds: inf?.minds ?? [] };
+    }),
+    nodes: L.nodes.size,
+    edges: L.edges.length,
+  };
+}
+
+/** Why, for a node id, or for the moment a trace recorded (its decision, or the memory it made). */
+function whyView(node: string | null, agent: string | null, trace: string | null) {
+  const L = ledger();
+  let id = node ?? undefined;
+  if (!id && agent && trace) {
+    id = L.nodes.has(nodeId.decision(agent, trace)) ? nodeId.decision(agent, trace) : [...L.nodes.values()].find((n) => n.agent === agent && n.trace === trace)?.id;
+  }
+  const tree = id ? why(L, id) : undefined;
+  if (!id || !tree) return undefined;
+  const g = genealogy(L, id)!;
+  const inf = influence(L, id)!;
+  return {
+    tree,
+    chain: strongestChain(tree),
+    genealogy: { ancestors: g.ancestors.length, roots: g.roots, minds: g.minds },
+    influence: { direct: inf.direct, decisions: inf.decisions.slice(0, 12), total: inf.decisions.length, minds: inf.minds },
   };
 }
 
@@ -342,6 +401,16 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       return v ? send(res, 200, v) : send(res, 404, { error: "That moment is gone (it was rewound)." });
     }
     if (p === "/api/world") return send(res, 200, view());
+    if (p === "/api/cost") return send(res, 200, costView());
+    const cons = /^\/api\/concerns\/(\w+)$/.exec(p);
+    if (cons) {
+      const v = concernsView(cons[1]!);
+      return v ? send(res, 200, v) : send(res, 404, { error: "No such islander" });
+    }
+    if (p === "/api/why") {
+      const v = whyView(url.searchParams.get("node"), url.searchParams.get("agent"), url.searchParams.get("trace"));
+      return v ? send(res, 200, v) : send(res, 404, { error: "Nothing in the ledger for that yet." });
+    }
     const agent = /^\/api\/agent\/(\w+)$/.exec(p);
     if (agent) {
       const v = agentView(agent[1]!);
@@ -385,6 +454,13 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       saveFounders(true);
       return send(res, 200, foundersView());
     }
+    if (p === "/api/focus") {
+      // Whoever you are looking at speaks with the model, however small the moment (L0 in the plan).
+      const b = await body<{ agents?: string[] }>(req);
+      governor.focus.clear();
+      for (const a of b.agents ?? []) governor.focus.add(a);
+      return send(res, 200, { focus: [...governor.focus] });
+    }
     if (p === "/api/control") {
       const b = await body<{ running?: boolean; speed?: number }>(req);
       if (b.running !== undefined) running = b.running;
@@ -410,6 +486,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
         seed = b.seed ?? seed;
         ablations = b.ablations ?? ablations;
         session = new WorldSession(createWorld(seed, ablations), faculties);
+        governor.resetSession();
       });
       save(true);
       return send(res, 200, view());
@@ -425,6 +502,7 @@ await restore();
 await restoreFounders();
 createServer((req, res) => void route(req, res)).listen(PORT, () => {
   console.log(`Psyche island on http://localhost:${PORT} (faculties: ${kind}, ${running ? "playing" : "paused"})`);
+  console.log(kind === "claude" ? `Daily cap $${governor.capUsd} (PSYCHE_DAILY_CAP). Spend so far today: $${governor.todayUsd().toFixed(4)}.` : "Offline mock: the cost meter shows what the same run would cost on Claude.");
 });
 void tickClock();
 void tickFounders();

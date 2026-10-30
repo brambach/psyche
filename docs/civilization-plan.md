@@ -201,13 +201,15 @@ Make scale and analysis possible before adding anything to the world.
 - Model tiering per faculty, Haiku by default. Perceive skipped for engine percepts. Template speech below salience.
 - Budget governor, daily cap, live cost meter, calibration harness that reports real dollars per agent per sim day.
 - Causal ledger v1 from existing traces. Why and Genealogy queries. Lineage view on Kettle Island.
-- Merge the island and Founders worlds into one world model (the voxel terrain becomes the island; the five live there).
 - **Done when:** Kettle Island runs a sim week on real Claude for under $1, and you can click Mara's fear of the storm and see where it came from.
+
+**Status (2026-10-30):** built on the mock. Merging the island and Founders worlds moved to the start of C1, where the village needs it. The mock meter estimates about $0.07 per sim day for the five islanders, so a sim week should land near $0.50; a short real run will confirm.
 
 ### C1 Village (2 to 3 weeks, ~$70)
 
 Founders F1 to F2 and the island's next steps, together.
 
+- Merge the island and Founders worlds into one world model (the voxel terrain becomes the island; the five live there).
 - 12 to 20 founders land on a larger island and build a village: homes, a shared store, a jetty. Group builds with shared blueprints.
 - Food and shelter as light survival pressure. Seasons. Weather.
 - Overhearing, conversations of three or more, families and households.

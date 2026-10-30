@@ -607,6 +607,9 @@ function replyGist(world: WorldState, b: AgentId, option: string | undefined, o:
   }
 }
 
+/** How much an opening line matters, by kind: small talk can come from templates. */
+const OPENER_SALIENCE: Record<string, number> = { smalltalk: 0.2, ask: 0.4, request: 0.5, offer: 0.5, gossip: 0.7, confide: 0.8 };
+
 async function converse(world: WorldState, a: AgentId, b: AgentId, place: PlaceId, faculties: Faculties, sink: Sink): Promise<void> {
   const A = world.minds[a]!;
   const B = world.minds[b]!;
@@ -621,6 +624,7 @@ async function converse(world: WorldState, a: AgentId, b: AgentId, place: PlaceI
     content: o.content,
     style: openerStyle(A, b),
     stance: [`You are starting a conversation with ${B.name} at ${PLACES[place].name}. Keep it to one or two lines.`],
+    salience: OPENER_SALIENCE[o.kind] ?? 0.4,
   };
   const aLine = (await faculties.speak(opening)).utterance;
 

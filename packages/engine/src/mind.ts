@@ -14,7 +14,7 @@ import type { Episode, MindState, Tick } from "./types.js";
 import { compete } from "./workspace.js";
 
 export function identityOf(mind: MindState): StableIdentity {
-  return { name: mind.name, summary: mind.identity.summary, voice: mind.identity.voice };
+  return { id: mind.id, name: mind.name, summary: mind.identity.summary, voice: mind.identity.voice };
 }
 
 export const hourOf = (t: Tick) => (((t % 1440) + 1440) % 1440) / 60;
@@ -47,6 +47,12 @@ export async function perceiveText(
     candidateSlots: primed.map((e) => ({ episodeId: e.id, gist: e.gist, slotKeys: e.details.map((d) => d.key) })),
   });
   return { ...res, id: nextId(mind, "pc"), tick: mind.tick, rawText: text, actor: speaker };
+}
+
+/** A reply matters when it answers you, tells a memory, comes out of deliberation, or the moment is big. */
+export function speechSalience(p: Percept, relevance: number, shared: number, system: 1 | 2): number {
+  if (p.actor === "visitor") return 1;
+  return clamp(Math.max(relevance * 0.8, shared > 0 ? 0.6 : 0, system === 2 ? 0.6 : 0, p.features.intensity >= 0.6 ? 0.6 : 0));
 }
 
 function settleExpressions(mind: MindState): void {
@@ -160,6 +166,8 @@ export async function runPercept(mind: MindState, p: Percept, faculties: Faculti
     llmCalls,
     headline: { question: "", answer: "" },
     notes,
+    encoded: episodeId,
+    changes: [...trustChanges, ...claimChanges],
   };
 
   const concernsSelf = p.addressedToSelf || Math.abs(p.features.outcomeForSelf) > 0.05;
@@ -205,6 +213,7 @@ export async function runPercept(mind: MindState, p: Percept, faculties: Faculti
         content,
         style: styleFor(mind, p, expressed, option),
         stance,
+        salience: speechSalience(p, appraisal.relevance, content.length, decision.system),
       });
       llmCalls.push("speak");
       trace.action = { kind: "speech", text: res.utterance, option: option.id, content: content.map((c) => c.id) };

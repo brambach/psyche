@@ -79,6 +79,7 @@ export async function sleep(mind: MindState, now: Tick, faculties: Faculties): P
     if (e.arousal >= D.formativeArousal && e.valence < -0.5 && e.coping < D.formativeCoping) {
       for (const s of mind.schemas.filter((x) => x.triggers.some((t) => e.topics.includes(t)))) {
         s.strength = clamp(s.strength + 0.08);
+        (s.deepenedBy ??= []).push({ episode: e.id, tick: now });
         notes.push(`Core belief deepened: "${s.text}".`);
       }
     }

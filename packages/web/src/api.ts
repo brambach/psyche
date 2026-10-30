@@ -1,4 +1,4 @@
-import type { Ablations, AgentState, FeedItem, MindState, PlaceId, Rumor, Trace, WorldInput } from "@psyche/engine";
+import type { Ablations, AgentState, Concern, FeedItem, LedgerNode, MindState, PlaceId, Rumor, Trace, WhyTree, WorldInput } from "@psyche/engine";
 
 export interface AgentSummary {
   id: string;
@@ -44,7 +44,37 @@ export interface WorldView {
   rumors: RumorView[];
   rewind: { index: number; tick: number; dayStart: boolean }[];
   calls: number;
+  cost: CostView;
   conversations: number;
+}
+
+export interface CostView {
+  mode: "claude" | "mock";
+  estimated: boolean;
+  level: "normal" | "economy" | "thrifty" | "offline";
+  levelMeans: string;
+  capUsd: number;
+  todayUsd: number;
+  sessionUsd: number;
+  perSimDay?: number;
+  calls: number;
+  templated: number;
+  cacheHitRate: number;
+  byFaculty: Record<string, { calls: number; templated: number; usd: number; input: number; output: number; cacheRead: number }>;
+  byModel: Record<string, { calls: number; usd: number }>;
+}
+
+export interface ConcernView extends Concern {
+  decisions: number;
+  direct: number;
+  minds: string[];
+}
+
+export interface WhyView {
+  tree: WhyTree;
+  chain: LedgerNode[];
+  genealogy: { ancestors: number; roots: LedgerNode[]; minds: string[] };
+  influence: { direct: number; total: number; decisions: { node: LedgerNode; share: number; steps: number }[]; minds: string[] };
 }
 
 export interface TraceSummary {
@@ -86,5 +116,8 @@ export const api = {
   control: (c: { running?: boolean; speed?: number }) => call<WorldView>("/api/control", c),
   input: (input: WorldInput) => call<WorldView>("/api/input", { input }),
   rewind: (index: number) => call<WorldView>("/api/rewind", { index }),
+  concerns: (id: string) => call<{ concerns: ConcernView[]; nodes: number; edges: number }>(`/api/concerns/${id}`),
+  why: (q: { node?: string; agent?: string; trace?: string }) => call<WhyView>(`/api/why?${new URLSearchParams(q as Record<string, string>)}`),
+  focus: (agents: string[]) => call<{ focus: string[] }>("/api/focus", { agents }),
   reset: (opts: { seed?: number; ablations?: Partial<Ablations> }) => call<WorldView>("/api/reset", opts),
 };

@@ -36,7 +36,7 @@ export function App() {
   const [agent, setAgent] = useState<string>();
   const [trace, setTrace] = useState<string>();
   const [busy, setBusy] = useState(false);
-  const [panel, setPanel] = useState<"" | "events" | "talk" | "rumor" | "rewind" | "mechanisms">("");
+  const [panel, setPanel] = useState<"" | "events" | "talk" | "rumor" | "rewind" | "mechanisms" | "cost">("");
   const [mechs, setMechs] = useState<Ablations>(DEFAULT_ABLATIONS);
   const fetching = useRef(false);
 
@@ -77,6 +77,13 @@ export function App() {
   const names = useMemo(() => Object.fromEntries((view?.agents ?? []).map((a) => [a.id, a.name])), [view?.agents]);
   const pronouns = useMemo(() => Object.fromEntries((view?.agents ?? []).map((a) => [a.id, a.pronoun])), [view?.agents]);
 
+  // Whoever you are looking inside speaks with the model however small the moment; everyone else
+  // falls back to templates for small talk.
+  const watching = tab === "mind" ? agent : undefined;
+  useEffect(() => {
+    void api.focus(watching ? [watching] : []).catch(() => undefined);
+  }, [watching]);
+
   const open = (id: string, t?: string) => {
     setAgent(id);
     setTrace(t);
@@ -96,6 +103,9 @@ export function App() {
         </span>
         <span className="chip">{clock(view.tick)}{night ? " · night" : ""}</span>
         <span className="chip" title="Conversations so far, and language model calls">{view.conversations} conversations · {view.calls} calls</span>
+        <button className={`chip cost ${view.cost.level}`} onClick={() => setPanel(panel === "cost" ? "" : "cost")} aria-expanded={panel === "cost"} title={view.cost.estimated ? "What this run would cost on Claude. Running on the offline mock, so it costs nothing." : `${view.cost.levelMeans} Today: $${view.cost.todayUsd.toFixed(2)} of $${view.cost.capUsd} cap.`}>
+          {usd(view.cost.sessionUsd)}{view.cost.estimated ? " est." : ""}{view.cost.perSimDay !== undefined ? ` · ${usd(view.cost.perSimDay)}/sim day` : ""}
+        </button>
         <span className="spacer" />
         <div className="transport" role="group" aria-label="Clock">
           <button className="btn primary" onClick={() => act(() => api.control({ running: !view.running }))}>{view.running ? "Pause" : "Play"}</button>
@@ -131,6 +141,7 @@ export function App() {
               <button className="btn" disabled={busy} onClick={() => act(() => api.rewind(-1))}>Back to the start</button>
             </div>
           )}
+          {panel === "cost" && <Cost cost={view.cost} />}
           {panel === "mechanisms" && (
             <div>
               <div className="mechs">
@@ -169,9 +180,51 @@ export function App() {
           {tab === "feed" && <Feed feed={view.feed} names={names} onOpen={open} />}
           {tab === "rumors" && <Rumors rumors={view.rumors} names={names} onOpen={open} />}
           {tab === "relations" && <Relations order={view.order} relations={view.relations} names={names} pronouns={pronouns} />}
-          {tab === "mind" && agent && <AgentPanel key={agent} id={agent} tick={view.tick} names={names} trace={trace} onTrace={setTrace} />}
+          {tab === "mind" && agent && <AgentPanel key={agent} id={agent} tick={view.tick} names={names} trace={trace} onTrace={setTrace} onOpen={open} />}
         </main>
       </div>
+    </div>
+  );
+}
+
+const usd = (x: number) => `$${x < 0.1 ? x.toFixed(4) : x.toFixed(2)}`;
+
+function Cost({ cost }: { cost: WorldView["cost"] }) {
+  const rows = Object.entries(cost.byFaculty).sort((a, b) => b[1].usd - a[1].usd);
+  return (
+    <div className="row" style={{ alignItems: "flex-start", gap: 24 }}>
+      <div className="small" style={{ maxWidth: 420 }}>
+        {cost.estimated ? (
+          <p style={{ margin: 0 }}>Running on the offline mock, so this costs nothing. The figures are what the same run would cost on Claude, estimated from the size of every request.</p>
+        ) : (
+          <p style={{ margin: 0 }}>
+            Today ${cost.todayUsd.toFixed(2)} of the ${cost.capUsd} daily cap ({cost.level}). {cost.levelMeans} Cache hits {(cost.cacheHitRate * 100).toFixed(0)}%.
+          </p>
+        )}
+        <p style={{ margin: "6px 0 0" }}>
+          {cost.calls} model calls and {cost.templated} lines rendered from templates this session.{cost.perSimDay !== undefined ? ` About ${usd(cost.perSimDay)} per sim day.` : ""}
+        </p>
+      </div>
+      <table className="cost-table">
+        <thead>
+          <tr><th>Faculty</th><th>Calls</th><th>Templated</th><th>Dollars</th></tr>
+        </thead>
+        <tbody>
+          {rows.map(([f, b]) => (
+            <tr key={f}><td>{f}</td><td className="n">{b.calls}</td><td className="n">{b.templated || ""}</td><td className="n">{usd(b.usd)}</td></tr>
+          ))}
+        </tbody>
+      </table>
+      <table className="cost-table">
+        <thead>
+          <tr><th>Model</th><th>Calls</th><th>Dollars</th></tr>
+        </thead>
+        <tbody>
+          {Object.entries(cost.byModel).map(([m, b]) => (
+            <tr key={m}><td>{m}</td><td className="n">{b.calls}</td><td className="n">{usd(b.usd)}</td></tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

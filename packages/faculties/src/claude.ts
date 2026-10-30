@@ -5,17 +5,30 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import * as z from "zod/v4";
 import type { Faculties, FacultyName, PerceiveResponse, StableIdentity } from "@psyche/engine";
+import { defaultModel } from "./pricing.js";
 
 type Effort = "low" | "medium" | "high";
 
 export interface ClaudeFacultiesConfig {
   client?: Anthropic;
-  /** Model per faculty. Defaults to claude-opus-5-5 for every faculty; override with PSYCHE_MODEL_<FACULTY>. */
+  /** Model per faculty. Defaults to the tiers in pricing.ts (Haiku for most); override with PSYCHE_MODEL_<FACULTY>. */
   models?: Partial<Record<FacultyName, string>>;
   effort?: Partial<Record<FacultyName, Effort>>;
+  /** Called with the token usage of every request, for the cost meter. */
+  onUsage?: (u: CallUsage) => void;
 }
 
-const DEFAULT_MODEL = "claude-opus-5-5";
+export interface CallUsage {
+  faculty: FacultyName;
+  model: string;
+  input: number;
+  cacheRead: number;
+  cacheWrite: number;
+  output: number;
+}
+
+/** Calls one faculty on a given model and returns its parsed response. */
+export type FacultyCaller = <F extends FacultyName>(faculty: F, req: Parameters<Faculties[F]>[0], model?: string) => ReturnType<Faculties[F]>;
 const DEFAULT_EFFORT: Record<FacultyName, Effort> = {
   perceive: "low",
   speak: "low",
@@ -130,17 +143,29 @@ const DreamSchema = z.object({
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 const undef = <T>(x: T | null): T | undefined => (x === null ? undefined : x);
 
-export function createClaudeFaculties(config: ClaudeFacultiesConfig = {}): Faculties {
+/** The model a faculty uses unless the caller picks another: config, then PSYCHE_MODEL_<FACULTY>, then the tier default. */
+export function configuredModel(faculty: FacultyName, models?: Partial<Record<FacultyName, string>>): string {
+  return models?.[faculty] ?? process.env[`PSYCHE_MODEL_${faculty.toUpperCase()}`] ?? defaultModel(faculty);
+}
+
+/** Rough size of what a faculty call sends as instructions, for estimating cost without calling. */
+export function promptChars(faculty: FacultyName, identity?: StableIdentity): number {
+  return PROMPTS[faculty].length + (identity ? identity.name.length + identity.summary.length + identity.voice.length + 20 : 0);
+}
+
+export function createClaudeCaller(config: ClaudeFacultiesConfig = {}): FacultyCaller {
   const client = config.client ?? new Anthropic();
-  const modelFor = (f: FacultyName) => config.models?.[f] ?? process.env[`PSYCHE_MODEL_${f.toUpperCase()}`] ?? DEFAULT_MODEL;
   const effortFor = (f: FacultyName) => config.effort?.[f] ?? DEFAULT_EFFORT[f];
+  let current = "";
 
   async function call<S extends z.ZodType>(faculty: FacultyName, schema: S, payload: unknown, identity?: StableIdentity): Promise<z.infer<S>> {
+    // Read before the first await: concurrent calls each keep the model they were routed to.
+    const model = current;
     const system: Anthropic.Beta.BetaTextBlockParam[] = [{ type: "text", text: PROMPTS[faculty] }];
     if (identity) system.push({ type: "text", text: `You are ${identity.name}. ${identity.summary}\nVoice: ${identity.voice}` });
     system[system.length - 1]!.cache_control = { type: "ephemeral" };
     const res = await client.beta.messages.create({
-      model: modelFor(faculty),
+      model,
       max_tokens: faculty === "deliberate" || faculty === "dream" ? 8000 : 4000,
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
@@ -148,12 +173,20 @@ export function createClaudeFaculties(config: ClaudeFacultiesConfig = {}): Facul
       output_config: { effort: effortFor(faculty), format: zodOutputFormat(schema) },
       messages: [{ role: "user", content: JSON.stringify(payload, null, 1) }],
     });
+    config.onUsage?.({
+      faculty,
+      model,
+      input: res.usage.input_tokens,
+      cacheRead: res.usage.cache_read_input_tokens ?? 0,
+      cacheWrite: res.usage.cache_creation_input_tokens ?? 0,
+      output: res.usage.output_tokens,
+    });
     if (res.stop_reason === "refusal") throw new FacultyRefusal(`${faculty} was declined: ${res.stop_details?.explanation ?? "no reason given"}`);
     const text = res.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
     return schema.parse(JSON.parse(text));
   }
 
-  return {
+  const faculties: Faculties = {
     async perceive(req) {
       const r = await call("perceive", PerceiveSchema, req);
       const out: PerceiveResponse = {
@@ -177,7 +210,8 @@ export function createClaudeFaculties(config: ClaudeFacultiesConfig = {}): Facul
       return call("deliberate", DeliberateSchema, rest, self);
     },
     async speak(req) {
-      const { self, ...rest } = req;
+      // Salience is for routing; the model does not need it.
+      const { self, salience: _salience, ...rest } = req;
       return call("speak", SpeakSchema, rest, self);
     },
     async reconstruct(req) {
@@ -195,4 +229,18 @@ export function createClaudeFaculties(config: ClaudeFacultiesConfig = {}): Facul
       return { ...r, blueprint: { ...r.blueprint, roof: { ...r.blueprint.roof, overhang: r.blueprint.roof.overhang > 0 ? 1 : 0 } } };
     },
   };
+
+  return ((faculty: FacultyName, req: unknown, m?: string) => {
+    current = m ?? configuredModel(faculty, config.models);
+    return (faculties[faculty] as (r: unknown) => Promise<unknown>)(req);
+  }) as FacultyCaller;
+}
+
+export function createClaudeFaculties(config: ClaudeFacultiesConfig = {}): Faculties {
+  const caller = createClaudeCaller(config);
+  const out = {} as Record<FacultyName, (req: unknown) => Promise<unknown>>;
+  for (const f of ["perceive", "deliberate", "speak", "reconstruct", "dream", "architect"] as FacultyName[]) {
+    out[f] = (req) => (caller as (f: FacultyName, r: unknown) => Promise<unknown>)(f, req);
+  }
+  return out as unknown as Faculties;
 }
