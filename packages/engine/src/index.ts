@@ -26,6 +26,7 @@ export {
   type Rumor,
   type RumorHop,
   type FeedItem,
+  type Why,
   type FeedLine,
   type WorldEvent,
   type WorldTrace,
@@ -100,3 +101,6 @@ export { ageOf, isChild, yearOf, schemaLineage, STORE_NORM, CHILDHOOD, type Life
 export { counterfactual, type Counterfactual, type CounterfactualEdit, type ChoiceDiff } from "./world/counterfactual.js";
 export { RegionSession, compareMyths, regionView, carryLineage, type RegionState, type RegionOptions, type RegionView, type Town, type Trade, type ChronicleEntry, type MythComparison } from "./world/region.js";
 export { rootOf, foundingVersion, type Law, type Election, type Civic } from "./world/civic.js";
+export { dematerialize, materialize, aggAdvance, aggSeason, compactMinds, drift, implant, tellFounding } from "./world/aggregate.js";
+export { CRAFTS, craft, craftBonus, craftLineage, knows, townCrafts, knowledgeOf, type Craft, type Know, type Knowledge, type KnowledgeEvent } from "./world/knowledge.js";
+export { digest, timeline, type Timeline } from "./world/digest.js";

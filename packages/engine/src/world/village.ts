@@ -20,6 +20,7 @@ import { check, describe, PACE, type Blueprint } from "../founders/blueprint.js"
 import { createCast, WORLD_START } from "./cast.js";
 import { considerLaw, elect, enforceLaws, foundingDay, type Civic, type Election, type Law } from "./civic.js";
 import { ageOf, bedtime, hearStory, initLife, isChild, yearOf, lifeTurn, normHeld, sanction, settleNorms, storeNorm, type Life, type Norm } from "./life.js";
+import { carryKnowledge, craftBonus, knowledgeTurn, seedKnowledge, type Knowledge } from "./knowledge.js";
 import { CROSSING, createSettlers, crossingMemory, other } from "./people.js";
 import type { Place, PlaceId, RoutineEntry } from "./places.js";
 import { claimFromEpisode, eventPercept, feed, hop, isNight, personName, record, thirdPerson, type AgentState, type Sink, type WorldState } from "./world.js";
@@ -103,17 +104,21 @@ export interface VillageState {
   town?: string;
   /** Ids and names in use anywhere in the region, so a birth in one town never takes another's. */
   reserved?: { ids: string[]; names: string[] };
+  /** Crafts people know, who taught whom, and what has been lost (absent before C4). */
+  knowledge?: Knowledge;
+  /** Set while the town runs on the aggregate tier: nobody is watching, so only rules run. */
+  aggregate?: { since: number };
 }
 
 export type VillageEvent = { kind: "pledge" } | { kind: "blight" } | { kind: "gale" };
 
 const DAY = 1440;
 const SHARE = 3;
-const RATION = 1;
-const SPOIL = 0.06;
+export const RATION = 1;
+export const SPOIL = 0.06;
 
 /** What each trade makes per working hour, before weather, season and tiredness. */
-const JOBS: Record<string, { place: PlaceId; makes: "food" | Resource | "build" | "cook" | "keep"; rate: number }> = {
+export const JOBS: Record<string, { place: PlaceId; makes: "food" | Resource | "build" | "cook" | "keep"; rate: number }> = {
   fisher: { place: "sea", makes: "food", rate: 0.9 },
   farmer: { place: "fields", makes: "food", rate: 0.55 },
   forager: { place: "woods", makes: "food", rate: 0.45 },
@@ -125,13 +130,13 @@ const JOBS: Record<string, { place: PlaceId; makes: "food" | Resource | "build" 
   keeper: { place: "store", makes: "keep", rate: 0 },
 };
 
-const SEASON_YIELD: Record<Season, Partial<Record<string, number>>> = {
+export const SEASON_YIELD: Record<Season, Partial<Record<string, number>>> = {
   summer: { farmer: 1, forager: 1, fisher: 1 },
   autumn: { farmer: 1.4, forager: 1.2, fisher: 0.9 },
   winter: { farmer: 0.1, forager: 0.35, fisher: 0.6 },
   spring: { farmer: 0.5, forager: 0.8, fisher: 1 },
 };
-const GALE_CHANCE: Record<Season, number> = { summer: 0.06, autumn: 0.2, winter: 0.3, spring: 0.12 };
+export const GALE_CHANCE: Record<Season, number> = { summer: 0.06, autumn: 0.2, winter: 0.3, spring: 0.12 };
 
 export const VILLAGE_PLACES: Record<PlaceId, Place> = {
   sea: { id: "sea", name: "the bay", x: 12, y: 12, social: false, outdoors: true, topics: ["sea", "catch"] },
@@ -232,6 +237,7 @@ export function createVillage(seed = 11, ablations: Partial<Ablations> = {}, set
   for (const s of settlers) add(s.mind, s.role, s.home, s.routine, s.wants);
   for (const id of world.order) world.agents[id]!.place = world.agents[id]!.home;
   initLife(world);
+  seedKnowledge(world);
   return world;
 }
 
@@ -290,6 +296,7 @@ export function foundVillage(o: {
       norms: structuredClone(o.from.norms),
       founding: o.founding,
       town: o.town,
+      knowledge: carryKnowledge(o.from.knowledge, o.order),
     },
   };
   for (const id of world.order) {
@@ -372,6 +379,7 @@ async function newDay(world: WorldState, faculties: Faculties, sink: Sink): Prom
     v.blight = false;
     feed(world, sink, { kind: "event", agents: [], title: `${cap(v.season)} comes to ${world.name}`, text: SEASON_TEXT[v.season] });
     await lifeTurn(world, faculties, sink);
+    knowledgeTurn(world, sink);
     if (v.season === "spring") elect(world, sink);
   }
   const r = nextRandom(world);
@@ -385,7 +393,8 @@ async function newDay(world: WorldState, faculties: Faculties, sink: Sink): Prom
     }
   }
   // Food spoils in tents. What is in the store keeps.
-  for (const hh of Object.values(v.households)) hh.food = Number((hh.food * (1 - SPOIL)).toFixed(2));
+  const spoil = SPOIL * (1 - craftBonus(world, "keep"));
+  for (const hh of Object.values(v.households)) hh.food = Number((hh.food * (1 - spoil)).toFixed(2));
 }
 
 const SEASON_TEXT: Record<Season, string> = {
@@ -398,6 +407,7 @@ const SEASON_TEXT: Record<Season, string> = {
 function work(world: WorldState, dt: number, sink: Sink): void {
   const v = world.village!;
   const hours = dt / 60;
+  const skill: Record<string, number> = { fisher: 1 + craftBonus(world, "fish"), farmer: 1 + craftBonus(world, "farm") };
   for (const id of world.order) {
     const a = world.agents[id]!;
     const job = JOBS[a.role];
@@ -412,7 +422,7 @@ function work(world: WorldState, dt: number, sink: Sink): void {
       if (a.role === "farmer" && v.blight) y *= 0.4;
       if (a.place === "woods" && a.role !== "forager") y = (SEASON_YIELD[v.season].forager ?? 1) * 0.8;
       if (v.weather === "rain") y *= 0.8;
-      if (hh) hh.food = Number((hh.food + JOBS[a.role]!.rate * y * pace).toFixed(2));
+      if (hh) hh.food = Number((hh.food + JOBS[a.role]!.rate * y * (skill[a.role] ?? 1) * pace).toFixed(2));
     } else if (job.makes === "timber" || job.makes === "stone" || job.makes === "reeds") {
       v.stock[job.makes] = Number((v.stock[job.makes] + job.rate * pace * (v.weather === "rain" ? 0.8 : 1)).toFixed(2));
     } else if (job.makes === "build") {
@@ -655,7 +665,7 @@ const PLEDGE_OPTIONS = (share: number, norm = 0): ActionOption[] => [
   { id: "token", label: "Put in a little", verb: "put in a token amount", description: "Pledge a little, enough to be seen to give, and keep the rest for the household.", prosocial: 0.15 - 0.3 * norm, assertive: 0, avoidant: 0.4, disclosure: 0 },
   { id: "hold", label: "Hold back", verb: "hold back from the store", description: `Keep the household's food for the household. Let others feed the builders.${norm > 0.3 ? " Everyone here expects you to put in." : ""}`, prosocial: -0.6 - 0.5 * norm, assertive: 0.5, avoidant: 0.2, disclosure: 0 },
 ];
-const RATE: Record<Pledge["option"], number> = { commit: 0.6, token: 0.15, hold: 0 };
+export const RATE: Record<Pledge["option"], number> = { commit: 0.6, token: 0.15, hold: 0 };
 
 /** Wren (or whoever is most trusted) asks the fire for a common store. Every adult answers. */
 async function pledge(world: WorldState, faculties: Faculties, sink: Sink): Promise<void> {
@@ -984,7 +994,7 @@ export function villageView(world: WorldState): VillageView | undefined {
       ...Object.entries(v.life).filter(([, l]) => l.died !== undefined).sort((a, b) => b[1].died! - a[1].died!).slice(0, 40).map(([id]) => ({ id, alive: false })),
     ].map(({ id, alive }) => {
       const l = v.life[id]!;
-      return { id, name: world.minds[id]!.name, age: Math.floor(ageOf(world, id)), generation: l.generation, parents: l.parents, partner: l.partner, alive, died: l.died, cause: l.cause, arrived: l.arrived };
+      return { id, name: personName(world, id), age: Math.floor(ageOf(world, id)), generation: l.generation, parents: l.parents, partner: l.partner, alive, died: l.died, cause: l.cause, arrived: l.arrived };
     }),
     norms: v.norms.map((n) => ({ text: n.text, sanctions: n.sanctions, rounds: n.rounds.length, established: n.established, strength: Number(n.strength.toFixed(2)) })),
     leader: v.civic?.leader,

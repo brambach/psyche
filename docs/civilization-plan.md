@@ -2,7 +2,7 @@
 
 A plan for growing Psyche from five minds on Kettle Island and one builder on Tern Holm into a self-running civilization of hundreds to thousands of minds, with an analysis layer that lets you trace why anyone does anything, and a cost design that fits the whole journey inside about $1000 of Anthropic API credit.
 
-Status: C0 to C3 built on the mock (see each phase). Written 2026-10-30.
+Status: C0 to C4 built on the mock (see each phase). Written 2026-10-30.
 
 ## Where we are
 
@@ -247,6 +247,8 @@ Founders F1 to F2 and the island's next steps, together.
 - Headless server mode: the world runs for days or weeks on its own with a daily cap, snapshots, and a morning digest of what happened.
 - Time-lapse view of settlements growing over centuries.
 - **Done when:** a world has run for a sim century on its own and the analysis layer can explain a war, a schism or a migration from its first causes.
+
+**Status (2026-10-30):** built on the mock. The L3 tier is per town, not per region: an unwatched town runs a season at a time on rules with its people kept as trimmed minds, so it can be materialized exactly (the same people, beliefs, crafts and story lineages), and pairing, births, deaths, pledges, laws, bedtime stories and the founding night all still run there, by rule. Crafts are taught (mostly parent to child), carried by traders, worked out now and then, and lost with the last knower. The chronicle stores causes at the time of each founding, quarrel, hunger and loss. `npm run century` runs a century headless and writes a decade-by-decade digest; the Time-lapse tab plays it back. The done-when holds for migrations and quarrels: seed 11 reaches about 1,800 people in 16 towns in 100 years, in about 35 seconds, and every founding in the chronicle names the person who left, whom they liked least and the memory behind it, and the inherited fear that coloured it back to a first-hand memory. Not done: writing and records that can be misread, and the server running for days with a morning digest (the century script and the server's "Let years pass" cover it for now). There are no wars, only trade embargoes, so a war cannot yet be explained.
 
 ### Budget across phases
 

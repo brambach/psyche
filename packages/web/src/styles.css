@@ -437,3 +437,22 @@ a.btn { color: inherit; text-decoration: none; display: inline-block; }
 .myth { padding: 8px 0; border-top: 1px solid var(--line); }
 .myth p { margin: 0 0 4px; }
 .myth.dominant p:first-child { font-size: 15px; }
+
+/* C4: why, time-lapse */
+.why-list { margin: 4px 0 6px 0; }
+.why-list summary { cursor: pointer; font: 600 11px var(--mono); color: var(--accent); text-transform: uppercase; letter-spacing: 0.06em; }
+.why-list ol { margin: 4px 0 0 0; padding-left: 20px; color: var(--muted); font-size: 13px; }
+.century { display: grid; gap: 12px; }
+.line-chart { position: relative; }
+.line-chart svg { width: 100%; height: 180px; display: block; cursor: crosshair; }
+.town-multiples .line-chart svg { height: 60px; }
+.line-chart .series { stroke: var(--accent); stroke-linejoin: round; stroke-linecap: round; }
+.line-chart .grid { stroke: var(--line); stroke-width: 1; }
+.line-chart .cursor { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.line-chart .axis-max { position: absolute; top: 2px; left: 4px; color: var(--muted); }
+.line-chart .tip { position: absolute; top: 4px; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; white-space: nowrap; pointer-events: none; color: var(--ink); }
+.town-multiples { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.town-multiples h4 { margin: 0 0 4px; font-size: 13px; display: flex; justify-content: space-between; }
+.kind.k-craft { background: var(--accent-soft); color: var(--accent); }
+.kind.k-lost, .kind.k-hunger, .kind.k-quarrel { background: var(--feel-soft); color: var(--feel); }
+.digest { white-space: pre-wrap; font: 12px/1.5 var(--mono); max-height: 480px; overflow: auto; background: var(--sunk); padding: 10px; border-radius: 8px; }

@@ -178,6 +178,13 @@ export async function enforceLaws(world: WorldState, answers: Pledge[], facultie
 
 // ---------------------------------------------------------------- the founding story
 
+/** Every memory someone else's memory says it was told from, as `teller/episode`. */
+export function toldFrom(world: WorldState): Set<string> {
+  const out = new Set<string>();
+  for (const m of Object.values(world.minds)) for (const e of m.episodes) if (e.source.kind === "told" && e.source.from && e.source.ref) out.add(`${e.source.from}/${e.source.ref}`);
+  return out;
+}
+
 /** Follow told-by pointers back to the first-hand memory a story began as. */
 export function rootOf(minds: Record<AgentId, MindState>, agent: AgentId, ep: Episode): { agent: AgentId; episode: Episode; hops: number } {
   let at = { agent, episode: ep };
@@ -232,6 +239,7 @@ export async function foundingDay(world: WorldState, founding: string, faculties
   if (c.foundingDays.length > 60) c.foundingDays.splice(0, c.foundingDays.length - 60);
   const evId = nextId(world, "ev_founding");
   const listeners = world.order.filter((x) => x !== teller.id && world.minds[x]!.episodes.every((e) => e.id !== founding));
+  const toldOn = toldFrom(world);
   for (const id of world.order) {
     const a = world.agents[id]!;
     a.place = "tavern";
@@ -239,8 +247,9 @@ export async function foundingDay(world: WorldState, founding: string, faculties
   }
   for (const id of listeners) {
     const m = world.minds[id]!;
-    // One version of the founding at a time: the new telling replaces the old.
-    m.episodes = m.episodes.filter((e) => !isVersionOf(world.minds, id, e, founding));
+    // One version of the founding at a time: the new telling replaces the old (unless someone's own
+    // version was told from it, so the chain back stays whole).
+    m.episodes = m.episodes.filter((e) => toldOn.has(`${id}/${e.id}`) || !isVersionOf(world.minds, id, e, founding));
     const p: Percept = {
       id: nextId(m, "pc"),
       tick: m.tick,

@@ -7,9 +7,9 @@ import { Cast, Feed, Relations, Rumors } from "./Panels";
 import { agentColors, clock, setPlaces } from "./util";
 import { Divergence, Village } from "./Village";
 import { Atlas } from "./Generations";
-import { Myths, Towns } from "./Region";
+import { Century, Myths, Towns } from "./Region";
 
-type Tab = "feed" | "village" | "towns" | "myths" | "atlas" | "rumors" | "memories" | "relations" | "mind";
+type Tab = "feed" | "village" | "towns" | "myths" | "century" | "atlas" | "rumors" | "memories" | "relations" | "mind";
 
 const SPEEDS = [
   { label: "Slow", value: 5 },
@@ -221,6 +221,7 @@ export function App() {
             <button role="tab" aria-selected={tab === "feed"} className={tab === "feed" ? "on" : ""} onClick={() => setTab("feed")}>What's happening</button>
             {view.village && <button role="tab" aria-selected={tab === "village"} className={tab === "village" ? "on" : ""} onClick={() => setTab("village")}>The village</button>}
             {view.region && <button role="tab" aria-selected={tab === "towns"} className={tab === "towns" ? "on" : ""} onClick={() => setTab("towns")}>Towns and chronicle</button>}
+            {view.region && <button role="tab" aria-selected={tab === "century"} className={tab === "century" ? "on" : ""} onClick={() => setTab("century")}>Time-lapse</button>}
             {view.region && <button role="tab" aria-selected={tab === "myths"} className={tab === "myths" ? "on" : ""} onClick={() => setTab("myths")}>How each town tells it</button>}
             {view.village && <button role="tab" aria-selected={tab === "atlas"} className={tab === "atlas" ? "on" : ""} onClick={() => setTab("atlas")}>Fears across generations</button>}
             <button role="tab" aria-selected={tab === "rumors"} className={tab === "rumors" ? "on" : ""} onClick={() => setTab("rumors")}>Stories going round{view.rumors.length ? ` (${view.rumors.length})` : ""}</button>
@@ -236,6 +237,7 @@ export function App() {
           {tab === "village" && view.village && <Village v={view.village} names={names} onOpen={open} />}
           {tab === "towns" && view.region && <Towns r={view.region} current={view.town} onSwitch={(t) => { setAgent(undefined); void act(() => api.town(t)); }} />}
           {tab === "myths" && view.region && <Myths tick={view.tick} />}
+          {tab === "century" && view.region && <Century tick={view.tick} />}
           {tab === "atlas" && view.village && <Atlas tick={view.tick} names={names} onOpen={open} />}
           {tab === "memories" && <Divergence names={names} tick={view.tick} onOpen={open} />}
           {tab === "rumors" && <Rumors rumors={view.rumors} names={names} onOpen={open} />}

@@ -105,6 +105,16 @@ export interface FeedItem {
   lines?: FeedLine[];
   refs?: { agent: AgentId; trace: string }[];
   rumor?: string;
+  /** Marks an item the region's chronicle should keep, with what led to it. */
+  chronicle?: { kind: string; why?: Why[] };
+}
+
+/** One link in the explanation of an event: what led to it, with the person and memory behind it when known. */
+export interface Why {
+  text: string;
+  agent?: AgentId;
+  episode?: string;
+  town?: string;
 }
 
 export interface WorldTrace {

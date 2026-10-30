@@ -1,4 +1,4 @@
-import type { Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
+import type { Timeline, Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
 
 export interface AgentSummary {
   id: string;
@@ -135,6 +135,8 @@ export const api = {
   divergence: () => call<{ events: DivergenceEntry[] }>("/api/divergence"),
   town: (town: string) => call<WorldView>("/api/town", { town }),
   myths: () => call<MythComparison>("/api/myths"),
+  timeline: () => call<Timeline>("/api/timeline"),
+  digest: (from?: number) => call<{ from: number; to: number; text: string }>(`/api/digest${from ? `?from=${from}` : ""}`),
   atlas: () => call<{ beliefs: AtlasEntry[] }>("/api/atlas"),
   years: (years: number) => call<WorldView>("/api/years", { years }),
   counterfactual: (edit: CounterfactualEdit & { days?: number }) => call<Counterfactual>("/api/counterfactual", edit),

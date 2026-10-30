@@ -20,6 +20,8 @@ import {
   counterfactual,
   compareMyths,
   regionView,
+  timeline,
+  digest,
   RegionSession,
   type RegionState,
   type FeedItem,
@@ -92,6 +94,11 @@ function makeWorld() {
 }
 // A village runs for years: keep fewer snapshots and let the oldest traces go.
 const sessionOpts = (): WorldSessionOptions => (scenario === "island" ? {} : { keepRecent: 24, keepDays: 14, maxTraces: scenario === "region" ? 8_000 : 15_000 });
+/**
+ * Towns run live (hour by hour, on Claude) only while watched: by default one at a time, the rest on
+ * the aggregate tier, on rules. PSYCHE_LIVE_TOWNS raises it.
+ */
+const regionOpts = () => ({ session: sessionOpts(), live: Number(process.env.PSYCHE_LIVE_TOWNS) || 1, cheap: createMockFaculties() });
 /** In a region, the towns; `session` is the one being watched. */
 let region: RegionSession | undefined;
 let town = "hollow";
@@ -99,7 +106,7 @@ let session: WorldSession;
 function start() {
   if (scenario === "region") {
     makeWorld();
-    region = RegionSession.create(seed, faculties, { session: sessionOpts() });
+    region = RegionSession.create(seed, faculties, regionOpts());
     town = "hollow";
     session = region.towns[town]!;
   } else {
@@ -146,7 +153,7 @@ function save(force = false) {
   mkdirSync(DATA_DIR, { recursive: true });
   if (region) {
     const towns = Object.entries(region.towns);
-    const saved: Saved = { scenario, seed, ablations, inputs: [], log: [], region: { state: region.region, worlds: Object.fromEntries(towns.map(([id, s]) => [id, s.world])), feeds: Object.fromEntries(towns.map(([id, s]) => [id, s.feed.slice(-FEED_SHOWN)])) } };
+    const saved: Saved = { scenario, seed, ablations, inputs: [], log: [], region: { state: region.region, worlds: region.worlds(), feeds: Object.fromEntries(towns.map(([id, s]) => [id, s.feed.slice(-FEED_SHOWN)])) } };
     writeFileSync(SAVE, JSON.stringify(saved));
     return;
   }
@@ -162,13 +169,13 @@ async function restore() {
   ablations = saved.ablations;
   const world = makeWorld();
   if (saved.region) {
-    region = new RegionSession(saved.region.state, saved.region.worlds, faculties, { session: sessionOpts() });
+    region = new RegionSession(saved.region.state, saved.region.worlds, faculties, regionOpts());
     for (const [id, s] of Object.entries(region.towns)) {
       s.feed = saved.region.feeds[id] ?? [];
       region.region.last.feed[id] = s.feed.length;
     }
-    town = "hollow";
-    session = region.towns[town]!;
+    town = Object.keys(region.towns)[0] ?? "hollow";
+    session = region.focus(town);
     console.log(`Restored a region of ${region.region.towns.length} towns.`);
     return;
   }
@@ -369,7 +376,7 @@ function view() {
     }),
     relations: w.order.flatMap((from) =>
       w.order
-        .filter((to) => to !== from)
+        .filter((to) => to !== from && w.minds[from]!.others[to])
         .map((to) => {
           const o = w.minds[from]!.others[to]!;
           return { from, to, liking: o.liking, benevolence: o.trust.benevolence, integrity: o.trust.integrity, believedRegard: o.believedRegard };
@@ -510,6 +517,13 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     if (p === "/api/divergence") return send(res, 200, { events: divergence(session.world) });
     if (p === "/api/myths") return region ? send(res, 200, compareMyths(region)) : send(res, 404, { error: "Only a region has more than one town." });
     if (p === "/api/atlas") return send(res, 200, { beliefs: atlas(session.world) });
+    if (p === "/api/timeline") return region ? send(res, 200, timeline(region)) : send(res, 404, { error: "Only a region has a timeline." });
+    if (p === "/api/digest") {
+      if (!region) return send(res, 404, { error: "Only a region has a digest." });
+      const year = regionView(region).year;
+      const from = Number(url.searchParams.get("from")) || Math.max(1, year - 9);
+      return send(res, 200, { from, to: year, text: digest(region, from, year) });
+    }
     if (p === "/api/account") {
       const v = accountView(url.searchParams.get("agent") ?? "", url.searchParams.get("trace") ?? "");
       return v ? send(res, 200, v) : send(res, 404, { error: "No decision at that moment." });
@@ -597,9 +611,13 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     }
     if (p === "/api/town") {
       const b = await body<{ town?: string }>(req);
-      if (!region || !b.town || !region.towns[b.town]) return send(res, 404, { error: "No such town." });
-      town = b.town;
-      session = region.towns[town]!;
+      if (!region || !b.town || !region.region.towns.some((t) => t.id === b.town)) return send(res, 404, { error: "No such town." });
+      if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
+      // Looking at a town brings it back to the hourly loop; the one you left drops to the aggregate tier.
+      await exclusive(async () => {
+        town = b.town!;
+        session = region!.focus(town);
+      });
       return send(res, 200, view());
     }
     if (p === "/api/focus") {

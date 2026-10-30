@@ -21,6 +21,7 @@ import { gaussian, nextId, nextRandom } from "../rng.js";
 import type { Trace } from "../trace.js";
 import { TRAIT_NAMES, type AgentId, type Episode, type MindState, type Schema, type Tick } from "../types.js";
 import { baseMind } from "./cast.js";
+import { craftBonus, learn, CRAFTS } from "./knowledge.js";
 import { createSettlers, FIRST_NAMES, other, routineFor, uniqueId } from "./people.js";
 import type { RoutineEntry } from "./places.js";
 import { eventPercept, feed, personName, record, thirdPerson, type Sink, type WorldState } from "./world.js";
@@ -85,7 +86,8 @@ export async function lifeTurn(world: WorldState, faculties: Faculties, sink: Si
     const m = world.minds[id]!;
     // Chances per year, taken a season at a time.
     const yearly = age < 3 ? 0.04 : age < 50 ? 0.008 : 0.015 + (age - 50) ** 2 * 0.0006;
-    let p = yearly / 4;
+    // Herb lore, where someone still knows it, saves some from fevers.
+    let p = (yearly / 4) * (age < 50 ? 1 - craftBonus(world, "health") : 1);
     if (m.needs.energy < 0.15) p += 0.06;
     if (nextRandom(world) < p) await die(world, id, age >= 50 ? "old age" : m.needs.energy < 0.15 ? "hunger and cold" : "a fever", faculties, sink);
   }
@@ -113,7 +115,9 @@ export async function lifeTurn(world: WorldState, faculties: Faculties, sink: Si
     const hh = householdOf(v, id);
     if (!hh) continue;
     const kids = hh.members.filter((m) => isChild(world, m)).length;
-    if (kids >= 4 || hh.food < hh.members.length * 1.2 || world.order.length >= POP_CAP) continue;
+    // Food enough: what the household has, and its share of the common store.
+    const share = (v.store.food / Math.max(1, world.order.length)) * hh.members.length;
+    if (kids >= 4 || hh.food + share < hh.members.length * 1.2 || world.order.length >= POP_CAP) continue;
     if (hh.members.some((m) => ageOf(world, m) < 1.5)) continue;
     if (nextRandom(world) < 0.15) await birth(world, [id, l.partner], faculties, sink);
   }
@@ -164,7 +168,7 @@ async function pair(world: WorldState, a: AgentId, b: AgentId, faculties: Facult
   const refs: { agent: AgentId; trace: string }[] = [];
   for (const [x, y] of [[a, b], [b, a]] as const) {
     const m = world.minds[x]!;
-    const o = m.others[y]!;
+    const o = (m.others[y] ??= other(y, personName(world, y), 0.5, 0.5, 0));
     o.liking = clamp(o.liking + 0.15);
     o.bond = clamp(o.bond + 0.4);
     const tr = await runPercept(m, eventPercept(m, y, "other", 0.7, 0.75, ["love", "family", "home", y], `${personName(world, y)} and I made a life together.`, `${personName(world, x)} and ${personName(world, y)} set up home together.`, nextId(world, "ev_pair"), [y]), faculties);
@@ -348,6 +352,8 @@ async function newcomers(world: WorldState, faculties: Faculties, sink: Sink): P
     world.agents[s.mind.id] = { id: s.mind.id, name: s.mind.name, role: s.role, place: "harbour", activity: "just off the boat", home, routine: routineFor(s.role, home), wants: s.wants, lastTalk: {}, told: [] };
     const age = Number(/, (\d+),/.exec(s.mind.identity.summary)?.[1] ?? 30);
     v.life[s.mind.id] = { born: world.tick - age * yearTicks(v), parents: [], generation: 0, arrived: world.tick };
+    // Some bring a craft from where they came from.
+    if (nextRandom(world) < 0.2) learn(world, s.mind.id, { craft: CRAFTS[Math.floor(nextRandom(world) * CRAFTS.length)]!.id, tick: world.tick, how: "brought", town: /, from ([^.]+)\./.exec(s.mind.identity.summary)?.[1] });
   }
   for (const id of world.order) {
     const m = world.minds[id]!;

@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
-import type { MythComparison, RegionView } from "@psyche/engine";
+import { useEffect, useRef, useState } from "react";
+import type { MythComparison, RegionView, Timeline } from "@psyche/engine";
 import { api } from "./api";
 
-const KIND: Record<string, string> = { founding: "founding", leader: "leader", law: "law", death: "death", trade: "trade", quarrel: "quarrel", peace: "peace", hunger: "hunger" };
+const KIND: Record<string, string> = { founding: "founding", leader: "leader", law: "law", death: "death", trade: "trade", quarrel: "quarrel", peace: "peace", hunger: "hunger", craft: "craft", lost: "lost" };
 
 /** The towns side by side: how many, who leads, how they regard each other, and the chronicle. */
 export function Towns({ r, current, onSwitch }: { r: RegionView; current?: string; onSwitch: (town: string) => void }) {
@@ -15,26 +15,27 @@ export function Towns({ r, current, onSwitch }: { r: RegionView; current?: strin
       <div className="town-cards">
         {r.towns.map((t) => (
           <button key={t.id} className={`pane town-card ${t.id === current ? "on" : ""}`} onClick={() => onSwitch(t.id)} aria-pressed={t.id === current}>
-            <h3>{t.name}</h3>
+            <h3>{t.name} <span className={`chip ${t.tier === "live" ? "live" : ""}`} title={t.tier === "live" ? "Running hour by hour" : "Nobody is watching: running a season at a time on rules. Open it to bring it back."}>{t.tier === "live" ? "live" : "on rules"}</span></h3>
             <span className="value">{t.people}</span>
             <span className="small">{t.children} children{t.leaderName ? `, led by ${t.leaderName}` : ""}</span>
             <Spark values={t.history.map((h) => h.people)} />
             <span className="small">{t.from ? `Founded from ${name(t.from)}` : "The first town"}. Store {t.store}. {t.laws ? `${t.laws} law${t.laws > 1 ? "s" : ""}.` : "No laws yet."}</span>
+            <span className="small">Knows {t.crafts.length ? t.crafts.join(", ") : "no crafts"}.{t.lost.length ? ` Lost ${t.lost.join(", ")}.` : ""}</span>
           </button>
         ))}
       </div>
-      {r.regard.length > 0 && (
+      {r.regard.some((x) => x.value !== 0) && (
         <div className="pane">
           <h3>How the towns regard each other</h3>
           <ul className="regard">
-            {r.regard.map((x) => (
+            {r.regard.filter((x) => x.value !== 0).sort((a, b) => a.value - b.value).map((x) => (
               <li key={`${x.from}>${x.to}`}>
                 <b>{name(x.from)}</b> toward <b>{name(x.to)}</b>
                 <span className={`tone ${x.value > 0.05 ? "good" : x.value < -0.05 ? "bad" : ""}`}>{x.value > 0 ? "+" : ""}{x.value.toFixed(2)}</span>
               </li>
             ))}
           </ul>
-          <p className="small">From what each town's adults believe about the other: a short-weighted trade becomes “folk from there will cheat you”, a peace gift softens it. Below -0.35, trade stops.</p>
+          <p className="small">From what each town's adults believe about the other: a short-weighted trade becomes “folk from there will cheat you”, a peace gift softens it. Below -0.35, trade stops. Towns with no feelings either way are left out.</p>
         </div>
       )}
       <div className="pane">
@@ -52,13 +53,26 @@ export function Towns({ r, current, onSwitch }: { r: RegionView; current?: strin
             <h4>Year {y}</h4>
             <ul>
               {shown.filter((c) => c.year === y).map((c, i) => (
-                <li key={i}><span className={`kind k-${c.kind}`}>{KIND[c.kind]}</span> {c.text}</li>
+                <li key={i}>
+                  <span className={`kind k-${c.kind}`}>{KIND[c.kind]}</span> {c.text}
+                  {c.why && c.why.length > 0 && <Why why={c.why} />}
+                </li>
               ))}
             </ul>
           </div>
         ))}
       </div>
     </div>
+  );
+}
+
+/** What led to an event, link by link. */
+export function Why({ why }: { why: NonNullable<RegionView["chronicle"][number]["why"]> }) {
+  return (
+    <details className="why-list">
+      <summary>Why?</summary>
+      <ol>{why.map((w, i) => <li key={i}>{w.text}</li>)}</ol>
+    </details>
   );
 }
 
@@ -121,6 +135,110 @@ export function Myths({ tick }: { tick: number }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The whole run at a glance: people in the region year by year, with each town as a small chart on
+ * the same scale. Play it as a time-lapse, or pick a year to read what happened then and why.
+ */
+export function Century({ tick }: { tick: number }) {
+  const [t, setT] = useState<Timeline>();
+  const [year, setYear] = useState<number>();
+  const [playing, setPlaying] = useState(false);
+  const [digest, setDigest] = useState<string>();
+  const day = Math.floor(tick / 1440);
+  useEffect(() => {
+    let live = true;
+    api.timeline().then((x) => live && setT(x), () => undefined);
+    return () => {
+      live = false;
+    };
+  }, [day]);
+  const last = t?.years.at(-1) ?? 1;
+  const timer = useRef<number>();
+  useEffect(() => {
+    if (!playing) return;
+    timer.current = window.setInterval(() => setYear((y) => {
+      const n = (y ?? 0) + 1;
+      if (n >= last) setPlaying(false);
+      return Math.min(n, last);
+    }), 350);
+    return () => window.clearInterval(timer.current);
+  }, [playing, last]);
+  if (!t) return <p className="empty">Gathering the years...</p>;
+  const at = year ?? last;
+  const total = t.years.map((_, i) => t.towns.reduce((s, x) => s + (x.people[i] ?? 0), 0));
+  const towns = t.years.map((_, i) => t.towns.filter((x) => x.people[i] !== null).length);
+  const max = Math.max(...total, 1);
+  const townMax = Math.max(...t.towns.flatMap((x) => x.people.map((p) => p ?? 0)), 1);
+  const events = t.events.filter((e) => e.year === at && e.kind !== "death" && e.kind !== "leader");
+  const name = (id?: string) => t.towns.find((x) => x.id === id)?.name ?? "";
+  return (
+    <div className="century">
+      <div className="pane">
+        <h3>
+          People in the region, year by year
+          <button className="btn" style={{ marginLeft: 12 }} onClick={() => { if (!playing && at >= last) setYear(1); setPlaying(!playing); }}>{playing ? "Pause" : "Play the years"}</button>
+        </h3>
+        <Line values={total} max={max} at={at} onPick={setYear} label={(i) => `Year ${i + 1}: ${total[i]} people in ${towns[i]} ${towns[i] === 1 ? "town" : "towns"}`} />
+        <p className="small">Year {at}: <b>{total[at - 1] ?? 0}</b> people in {towns[at - 1] ?? 0} {towns[at - 1] === 1 ? "town" : "towns"}. Towns nobody is watching run on rules, a season at a time, so a century costs nothing.</p>
+      </div>
+      <div className="pane">
+        <h3>Year {at}</h3>
+        {events.length === 0 && <p className="small">A quiet year: births, deaths, harvests.</p>}
+        <ul className="chron-year">
+          {events.map((e, i) => (
+            <li key={i}>
+              <span className={`kind k-${e.kind}`}>{KIND[e.kind] ?? e.kind}</span> <b>{name(e.town)}</b> {e.text}
+              {e.why && e.why.length > 0 && <Why why={e.why} />}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="town-multiples">
+        {t.towns.map((x) => (
+          <div className="pane" key={x.id}>
+            <h4>{x.name} <span className="muted small">{x.people[at - 1] ?? "not yet founded"}</span></h4>
+            <Line values={x.people.map((p) => p ?? 0)} max={townMax} at={at} onPick={setYear} small label={(i) => `${x.name}, year ${i + 1}: ${x.people[i] ?? "not founded"}`} />
+          </div>
+        ))}
+      </div>
+      <div className="pane">
+        <h3>
+          Digest
+          <button className="btn" style={{ marginLeft: 12 }} onClick={() => api.digest(Math.max(1, at - 9)).then((d) => setDigest(d.text), () => undefined)}>Write up the ten years to year {at}</button>
+        </h3>
+        {digest ? <pre className="digest">{digest}</pre> : <p className="small">A plain-text account of a decade: who lives where, what happened and why, how each town tells the crossing.</p>}
+      </div>
+    </div>
+  );
+}
+
+/** One series over the years, with a crosshair that follows the pointer and a marker on the picked year. */
+function Line({ values, max, at, onPick, label, small }: { values: number[]; max: number; at: number; onPick: (y: number) => void; label: (i: number) => string; small?: boolean }) {
+  const [hover, setHover] = useState<number>();
+  const W = 600;
+  const H = small ? 60 : 180;
+  const pad = small ? 4 : 24;
+  const x = (i: number) => (values.length < 2 ? 0 : (i / (values.length - 1)) * W);
+  const y = (v: number) => H - pad - (v / max) * (H - pad * 2);
+  const pts = values.map((v, i) => `${x(i)},${y(v)}`).join(" ");
+  const pick = (e: { clientX: number; currentTarget: SVGSVGElement }) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return Math.max(0, Math.min(values.length - 1, Math.round(((e.clientX - r.left) / r.width) * (values.length - 1))));
+  };
+  const show = hover ?? at - 1;
+  return (
+    <div className="line-chart">
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={label(values.length - 1)} onPointerMove={(e) => setHover(pick(e))} onPointerLeave={() => setHover(undefined)} onClick={(e) => onPick(pick(e) + 1)}>
+        {!small && [0.5, 1].map((f) => <line key={f} x1={0} x2={W} y1={y(max * f)} y2={y(max * f)} className="grid" vectorEffect="non-scaling-stroke" />)}
+        <polyline points={pts} fill="none" className="series" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+        <line x1={x(show)} x2={x(show)} y1={0} y2={H} className="cursor" vectorEffect="non-scaling-stroke" />
+      </svg>
+      {!small && <span className="axis-max small">{Math.round(max)} people</span>}
+      {hover !== undefined && <span className="tip small" style={{ left: `${(x(hover) / W) * 100}%` }}>{label(hover)}</span>}
     </div>
   );
 }
