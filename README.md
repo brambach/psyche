@@ -101,6 +101,19 @@ A region can now grow to thousands, because only the town you're looking at has 
 
 `npm run century -- 100` runs a century headless: the first two years live, the rest on rules, writing `digest.md` (a decade at a time), `timeline.json` and a save the server can open (`PSYCHE_DATA=out/century npm run dev`). With seed 11 it reaches about 1,800 people in 16 towns, in about 35 seconds, with no model calls.
 
+## Watching it in 3D
+
+Open **Watch in 3D** in the village or region scenario. The town is laid out on a block grid (`world/town3d.ts`): shore and jetty, fire circle, store, rows of home plots, quarry, pinewood and barley field. The land is built in the browser from the seed, and `/api/town3d` says only what changes. The 3D view reads the simulation and decides nothing.
+
+- Houses go up block by block in build order as builders work, with the rest of the design shown as a faint outline. Tents come down when a house is finished.
+- People walk between places. Fishers row out in boats, and people carry logs, stone or barley home. Woodcutters stand at the next pines to fall, and felled pines leave stumps.
+- Seasons show in the barley and the snow. Smoke rises from the fire and the chimneys, and rain falls in bad weather.
+- Speech bubbles show what people are saying, so you can watch gossip spread. Thought bubbles mark big moments.
+- Click anyone to open their mind or follow them. The moments listed under the view jump to the person each one happened to.
+- In a region, **The whole coast** shows every town small, with trade boats and founding boats. Click a town's name to fly down to it. It comes to life in full, and the town you left carries on by rules.
+
+`packages/web/src/replay.ts` draws a recorded century the same way from a timeline alone, for a standalone page.
+
 ## Founders (F0): one mind builds a house
 
 **Founders** is the first step toward an open-world sandbox where Psyche minds build their own town. One mind (any of the Kettle Island five) lands on **Tern Holm**, an empty voxel islet, with a storm due at dusk the next day. Nothing is scripted: the mind decides whether to start building, look around or wait; designs a house; fells pines, quarries stone and cuts reeds; and sets every block over sim hours. Open `http://localhost:5173/#/founders`, or run it in the terminal:
