@@ -32,10 +32,16 @@ function hash(n: number): number {
 }
 
 /** The shoreline's height at x (0 to 1 across), as a share of the canvas height. */
-function shore(x: number, seed: number): number {
+export function shore(x: number, seed: number): number {
   let y = 0.74;
   for (let k = 1; k <= 4; k++) y += (Math.sin(x * Math.PI * (k * 2 + 1) + hash(seed * 7 + k) * 6.28) * 0.05) / k;
   return y;
+}
+
+/** Where a town sits, as shares of the map's width and height (the 3D coast uses the same layout). */
+export function sitePoint(site: Site | undefined, seed: number): { x: number; y: number } {
+  const s = site ?? { along: 0.5, inland: 0.15 };
+  return { x: s.along, y: shore(s.along, seed) - 0.07 - s.inland * 0.6 };
 }
 
 /** Where a town sits on the canvas. */

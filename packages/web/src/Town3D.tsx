@@ -8,6 +8,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { compile, fellingOrder, MATERIALS, terrainOf, TOWN, type Placement, type Scene3D, type TownTerrain, type Tree } from "@psyche/engine";
 import { api } from "./api";
+import { Coast3D } from "./Coast3D";
 import { buildMesh, COLOR } from "./founders/Voxel";
 import type { GridData } from "./founders/api";
 
@@ -536,6 +537,37 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
         {error && <div className="t3-hud t3-error">{error}</div>}
       </div>
       <p className="t3-help">Drag to turn, right-drag to pan, scroll to zoom. Click anyone to see who they are. Faint blocks are the parts of a house still to be built.</p>
+    </div>
+  );
+}
+
+/** The 3D tab: the town you are watching, or (in a region) the whole coast, with a switch between them. */
+export function World3D({ town, townName, seed, region, onOpen, onVisit }: { town?: string; townName: string; seed: number; region: boolean; onOpen: (id: string) => void; onVisit: (town: string) => void }) {
+  const [mode, setMode] = useState<"town" | "coast">("town");
+  return (
+    <div className="world3d">
+      {region && (
+        <div className="t3-modes" role="tablist" aria-label="View">
+          <button role="tab" aria-selected={mode === "town"} className={mode === "town" ? "on" : ""} onClick={() => setMode("town")}>
+            {townName}
+          </button>
+          <button role="tab" aria-selected={mode === "coast"} className={mode === "coast" ? "on" : ""} onClick={() => setMode("coast")}>
+            The whole coast
+          </button>
+        </div>
+      )}
+      {mode === "coast" && region ? (
+        <Coast3D
+          seed={seed}
+          current={town}
+          onVisit={(t) => {
+            onVisit(t);
+            setMode("town");
+          }}
+        />
+      ) : (
+        <Town3D key={town ?? "town"} onOpen={onOpen} />
+      )}
     </div>
   );
 }

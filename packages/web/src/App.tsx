@@ -8,7 +8,7 @@ import { agentColors, clock, setPlaces } from "./util";
 import { Divergence, Village } from "./Village";
 import { Atlas } from "./Generations";
 import { Century, Myths, Towns } from "./Region";
-import { Town3D } from "./Town3D";
+import { World3D } from "./Town3D";
 
 type Tab = "feed" | "town3d" | "village" | "towns" | "myths" | "century" | "atlas" | "rumors" | "memories" | "relations" | "mind";
 
@@ -236,7 +236,7 @@ export function App() {
             )}
           </div>
           {tab === "feed" && <Feed feed={view.feed} names={names} onOpen={open} />}
-          {tab === "town3d" && view.village && <Town3D key={view.town ?? "town"} onOpen={open} />}
+          {tab === "town3d" && view.village && <World3D town={view.town} townName={view.name} seed={view.seed} region={!!view.region} onOpen={open} onVisit={(t) => { setAgent(undefined); void act(() => api.town(t)); }} />}
           {tab === "village" && view.village && <Village v={view.village} names={names} onOpen={open} />}
           {tab === "towns" && view.region && <Towns r={view.region} current={view.town} onSwitch={(t) => { setAgent(undefined); void act(() => api.town(t)); }} />}
           {tab === "myths" && view.region && <Myths tick={view.tick} />}

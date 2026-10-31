@@ -11,11 +11,11 @@ import { hourOf } from "../mind.js";
 import { isChild } from "./life.js";
 import type { FeedItem, WorldState } from "./world.js";
 
-export const TOWN = { w: 192, d: 176, h: 26, sea: 4 };
-/** Home plots: five to a row, six rows below the fire circle. */
+export const TOWN = { w: 192, d: 200, h: 26, sea: 4 };
+/** Home plots: five to a row, eight rows below the fire circle, each with room for a tent beside it. */
 const PLOT = 13;
-const SLOT_X = [50, 68, 86, 104, 122];
-const SLOT_Z = [74, 90, 106, 122, 138, 154];
+const SLOT_X = [46, 65, 84, 103, 122];
+const SLOT_Z = [74, 89, 104, 119, 134, 149, 164, 179];
 
 /** Where each of the village's shared places sits on the grid. */
 export const SPOTS: Record<string, { x: number; z: number; r: number }> = {
@@ -99,7 +99,7 @@ export function townTerrain(seed: number): TownTerrain {
   level(st.x - 6, st.z - 5, st.x + 6, st.z + 5);
   for (let k = 0; k < SLOT_X.length * SLOT_Z.length; k++) {
     const p = homePlot(k);
-    level(p.x0 - 4, p.z0 - 1, p.x0 + p.w, p.z0 + p.d);
+    level(p.x0 - 5, p.z0 - 1, p.x0 + p.w, p.z0 + p.d);
   }
   const f = SPOTS.fields!;
   level(f.x - 12, f.z - 9, f.x + 12, f.z + 9);
@@ -287,10 +287,18 @@ const hash = (s: string) => {
   return (h >>> 0) / 4294967296;
 };
 
-/** Home places in the order they were added, so a new home never moves an old one. */
+/** The homes people live in now, in the order they were added, so a new home never moves an old one. */
 export function homeOrder(world: WorldState): string[] {
-  return Object.keys(world.places).filter((p) => p.startsWith("home_") || world.places[p]!.topics.includes("home"));
+  const used = new Set(Object.values(world.village!.households).filter((h) => h.members.length).map((h) => h.home));
+  return Object.keys(world.places).filter((p) => used.has(p));
 }
+
+/** Plain houses for households that have one but no design on record (a town that ran on rules). */
+const STOCK: Blueprint[] = [
+  { name: "A plank house", width: 7, depth: 6, wallHeight: 3, walls: "plank", foundation: "cobble", corners: "log", floor: "plank", roof: { shape: "gable", material: "thatch", overhang: 1 }, door: "south", windows: ["east", "west"], furniture: ["bed", "hearth", "table"], porch: false },
+  { name: "A log house", width: 8, depth: 7, wallHeight: 3, walls: "log", foundation: "none", corners: "same", floor: "plank", roof: { shape: "gable", material: "thatch", overhang: 1 }, door: "south", windows: ["east"], furniture: ["bed", "hearth", "chest"], porch: true },
+  { name: "A stone house", width: 8, depth: 7, wallHeight: 4, walls: "cobble", foundation: "cobble", corners: "same", floor: "cobble", roof: { shape: "hip", material: "plank", overhang: 0 }, door: "south", windows: ["west"], furniture: ["bed", "hearth", "table", "chest"], porch: false },
+];
 
 /** Everything that changes in the town's picture, at this moment. */
 export function townScene(world: WorldState, feed: FeedItem[] = []): Scene3D {
@@ -305,19 +313,29 @@ export function townScene(world: WorldState, feed: FeedItem[] = []): Scene3D {
   const hour = hourOf(world.tick);
   const night = hour >= 22 || hour < 6;
 
-  const structures = v.structures.map((s) => {
-    const hh = v.households[s.household];
-    const plot = plotOf(hh?.home ?? "");
-    const total = compile(s.blueprint, plot).length;
-    const placed = s.done ? total : Math.min(total, Math.floor((total * s.work) / Math.max(0.1, s.hours)));
-    return { id: s.id, household: s.household, name: s.name, plot, blueprint: s.blueprint, placed, total, done: s.done, builders: s.builders };
-  });
-  const housed = new Set(v.structures.filter((s) => s.done).map((s) => s.household));
+  const live = new Set(homes);
+  const structures = v.structures
+    .filter((s) => live.has(v.households[s.household]?.home ?? ""))
+    .map((s) => {
+      const hh = v.households[s.household]!;
+      const plot = plotOf(hh.home);
+      const total = compile(s.blueprint, plot).length;
+      const placed = s.done ? total : Math.min(total, Math.floor((total * s.work) / Math.max(0.1, s.hours)));
+      return { id: s.id, household: s.household, name: s.name, plot, blueprint: s.blueprint, placed, total, done: s.done, builders: s.builders };
+    });
+  for (const hh of Object.values(v.households)) {
+    if (!hh.members.length || hh.shelter !== "house" || structures.some((s) => s.household === hh.id && s.done)) continue;
+    const blueprint = STOCK[Math.floor(hash(hh.id) * STOCK.length)]!;
+    const plot = plotOf(hh.home);
+    const total = compile(blueprint, plot).length;
+    structures.push({ id: `stock_${hh.id}`, household: hh.id, name: blueprint.name, plot, blueprint, placed: total, total, done: true, builders: [] });
+  }
+  const housed = new Set(structures.filter((s) => s.done).map((s) => s.household));
   const tents = Object.values(v.households)
-    .filter((h) => h.members.length && !housed.has(h.id))
+    .filter((h) => h.members.length && !housed.has(h.id) && h.shelter === "tent")
     .map((h) => {
       const p = plotOf(h.home);
-      return { household: h.id, x: p.x0 - 2, z: p.z0 + 6 };
+      return { household: h.id, x: p.x0 - 3, z: p.z0 + 6 };
     });
   const tentOf = new Map(tents.map((t) => [t.household, t]));
 
@@ -375,9 +393,12 @@ export function townScene(world: WorldState, feed: FeedItem[] = []): Scene3D {
   const places = Object.entries(SPOTS)
     .filter(([id]) => world.places[id])
     .map(([id, s]) => ({ id, name: world.places[id]!.name, x: s.x, z: s.z }));
+  const byHome = new Map(Object.values(v.households).map((h) => [h.home, h]));
   for (const home of homes) {
     const p = plotOf(home);
-    places.push({ id: home, name: world.places[home]!.name, x: p.x0 + PLOT / 2, z: p.z0 + PLOT + 2 });
+    const hh = byHome.get(home);
+    const name = world.places[home]!.name;
+    places.push({ id: home, name: hh && housed.has(hh.id) ? name.replace(/\btents?$/, "house") : name, x: p.x0 + PLOT / 2, z: p.z0 + PLOT + 2 });
   }
   const alive = new Set(world.order);
   const bubbles: Scene3D["bubbles"] = [];

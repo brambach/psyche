@@ -486,3 +486,11 @@ a.btn { color: inherit; text-decoration: none; display: inline-block; }
 .t3-bubble::after { content: ""; position: absolute; left: 50%; bottom: -6px; margin-left: -5px; border: 5px solid transparent; border-top-color: #fffdf6; border-bottom: 0; }
 .t3-bubble.t3-think { font-style: italic; background: #eef4ff; }
 .t3-bubble.t3-think::after { border-top-color: #eef4ff; }
+.world3d { display: grid; gap: 8px; }
+.t3-modes { display: flex; gap: 6px; flex-wrap: wrap; }
+.t3-modes button { font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.t3-modes button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.c3-label { position: absolute; left: 0; top: 0; pointer-events: auto; cursor: pointer; font: 600 12px var(--sans, system-ui); color: #fff; background: rgba(15, 25, 30, 0.62); border: 1px solid transparent; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.c3-label:hover, .c3-label:focus-visible { background: #ffd34d; color: #1a1a1a; outline: none; }
+.c3-label.c3-here { background: #ffd34d; color: #1a1a1a; }
+.c3-label[data-quarrel] { border-color: #ef7a66; }
