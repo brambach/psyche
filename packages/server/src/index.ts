@@ -518,7 +518,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     if (p === "/api/divergence") return send(res, 200, { events: divergence(session.world) });
     if (p === "/api/myths") return region ? send(res, 200, compareMyths(region)) : send(res, 404, { error: "Only a region has more than one town." });
     if (p === "/api/atlas") return send(res, 200, { beliefs: atlas(session.world) });
-    if (p === "/api/town3d") return session.world.village ? send(res, 200, townScene(session.world)) : send(res, 404, { error: "Only a village has a 3D view." });
+    if (p === "/api/town3d") return session.world.village ? send(res, 200, townScene(session.world, session.feed.slice(-120))) : send(res, 404, { error: "Only a village has a 3D view." });
     if (p === "/api/timeline") return region ? send(res, 200, timeline(region)) : send(res, 404, { error: "Only a region has a timeline." });
     if (p === "/api/digest") {
       if (!region) return send(res, 404, { error: "Only a region has a digest." });

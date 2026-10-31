@@ -27,13 +27,16 @@ export const COLOR: Record<string, string> = {
   chest: "#82552c",
   canvas: "#e6dcc3",
   barley: "#d8b84a",
+  sprout: "#7fb04a",
+  snow: "#eef2f4",
 };
 const AIR = 0;
 const WATER = MATERIALS.indexOf("water");
 const LEAVES = MATERIALS.indexOf("leaves");
 const REEDS = MATERIALS.indexOf("reeds");
 const BARLEY = MATERIALS.indexOf("barley");
-const SMALL = new Set(["bed", "table", "chest", "reeds", "barley"].map((m) => MATERIALS.indexOf(m as never)));
+const SPROUT = MATERIALS.indexOf("sprout");
+const SMALL = new Set(["bed", "table", "chest", "reeds", "barley", "sprout"].map((m) => MATERIALS.indexOf(m as never)));
 
 /** Shade per face direction: tops bright, sides mid, bottoms dark. */
 const FACES: { n: [number, number, number]; shade: number; corners: [number, number, number][] }[] = [
@@ -65,8 +68,8 @@ export function buildMesh(g: GridData, water: boolean): THREE.BufferGeometry {
         if (b === AIR || (b === WATER) !== water) continue;
         const name = MATERIALS[b]!;
         const small = SMALL.has(b);
-        const inset = b === REEDS || b === BARLEY ? 0.3 : small ? 0.08 : 0;
-        const top = b === REEDS ? 0.8 : b === BARLEY ? 0.7 : b === MATERIALS.indexOf("bed") ? 0.45 : b === MATERIALS.indexOf("table") ? 0.7 : b === MATERIALS.indexOf("chest") ? 0.6 : 1;
+        const inset = b === REEDS || b === BARLEY || b === SPROUT ? 0.3 : small ? 0.08 : 0;
+        const top = b === REEDS ? 0.8 : b === BARLEY ? 0.7 : b === SPROUT ? 0.4 : b === MATERIALS.indexOf("bed") ? 0.45 : b === MATERIALS.indexOf("table") ? 0.7 : b === MATERIALS.indexOf("chest") ? 0.6 : 1;
         for (const f of FACES) {
           const nb = at(x + f.n[0], y + f.n[1], z + f.n[2]);
           if (water) {

@@ -6,21 +6,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { compile, MATERIALS, terrainOf, TOWN, type Placement, type Scene3D } from "@psyche/engine";
+import { compile, fellingOrder, MATERIALS, terrainOf, TOWN, type Placement, type Scene3D, type TownTerrain, type Tree } from "@psyche/engine";
 import { api } from "./api";
 import { buildMesh, COLOR } from "./founders/Voxel";
 import type { GridData } from "./founders/api";
 
 type Person = Scene3D["people"][number];
 const CANVAS = MATERIALS.indexOf("canvas");
+const id = (m: string) => MATERIALS.indexOf(m as never);
+const AIR = id("air"), LOG = id("log"), LEAVES = id("leaves"), GRASS = id("grass"), SNOW = id("snow"), BARLEY = id("barley"), SPROUT = id("sprout");
+/** What someone carries home from each place. */
+const LOAD: Record<string, string> = { woods: "#6b4a2e", quarry: "#8d8e88", reeds: "#9fbb5a", fields: "#d8b84a", sea: "#b8c4cc" };
 const MAX_GHOST = 6000;
 
 interface Figure {
   group: THREE.Group;
   body: THREE.Mesh<THREE.BoxGeometry, THREE.MeshLambertMaterial>;
+  boat: THREE.Mesh;
+  load: THREE.Mesh<THREE.BoxGeometry, THREE.MeshLambertMaterial>;
   pos: THREE.Vector3;
   target: THREE.Vector3;
   p: Person;
+  /** The place they last left, so they can be seen carrying something back. */
+  from?: string;
 }
 
 /** The person's colour from the page's palette, normalised through a canvas so three.js can read it. */
@@ -36,14 +44,35 @@ function personColor(id: string): string {
 
 const hhmm = (h: number) => `${String(Math.floor(h)).padStart(2, "0")}:${String(Math.floor((h % 1) * 60)).padStart(2, "0")}`;
 
-/** Lay the houses (as far as they have got) and the tents onto a copy of the land. */
-function compose(base: Uint8Array, ground: number[], scene: Scene3D, plans: Map<string, Placement[]>): { grid: GridData; ghost: [number, number, number, number][] } {
+/** Lay the season, the cut trees, the houses (as far as they have got) and the tents onto a copy of the land. */
+function compose(land: TownTerrain, wood: Tree[], scene: Scene3D, plans: Map<string, Placement[]>): { grid: GridData; ghost: [number, number, number, number][]; chimneys: [number, number, number][] } {
   const { w, d, h } = TOWN;
-  const cells = base.slice();
+  const ground = land.ground;
+  const cells = land.grid.cells.slice();
+  const at = (x: number, y: number, z: number) => x + z * w + y * w * d;
+  // Cut pines leave a stump.
+  for (const tr of wood.slice(0, scene.felled))
+    for (let y = tr.y + 1; y <= tr.y + tr.height + 1 && y < h; y++)
+      for (let dz = -2; dz <= 2; dz++)
+        for (let dx = -2; dx <= 2; dx++) {
+          const x = tr.x + dx, z = tr.z + dz;
+          if (x < 0 || z < 0 || x >= w || z >= d) continue;
+          const c = cells[at(x, y, z)];
+          if ((c === LOG && !dx && !dz) || (c === LEAVES && Math.abs(dx) + Math.abs(dz) <= 2.5)) cells[at(x, y, z)] = AIR;
+        }
+  // The season: snow in winter, barley that sprouts, ripens and is cut.
+  const crop = scene.season === "autumn" ? (scene.blight ? SPROUT : BARLEY) : scene.season === "winter" ? AIR : SPROUT;
+  for (let z = 0; z < d; z++)
+    for (let x = 0; x < w; x++) {
+      const top = ground[x + z * w]!;
+      if (scene.season === "winter" && cells[at(x, top, z)] === GRASS && Math.sin(x * 0.21) + Math.sin(z * 0.17 + 1) + Math.sin((x + z) * 0.07) > -0.9) cells[at(x, top, z)] = SNOW;
+      if (top + 1 < h && cells[at(x, top + 1, z)] === BARLEY) cells[at(x, top + 1, z)] = crop;
+    }
   const put = (x: number, y: number, z: number, b: number) => {
     if (x >= 0 && z >= 0 && y >= 0 && x < w && z < d && y < h) cells[x + z * w + y * w * d] = b;
   };
   const ghost: [number, number, number, number][] = [];
+  const chimneys: [number, number, number][] = [];
   for (const s of scene.structures) {
     const key = `${s.id}:${s.plot.x0},${s.plot.z0},${s.plot.y}`;
     let plan = plans.get(key);
@@ -52,6 +81,10 @@ function compose(base: Uint8Array, ground: number[], scene: Scene3D, plans: Map<
       if (i < s.placed) put(pl.x, pl.y, pl.z, pl.b);
       else if (!s.done && ghost.length < MAX_GHOST) ghost.push([pl.x, pl.y, pl.z, pl.b]);
     });
+    if (s.done) {
+      const top = plan.filter((pl) => pl.part === "chimney").sort((a, b) => b.y - a.y)[0];
+      if (top) chimneys.push([top.x + 0.5, top.y + 1, top.z + 0.5]);
+    }
   }
   for (const t of scene.tents) {
     const x = Math.round(t.x), z = Math.round(t.z);
@@ -68,7 +101,7 @@ function compose(base: Uint8Array, ground: number[], scene: Scene3D, plans: Map<
     put(x + 1, y, z - 2, CANVAS);
     put(x, y + 1, z - 2, CANVAS);
   }
-  return { grid: { version: 0, w, d, h, cells }, ghost };
+  return { grid: { version: 0, w, d, h, cells }, ghost, chimneys };
 }
 
 export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
@@ -88,6 +121,10 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
     sun: THREE.DirectionalLight;
     hemi: THREE.HemisphereLight;
     marker: THREE.Mesh;
+    smoke: THREE.Points;
+    rain: THREE.Points;
+    sources: [number, number, number][];
+    bubbles: Map<string, HTMLSpanElement>;
     figures: Map<string, Figure>;
     ground: number[];
     places: { el: HTMLSpanElement; x: number; z: number; home: boolean }[];
@@ -98,6 +135,7 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
   const plans = useRef(new Map<string, Placement[]>());
   const seed = scene?.seed;
   const land = useMemo(() => (seed === undefined ? undefined : terrainOf(seed)), [seed]);
+  const wood = useMemo(() => (land ? fellingOrder(land) : []), [land]);
 
   // Poll the scene once a second.
   useEffect(() => {
@@ -153,13 +191,32 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
     marker.visible = false;
     sc.add(marker);
 
+    // Smoke from the fire circle and the chimneys: particles that rise, drift and fade round again.
+    const PUFFS = 260;
+    const smokeGeo = new THREE.BufferGeometry();
+    smokeGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(PUFFS * 3), 3));
+    const smoke = new THREE.Points(smokeGeo, new THREE.PointsMaterial({ color: 0xcfcfcf, size: 1.1, transparent: true, opacity: 0.35, depthWrite: false }));
+    const ages = Float32Array.from({ length: PUFFS }, () => Math.random() * 5);
+    const from = new Uint16Array(PUFFS);
+    sc.add(smoke);
+    const DROPS = 4000;
+    const rainGeo = new THREE.BufferGeometry();
+    const rp = new Float32Array(DROPS * 3);
+    for (let i = 0; i < DROPS; i++) rp.set([Math.random() * 140 - 70, Math.random() * 50, Math.random() * 140 - 70], i * 3);
+    rainGeo.setAttribute("position", new THREE.BufferAttribute(rp, 3));
+    const rain = new THREE.Points(rainGeo, new THREE.PointsMaterial({ color: 0xaac4dd, size: 0.18, transparent: true, opacity: 0.7 }));
+    rain.visible = false;
+    sc.add(rain);
+
     const hover = document.createElement("span");
     hover.className = "t3-label t3-person";
     hover.hidden = true;
     labels.current!.appendChild(hover);
 
-    const state = { camera, controls, scene: sc, land: landMesh, sea: seaMesh, ghost, hearth, sun, hemi, marker, figures: new Map<string, Figure>(), ground: [] as number[], places: [] as { el: HTMLSpanElement; x: number; z: number; home: boolean }[], hover, hovered: undefined as string | undefined, selected: undefined as string | undefined };
+    const state = { camera, controls, scene: sc, land: landMesh, sea: seaMesh, ghost, hearth, sun, hemi, marker, smoke, rain, sources: [] as [number, number, number][], bubbles: new Map<string, HTMLSpanElement>(), figures: new Map<string, Figure>(), ground: [] as number[], places: [] as { el: HTMLSpanElement; x: number; z: number; home: boolean }[], hover, hovered: undefined as string | undefined, selected: undefined as string | undefined };
     three.current = state;
+    // A handle for screenshots and debugging: lets a script point the camera.
+    (window as unknown as { __town3d?: unknown }).__town3d = state;
 
     const resize = () => {
       const w = el.clientWidth, h = el.clientHeight;
@@ -228,7 +285,12 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
         } else f.pos.set(f.target.x, 0, f.target.z);
         const walking = dist > step;
         const y = standY(f.pos.x, f.pos.z);
-        const bob = walking ? Math.abs(Math.sin(t * 10 + f.pos.x)) * 0.12 : f.p.building ? Math.abs(Math.sin(t * 7 + f.pos.z)) * 0.18 : 0;
+        const afloat = (state.ground[Math.round(f.pos.x - 0.5) + Math.round(f.pos.z - 0.5) * TOWN.w] ?? TOWN.sea) < TOWN.sea;
+        f.boat.visible = afloat;
+        const carry = walking && !afloat && f.from !== undefined && LOAD[f.from] !== undefined && !(f.p.place in LOAD);
+        f.load.visible = carry;
+        if (carry) f.load.material.color.set(LOAD[f.from!]!);
+        const bob = afloat ? Math.sin(t * 2 + f.pos.z) * 0.08 : walking ? Math.abs(Math.sin(t * 10 + f.pos.x)) * 0.12 : f.p.working ? Math.abs(Math.sin(t * 7 + f.pos.z)) * 0.18 : 0;
         f.group.position.set(f.pos.x, y + bob + (f.p.asleep && !walking ? 0.15 : 0), f.pos.z);
         f.group.rotation.z = f.p.asleep && !walking ? Math.PI / 2 : 0;
         f.group.visible = !(f.p.indoors && !walking);
@@ -244,6 +306,64 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
         state.hover.textContent = hv.p.name;
         project(hv.group.position.x, hv.group.position.y + 2.9, hv.group.position.z, state.hover, 400);
       } else state.hover.hidden = true;
+      // Speech bubbles over heads, nudged up where they would overlap one another.
+      const placed: { x: number; y: number; w: number; h: number }[] = [];
+      const shown: { el: HTMLSpanElement; x: number; y: number; w: number; h: number }[] = [];
+      for (const [id, el] of state.bubbles) {
+        const f = state.figures.get(id);
+        if (!f || !f.group.visible) {
+          el.hidden = true;
+          continue;
+        }
+        v.set(f.group.position.x, f.group.position.y + (f.p.child ? 3 : 3.6), f.group.position.z);
+        const dist = v.distanceTo(camera.position);
+        v.project(camera);
+        el.hidden = !(v.z < 1 && dist < 150 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05);
+        if (!el.hidden) shown.push({ el, x: ((v.x + 1) / 2) * el.parentElement!.clientWidth, y: ((1 - v.y) / 2) * el.parentElement!.clientHeight, w: el.offsetWidth, h: el.offsetHeight });
+      }
+      shown.sort((a, b) => b.y - a.y);
+      for (const b of shown) {
+        let y = b.y;
+        for (let moved = true, n = 0; moved && n < 12; n++) {
+          moved = false;
+          for (const o of placed)
+            if (Math.abs(o.x - b.x) < (o.w + b.w) / 2 + 4 && y > o.y - o.h - 4 && y - b.h < o.y + 4) {
+              y = o.y - o.h - 6;
+              moved = true;
+            }
+        }
+        placed.push({ x: b.x, y, w: b.w, h: b.h });
+        b.el.style.transform = `translate(${b.x}px, ${y}px) translate(-50%, -100%)`;
+      }
+      // Smoke rises from whichever sources there are.
+      const srcs = [...state.sources];
+      const sp = smokeGeo.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < PUFFS; i++) {
+        ages[i]! += dt;
+        if (ages[i]! > 5 || from[i]! >= srcs.length) {
+          ages[i] = Math.random() * 0.5;
+          from[i] = Math.floor(Math.random() * Math.max(1, srcs.length));
+        }
+        const s = srcs[from[i]!];
+        if (!s) {
+          sp.setXYZ(i, 0, -50, 0);
+          continue;
+        }
+        const a = ages[i]!;
+        sp.setXYZ(i, s[0] + a * 0.5 + Math.sin(a * 2 + i) * 0.3, s[1] + a * 1.3, s[2] + Math.cos(a + i) * 0.3);
+      }
+      sp.needsUpdate = true;
+      if (rain.visible) {
+        const ra = rainGeo.attributes.position as THREE.BufferAttribute;
+        const cx = controls.target.x, cz = controls.target.z;
+        for (let i = 0; i < DROPS; i++) {
+          let y = ra.getY(i) - dt * 26;
+          if (y < 0) y = 50;
+          ra.setY(i, y);
+        }
+        rain.position.set(cx, 0, cz);
+        ra.needsUpdate = true;
+      }
       for (const pl of state.places) project(pl.x, standY(pl.x, pl.z) + 3, pl.z, pl.el, pl.home ? 85 : 220);
       controls.update();
       renderer.render(sc, camera);
@@ -274,11 +394,13 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
   }, [land]);
 
   // Houses and tents: rebuild the mesh only when a block or a tent changed.
-  const buildKey = scene ? scene.structures.map((s) => `${s.id}:${s.placed}`).join(",") + "|" + scene.tents.map((x) => x.household).join(",") : "";
+  const buildKey = scene ? `${scene.season}:${scene.blight}:${scene.felled}|` + scene.structures.map((s) => `${s.id}:${s.placed}`).join(",") + "|" + scene.tents.map((x) => x.household).join(",") : "";
   useEffect(() => {
     const t = three.current;
     if (!t || !land || !scene) return;
-    const { grid, ghost } = compose(land.grid.cells, land.ground, scene, plans.current);
+    const { grid, ghost, chimneys } = compose(land, wood, scene, plans.current);
+    const tav = scene.places.find((p) => p.id === "tavern");
+    t.sources = [...(tav ? [[tav.x + 0.5, (land.ground[Math.round(tav.x) + Math.round(tav.z) * TOWN.w] ?? 6) + 2, tav.z + 0.5] as [number, number, number]] : []), ...chimneys];
     t.land.geometry.dispose();
     t.land.geometry = buildMesh(grid, false);
     const m = new THREE.Matrix4(), c = new THREE.Color();
@@ -307,11 +429,26 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
         const head = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.46, 0.46), new THREE.MeshLambertMaterial({ color: 0xe8c39e }));
         head.position.y = 1.36;
         body.userData.id = head.userData.id = p.id;
-        group.add(body, head);
+        // A rowing boat: a floor, two sides and the ends, all one mesh.
+        const hull = new THREE.MeshLambertMaterial({ color: 0x7a5232 });
+        const boat = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.18, 2.6), hull);
+        for (const [w, h, d, x, y, z] of [[0.14, 0.5, 2.6, 0.7, 0.2, 0], [0.14, 0.5, 2.6, -0.7, 0.2, 0], [1.4, 0.5, 0.14, 0, 0.2, 1.3], [1.0, 0.5, 0.14, 0, 0.2, -1.3]] as const) {
+          const side = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), hull);
+          side.position.set(x, y, z);
+          side.userData.id = p.id;
+          boat.add(side);
+        }
+        boat.position.y = -0.05;
+        boat.visible = false;
+        const load = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 1), new THREE.MeshLambertMaterial({ color: 0x6b4a2e }));
+        load.position.set(0.42, 1.25, 0);
+        load.visible = false;
+        group.add(body, head, boat, load);
         t.scene.add(group);
-        f = { group, body, pos: new THREE.Vector3(p.x, 0, p.z), target: new THREE.Vector3(p.x, 0, p.z), p };
+        f = { group, body, boat, load, pos: new THREE.Vector3(p.x, 0, p.z), target: new THREE.Vector3(p.x, 0, p.z), p };
         t.figures.set(p.id, f);
       }
+      if (f.p.place !== p.place) f.from = f.p.place;
       f.p = p;
       f.target.set(p.x, 0, p.z);
       f.group.scale.setScalar(p.child ? 0.85 : 1.25);
@@ -332,6 +469,27 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
         return { el, x: pl.x, z: pl.z, home: pl.id.startsWith("home_") };
       });
     } else scene.places.forEach((pl, i) => (t.places[i]!.el.textContent = pl.name));
+
+    const active = new Set<string>();
+    for (const b of scene.bubbles) {
+      active.add(b.id);
+      let el = t.bubbles.get(b.id);
+      if (!el) {
+        el = document.createElement("span");
+        labels.current!.appendChild(el);
+        t.bubbles.set(b.id, el);
+      }
+      el.className = `t3-bubble t3-${b.kind}`;
+      el.textContent = b.text;
+    }
+    for (const [id, el] of t.bubbles)
+      if (!active.has(id)) {
+        el.remove();
+        t.bubbles.delete(id);
+      }
+    t.rain.visible = scene.weather !== "fair" && scene.season !== "winter";
+    (t.rain.material as THREE.PointsMaterial).color.set(scene.season === "winter" ? 0xffffff : 0xaac4dd);
+    if (scene.weather !== "fair" && scene.season === "winter") t.rain.visible = true;
 
     const hour = scene.hour;
     const day = Math.max(0, Math.min(1, Math.sin(((hour - 6) / 14) * Math.PI) * 1.4));
@@ -358,7 +516,7 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
             <b>{hhmm(scene.hour)}</b> · day {scene.day + 1} · {scene.season}
             {scene.weather !== "fair" ? ` · ${scene.weather}` : ""}
             <span>
-              {built} {built === 1 ? "house" : "houses"} built · {scene.tents.length} {scene.tents.length === 1 ? "household" : "households"} in tents
+              {built} {built === 1 ? "house" : "houses"} built · {scene.felled} {scene.felled === 1 ? "pine" : "pines"} cut · {scene.tents.length} {scene.tents.length === 1 ? "household" : "households"} in tents
               {building.map((s) => ` · ${s.name} ${Math.round((s.placed / Math.max(1, s.total)) * 100)}%`).join("")}
             </span>
           </div>

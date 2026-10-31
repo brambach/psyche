@@ -52,7 +52,7 @@ export {
   type Weather,
   type Resource,
 } from "./world/village.js";
-export { townTerrain, terrainOf, townScene, homePlot, homeOrder, SPOTS, TOWN, type TownTerrain, type Scene3D } from "./world/town3d.js";
+export { townTerrain, terrainOf, townScene, fellingOrder, LOGS_PER_TREE, homePlot, homeOrder, SPOTS, TOWN, type TownTerrain, type Scene3D } from "./world/town3d.js";
 export { createSettlers, TRADES, type Settler } from "./world/people.js";
 export { MATERIALS, M, get, generateIsland, encodeGrid, census, standY, type Material, type Grid, type Plot, type Terrain, type Tree } from "./founders/voxel.js";
 export { check, compile, bill, describe, siteOf, PACE, SIDES, type Blueprint, type Side, type Furniture, type Placement, type Part, type Bill, type Item } from "./founders/blueprint.js";

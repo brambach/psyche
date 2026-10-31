@@ -9,7 +9,7 @@ import { compile, type Blueprint } from "../founders/blueprint.js";
 import { idx, inside, M, type Grid, type Plot, type Tree } from "../founders/voxel.js";
 import { hourOf } from "../mind.js";
 import { isChild } from "./life.js";
-import type { WorldState } from "./world.js";
+import type { FeedItem, WorldState } from "./world.js";
 
 export const TOWN = { w: 192, d: 176, h: 26, sea: 4 };
 /** Home plots: five to a row, six rows below the fire circle. */
@@ -261,9 +261,25 @@ export interface Scene3D {
   weather: string;
   structures: { id: string; household: string; name: string; plot: Plot; blueprint: Blueprint; placed: number; total: number; done: boolean; builders: string[] }[];
   tents: { household: string; x: number; z: number }[];
-  people: { id: string; name: string; x: number; z: number; place: string; activity: string; asleep: boolean; indoors: boolean; child: boolean; building: boolean }[];
+  people: { id: string; name: string; x: number; z: number; place: string; activity: string; asleep: boolean; indoors: boolean; child: boolean; building: boolean; working: boolean }[];
   places: { id: string; name: string; x: number; z: number }[];
+  /** Trees cut so far, taken from the pinewood in `fellingOrder`. */
+  felled: number;
+  blight: boolean;
+  /** What people are saying, and the big moments on their minds, in the last sim-hour or so. */
+  bubbles: { id: string; text: string; kind: "say" | "think"; tick: number }[];
 }
+
+/** Logs a felled pine gives. */
+export const LOGS_PER_TREE = 4;
+
+/** The pinewood's trees in the order they are cut: the edge nearest the village first. */
+export function fellingOrder(t: TownTerrain): Tree[] {
+  const wd = SPOTS.woods!;
+  return t.trees.filter((tr) => Math.hypot((tr.x - wd.x) / 1.1, (tr.z - wd.z) / 1.6) <= 22).sort((a, b) => a.x - b.x || a.z - b.z);
+}
+
+const clip = (t: string) => (t.length > 110 ? t.slice(0, 107).replace(/\s+\S*$/, "") + "…" : t);
 
 const hash = (s: string) => {
   let h = 2166136261;
@@ -277,9 +293,13 @@ export function homeOrder(world: WorldState): string[] {
 }
 
 /** Everything that changes in the town's picture, at this moment. */
-export function townScene(world: WorldState): Scene3D {
+export function townScene(world: WorldState, feed: FeedItem[] = []): Scene3D {
   const v = world.village!;
-  const ground = terrainOf(world.seed).ground;
+  const land = terrainOf(world.seed);
+  const ground = land.ground;
+  const wood = fellingOrder(land);
+  const timber = v.structures.reduce((n, s) => n + s.have.timber, 0);
+  const felled = Math.min(Math.floor(wood.length * 0.7), Math.floor(timber / LOGS_PER_TREE));
   const homes = homeOrder(world);
   const plotOf = (home: string) => homePlot(Math.max(0, homes.indexOf(home)), ground);
   const hour = hourOf(world.tick);
@@ -332,8 +352,14 @@ export function townScene(world: WorldState): Scene3D {
     } else {
       const s = SPOTS[place] ?? { x: (world.places[place]?.x ?? 50) * 1.8, z: (world.places[place]?.y ?? 30) * 1.8, r: 3 };
       if (place === "sea") {
-        x = s.x - r1 * 6;
-        z = s.z + (r2 - 0.5) * 2;
+        // Out in the bay, each in their own boat.
+        x = 4 + r1 * 12;
+        z = 38 + r2 * 40;
+      } else if (place === "woods" && /fell|timber|pine|wood/.test(a.activity) && wood.length) {
+        // At the next trees to come down.
+        const tr = wood[Math.min(wood.length - 1, felled + Math.floor(r1 * 4))]!;
+        x = tr.x + (r2 < 0.5 ? -1.2 : 1.2);
+        z = tr.z + 0.5;
       } else if (place === "harbour") {
         x = s.x - r1 * 10;
         z = s.z + (r2 - 0.5) * 2;
@@ -343,7 +369,7 @@ export function townScene(world: WorldState): Scene3D {
         z = s.z + Math.sin(ang) * rad;
       }
     }
-    return { id, name: world.minds[id]!.name, x: Number(x.toFixed(2)), z: Number(z.toFixed(2)), place, activity: a.activity, asleep, indoors, child: isChild(world, id), building };
+    return { id, name: world.minds[id]!.name, x: Number(x.toFixed(2)), z: Number(z.toFixed(2)), place, activity: a.activity, asleep, indoors, child: isChild(world, id), building, working: building || (["woods", "quarry", "fields", "reeds", "sea"].includes(place) && !/passed the time|talk|sitting|rest/.test(a.activity)) };
   });
 
   const places = Object.entries(SPOTS)
@@ -353,5 +379,17 @@ export function townScene(world: WorldState): Scene3D {
     const p = plotOf(home);
     places.push({ id: home, name: world.places[home]!.name, x: p.x0 + PLOT / 2, z: p.z0 + PLOT + 2 });
   }
-  return { seed: world.seed, hour, day: Math.floor(world.tick / 1440), season: v.season, weather: v.weather, structures, tents, people, places };
+  const alive = new Set(world.order);
+  const bubbles: Scene3D["bubbles"] = [];
+  for (const f of feed) {
+    const age = world.tick - f.tick;
+    if (age < 0 || age > 90) continue;
+    if (f.kind === "talk" && age <= 40)
+      for (const l of (f.lines ?? []).slice(0, 2)) if (alive.has(l.speaker)) bubbles.push({ id: l.speaker, text: clip(l.text), kind: "say", tick: f.tick });
+    if ((f.kind === "insight" || f.kind === "event") && f.agents[0] && alive.has(f.agents[0])) bubbles.push({ id: f.agents[0], text: clip(f.title), kind: "think", tick: f.tick });
+  }
+  // One bubble a person: the newest.
+  const latest = new Map<string, Scene3D["bubbles"][number]>();
+  for (const b of bubbles) latest.set(b.id, b);
+  return { seed: world.seed, hour, day: Math.floor(world.tick / 1440), season: v.season, weather: v.weather, structures, tents, people, places, felled, blight: v.blight, bubbles: [...latest.values()] };
 }
