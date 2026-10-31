@@ -268,6 +268,8 @@ export interface Scene3D {
   blight: boolean;
   /** What people are saying, and the big moments on their minds, in the last sim-hour or so. */
   bubbles: { id: string; text: string; kind: "say" | "think"; tick: number }[];
+  /** The latest big moments (events and insights), newest first, to jump to. */
+  moments: { id: string; agent: string; title: string; text?: string; tick: number }[];
 }
 
 /** Logs a felled pine gives. */
@@ -301,7 +303,7 @@ const STOCK: Blueprint[] = [
 ];
 
 /** Everything that changes in the town's picture, at this moment. */
-export function townScene(world: WorldState, feed: FeedItem[] = []): Scene3D {
+export function townScene(world: WorldState, feed: FeedItem[] = [], big: FeedItem[] = []): Scene3D {
   const v = world.village!;
   const land = terrainOf(world.seed);
   const ground = land.ground;
@@ -412,5 +414,5 @@ export function townScene(world: WorldState, feed: FeedItem[] = []): Scene3D {
   // One bubble a person: the newest.
   const latest = new Map<string, Scene3D["bubbles"][number]>();
   for (const b of bubbles) latest.set(b.id, b);
-  return { seed: world.seed, hour, day: Math.floor(world.tick / 1440), season: v.season, weather: v.weather, structures, tents, people, places, felled, blight: v.blight, bubbles: [...latest.values()] };
+  return { seed: world.seed, hour, day: Math.floor(world.tick / 1440), season: v.season, weather: v.weather, structures, tents, people, places, felled, blight: v.blight, bubbles: [...latest.values()], moments: big.filter((f) => (f.kind === "event" || f.kind === "insight") && f.agents[0] && alive.has(f.agents[0])).slice(-6).reverse().map((f) => ({ id: f.id, agent: f.agents[0]!, title: f.title, text: f.text, tick: f.tick })) };
 }

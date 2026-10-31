@@ -236,7 +236,7 @@ export function App() {
             )}
           </div>
           {tab === "feed" && <Feed feed={view.feed} names={names} onOpen={open} />}
-          {tab === "town3d" && view.village && <World3D town={view.town} townName={view.name} seed={view.seed} region={!!view.region} onOpen={open} onVisit={(t) => { setAgent(undefined); void act(() => api.town(t)); }} />}
+          {tab === "town3d" && view.village && <World3D town={view.town} townName={view.name} seed={view.seed} region={!!view.region} running={view.running} speed={view.speed} onControl={(c) => void act(() => api.control(c))} onOpen={open} onVisit={(t) => { setAgent(undefined); void act(() => api.town(t)); }} />}
           {tab === "village" && view.village && <Village v={view.village} names={names} onOpen={open} />}
           {tab === "towns" && view.region && <Towns r={view.region} current={view.town} onSwitch={(t) => { setAgent(undefined); void act(() => api.town(t)); }} />}
           {tab === "myths" && view.region && <Myths tick={view.tick} />}

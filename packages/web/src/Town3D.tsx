@@ -106,11 +106,13 @@ function compose(land: TownTerrain, wood: Tree[], scene: Scene3D, plans: Map<str
 }
 
 export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
+  const [focus, setFocus] = useState<{ id: string; n: number }>();
   const host = useRef<HTMLDivElement>(null);
   const labels = useRef<HTMLDivElement>(null);
   const [scene, setScene] = useState<Scene3D>();
   const [error, setError] = useState<string>();
   const [selected, setSelected] = useState<string>();
+  const [follow, setFollow] = useState(false);
   const three = useRef<{
     camera: THREE.PerspectiveCamera;
     controls: OrbitControls;
@@ -132,6 +134,7 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
     hover: HTMLSpanElement;
     hovered?: string;
     selected?: string;
+    follow?: string;
   }>();
   const plans = useRef(new Map<string, Placement[]>());
   const seed = scene?.seed;
@@ -214,7 +217,7 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
     hover.hidden = true;
     labels.current!.appendChild(hover);
 
-    const state = { camera, controls, scene: sc, land: landMesh, sea: seaMesh, ghost, hearth, sun, hemi, marker, smoke, rain, sources: [] as [number, number, number][], bubbles: new Map<string, HTMLSpanElement>(), figures: new Map<string, Figure>(), ground: [] as number[], places: [] as { el: HTMLSpanElement; x: number; z: number; home: boolean }[], hover, hovered: undefined as string | undefined, selected: undefined as string | undefined };
+    const state = { camera, controls, scene: sc, land: landMesh, sea: seaMesh, ghost, hearth, sun, hemi, marker, smoke, rain, sources: [] as [number, number, number][], bubbles: new Map<string, HTMLSpanElement>(), figures: new Map<string, Figure>(), ground: [] as number[], places: [] as { el: HTMLSpanElement; x: number; z: number; home: boolean }[], hover, hovered: undefined as string | undefined, selected: undefined as string | undefined, follow: undefined as string | undefined };
     three.current = state;
     // A handle for screenshots and debugging: lets a script point the camera.
     (window as unknown as { __town3d?: unknown }).__town3d = state;
@@ -295,6 +298,14 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
         f.group.position.set(f.pos.x, y + bob + (f.p.asleep && !walking ? 0.15 : 0), f.pos.z);
         f.group.rotation.z = f.p.asleep && !walking ? Math.PI / 2 : 0;
         f.group.visible = !(f.p.indoors && !walking);
+      }
+      // The follow-cam keeps its angle and distance and slides along with the person.
+      const fol = state.follow ? state.figures.get(state.follow) : undefined;
+      if (fol) {
+        const want = new THREE.Vector3(fol.group.position.x, fol.group.position.y + 1, fol.group.position.z);
+        const shift = want.sub(controls.target).multiplyScalar(1 - Math.pow(0.03, dt));
+        controls.target.add(shift);
+        camera.position.add(shift);
       }
       const sel = state.selected ? state.figures.get(state.selected) : undefined;
       state.marker.visible = !!sel?.group.visible;
@@ -381,7 +392,28 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
   }, []);
 
   useEffect(() => {
-    if (three.current) three.current.selected = selected;
+    if (three.current) {
+      three.current.selected = selected;
+      three.current.follow = follow ? selected : undefined;
+    }
+  }, [selected, follow]);
+
+  // A moment picked from the list: select that person and follow them there.
+  useEffect(() => {
+    if (!focus) return;
+    setSelected(focus.id);
+    setFollow(true);
+    const t = three.current;
+    const f = t?.figures.get(focus.id);
+    if (t && f) {
+      // Drop in close, from the side the camera is already on.
+      const dir = t.camera.position.clone().sub(t.controls.target).normalize().multiplyScalar(34);
+      t.controls.target.set(f.group.position.x, f.group.position.y + 1, f.group.position.z);
+      t.camera.position.copy(t.controls.target).add(dir);
+    }
+  }, [focus]);
+
+  useEffect(() => {
   }, [selected]);
 
   // New land when the town changes.
@@ -528,7 +560,10 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
             <span>{person.asleep ? "asleep" : person.activity}</span>
             <div>
               <button onClick={() => onOpen(person.id)}>Open their mind</button>
-              <button className="ghost" onClick={() => setSelected(undefined)} aria-label="Close">
+              <button className={follow ? "on" : "ghost"} aria-pressed={follow} onClick={() => setFollow(!follow)}>
+                {follow ? "Following" : "Follow"}
+              </button>
+              <button className="ghost" onClick={() => (setSelected(undefined), setFollow(false))} aria-label="Close">
                 ×
               </button>
             </div>
@@ -536,26 +571,66 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
         )}
         {error && <div className="t3-hud t3-error">{error}</div>}
       </div>
+      {!!scene?.moments.length && (
+        <div className="t3-moments">
+          <span>Jump to</span>
+          {scene.moments.map((m) => (
+            <button key={m.id} onClick={() => setFocus({ id: m.agent, n: Date.now() })} title={m.text ?? m.title}>
+              {m.title}
+            </button>
+          ))}
+        </div>
+      )}
       <p className="t3-help">Drag to turn, right-drag to pan, scroll to zoom. Click anyone to see who they are. Faint blocks are the parts of a house still to be built.</p>
     </div>
   );
 }
 
 /** The 3D tab: the town you are watching, or (in a region) the whole coast, with a switch between them. */
-export function World3D({ town, townName, seed, region, onOpen, onVisit }: { town?: string; townName: string; seed: number; region: boolean; onOpen: (id: string) => void; onVisit: (town: string) => void }) {
+const SPEEDS = [
+  { label: "Slow", value: 5 },
+  { label: "Normal", value: 10 },
+  { label: "Fast", value: 30 },
+  { label: "Very fast", value: 60 },
+];
+
+export function World3D(props: {
+  town?: string;
+  townName: string;
+  seed: number;
+  region: boolean;
+  running: boolean;
+  speed: number;
+  onControl: (c: { running?: boolean; speed?: number }) => void;
+  onOpen: (id: string) => void;
+  onVisit: (town: string) => void;
+}) {
+  const { town, townName, seed, region, running, speed, onControl, onOpen, onVisit } = props;
   const [mode, setMode] = useState<"town" | "coast">("town");
   return (
     <div className="world3d">
-      {region && (
-        <div className="t3-modes" role="tablist" aria-label="View">
-          <button role="tab" aria-selected={mode === "town"} className={mode === "town" ? "on" : ""} onClick={() => setMode("town")}>
-            {townName}
+      <div className="t3-modes">
+        {region && (
+          <div role="tablist" aria-label="View">
+            <button role="tab" aria-selected={mode === "town"} className={mode === "town" ? "on" : ""} onClick={() => setMode("town")}>
+              {townName}
+            </button>
+            <button role="tab" aria-selected={mode === "coast"} className={mode === "coast" ? "on" : ""} onClick={() => setMode("coast")}>
+              The whole coast
+            </button>
+          </div>
+        )}
+        <div className="t3-speed" aria-label="Time">
+          <button className={running ? "" : "on"} onClick={() => onControl({ running: !running })}>
+            {running ? "Pause" : "Play"}
           </button>
-          <button role="tab" aria-selected={mode === "coast"} className={mode === "coast" ? "on" : ""} onClick={() => setMode("coast")}>
-            The whole coast
-          </button>
+          {SPEEDS.map((s) => (
+            <button key={s.value} className={speed === s.value ? "on" : ""} aria-pressed={speed === s.value} title={`${s.value} town minutes a second`} onClick={() => onControl({ speed: s.value, running: true })}>
+              {s.label}
+            </button>
+          ))}
         </div>
-      )}
+      </div>
       {mode === "coast" && region ? (
         <Coast3D
           seed={seed}
@@ -568,6 +643,7 @@ export function World3D({ town, townName, seed, region, onOpen, onVisit }: { tow
       ) : (
         <Town3D key={town ?? "town"} onOpen={onOpen} />
       )}
+
     </div>
   );
 }
