@@ -465,3 +465,20 @@ a.btn { color: inherit; text-decoration: none; display: inline-block; }
   .coast { --map-sea: #12303a; --map-seaDeep: #0b1f27; --map-land: #1f2a24; --map-landDark: #2b382f; --map-ink: #e3ebe9; --map-muted: #9aa9a5;
     --map-house: #e8dcc4; --map-roof: #c47a4f; --map-tent: #a99c80; --map-trade: #6fb3c7; --map-quarrel: #ef7a66; --map-hunger: #f0a050; }
 }
+
+/* The town in 3D */
+.town3d { display: grid; gap: 6px; }
+.t3-stage { position: relative; height: min(72vh, 680px); min-height: 380px; border-radius: 10px; overflow: hidden; background: #0d1b2e; }
+.t3-stage canvas { display: block; }
+.t3-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.t3-label { position: absolute; left: 0; top: 0; font: 600 11px var(--sans, system-ui); color: #fff; background: rgba(15, 25, 30, 0.55); padding: 1px 6px; border-radius: 999px; white-space: nowrap; }
+.t3-label.t3-home { font-weight: 500; background: rgba(15, 25, 30, 0.35); }
+.t3-label.t3-person { background: #ffd34d; color: #1a1a1a; font-size: 12px; z-index: 2; }
+.t3-hud { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font: 13px var(--mono, ui-monospace); color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); pointer-events: none; }
+.t3-hud b { font-size: 16px; }
+.t3-hud span { opacity: 0.9; }
+.t3-error { top: auto; bottom: 10px; color: #ffb4a8; }
+.t3-card { position: absolute; right: 10px; bottom: 10px; max-width: min(320px, calc(100% - 20px)); display: grid; gap: 6px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25); }
+.t3-card span { color: var(--muted); font-size: 13px; }
+.t3-card div { display: flex; gap: 6px; }
+.t3-help { margin: 0; font-size: 12px; color: var(--muted); }

@@ -8,8 +8,9 @@ import { agentColors, clock, setPlaces } from "./util";
 import { Divergence, Village } from "./Village";
 import { Atlas } from "./Generations";
 import { Century, Myths, Towns } from "./Region";
+import { Town3D } from "./Town3D";
 
-type Tab = "feed" | "village" | "towns" | "myths" | "century" | "atlas" | "rumors" | "memories" | "relations" | "mind";
+type Tab = "feed" | "town3d" | "village" | "towns" | "myths" | "century" | "atlas" | "rumors" | "memories" | "relations" | "mind";
 
 const SPEEDS = [
   { label: "Slow", value: 5 },
@@ -219,6 +220,7 @@ export function App() {
         <main className="stage">
           <div className="tabs big" role="tablist">
             <button role="tab" aria-selected={tab === "feed"} className={tab === "feed" ? "on" : ""} onClick={() => setTab("feed")}>What's happening</button>
+            {view.village && <button role="tab" aria-selected={tab === "town3d"} className={tab === "town3d" ? "on" : ""} onClick={() => setTab("town3d")}>Watch in 3D</button>}
             {view.village && <button role="tab" aria-selected={tab === "village"} className={tab === "village" ? "on" : ""} onClick={() => setTab("village")}>The village</button>}
             {view.region && <button role="tab" aria-selected={tab === "towns"} className={tab === "towns" ? "on" : ""} onClick={() => setTab("towns")}>Towns and chronicle</button>}
             {view.region && <button role="tab" aria-selected={tab === "century"} className={tab === "century" ? "on" : ""} onClick={() => setTab("century")}>Time-lapse</button>}
@@ -234,6 +236,7 @@ export function App() {
             )}
           </div>
           {tab === "feed" && <Feed feed={view.feed} names={names} onOpen={open} />}
+          {tab === "town3d" && view.village && <Town3D key={view.town ?? "town"} onOpen={open} />}
           {tab === "village" && view.village && <Village v={view.village} names={names} onOpen={open} />}
           {tab === "towns" && view.region && <Towns r={view.region} current={view.town} onSwitch={(t) => { setAgent(undefined); void act(() => api.town(t)); }} />}
           {tab === "myths" && view.region && <Myths tick={view.tick} />}
