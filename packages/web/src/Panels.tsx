@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { PLACES, type FeedItem } from "@psyche/engine";
+import type { FeedItem } from "@psyche/engine";
 import type { AgentSummary, Relation, RumorView } from "./api";
-import { clock, diffWords } from "./util";
+import { clock, diffWords, placeName } from "./util";
 
 type Open = (agent: string, trace?: string) => void;
 
@@ -13,7 +13,7 @@ export function Cast({ agents, selected, onSelect }: { agents: AgentSummary[]; s
           <span className="swatch" style={{ background: `var(--a-${a.id})` }}>{a.name[0]}</span>
           <span className="who">
             <b>{a.name}</b> <span className="small">{a.role}</span>
-            <span className="doing">{a.activity}{a.activity !== "asleep" ? ` · ${PLACES[a.place].name}` : ""}</span>
+            <span className="doing">{a.activity}{a.activity !== "asleep" ? ` · ${placeName(a.place)}` : ""}</span>
           </span>
           <span className="vitals" aria-label={`Mood ${a.mood.toFixed(2)}, stress ${a.stress.toFixed(2)}`}>
             <Meter label="mood" value={a.mood} signed />
@@ -65,7 +65,7 @@ export function Feed({ feed, names, onOpen }: { feed: FeedItem[]; names: Record<
           <header>
             <span className="when">{clock(f.tick)}</span>
             <span className="kind">{KIND_LABEL[f.kind]}</span>
-            {f.place && <span className="where">{PLACES[f.place].name}</span>}
+            {f.place && <span className="where">{placeName(f.place)}</span>}
           </header>
           <h4>{f.title}</h4>
           {f.text && <p className="text">{f.text}</p>}

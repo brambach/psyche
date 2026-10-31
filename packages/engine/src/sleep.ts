@@ -2,7 +2,7 @@
 // (McClelland, McNaughton & O'Reilly 1995), emotional tempering (Walker & van der Helm 2009),
 // stress recovery, and nightly trait drift (TESSERA, Wrzus & Roberts 2017).
 
-import { clamp, render, touchEpisode } from "./memory.js";
+import { baseLevel, clamp, render, touchEpisode, use } from "./memory.js";
 import { PARAMS } from "./params.js";
 import type { Faculties } from "./ports.js";
 import { nextId } from "./rng.js";
@@ -50,7 +50,7 @@ export async function sleep(mind: MindState, now: Tick, faculties: Faculties): P
       const existing = mind.beliefs.find((b) => b.about === g.about && b.source.kind === "inferred" && Math.sign(b.valence) === Math.sign(g.valence));
       if (existing) {
         existing.confidence = clamp(existing.confidence + 0.05);
-        existing.retrievals.push(now);
+        use(existing.retrievals, now);
         notes.push(`Strengthened belief: "${existing.proposition}".`);
       } else {
         mind.beliefs.push({
@@ -79,6 +79,8 @@ export async function sleep(mind: MindState, now: Tick, faculties: Faculties): P
     if (e.arousal >= D.formativeArousal && e.valence < -0.5 && e.coping < D.formativeCoping) {
       for (const s of mind.schemas.filter((x) => x.triggers.some((t) => e.topics.includes(t)))) {
         s.strength = clamp(s.strength + 0.08);
+        (s.deepenedBy ??= []).push({ episode: e.id, tick: now });
+        if (s.deepenedBy.length > 8) s.deepenedBy.splice(0, s.deepenedBy.length - 8);
         notes.push(`Core belief deepened: "${s.text}".`);
       }
     }
@@ -96,6 +98,36 @@ export async function sleep(mind: MindState, now: Tick, faculties: Faculties): P
       if (shifts.length) notes.push(`Trait drift: ${shifts.join(", ")}.`);
     }
   }
+
+  // Beliefs fade too: past sixty, the weakest and least used go first.
+  if (mind.beliefs.length > 60) {
+    const weak = mind.beliefs
+      .map((b) => ({ id: b.id, a: b.confidence + 0.1 * baseLevel(b.retrievals, now, PARAMS.memory.gistDecay) + (b.about === "village" || b.about.startsWith("town:") ? 2 : 0) }))
+      .sort((x, y) => x.a - y.a)
+      .slice(0, mind.beliefs.length - 60);
+    const gone = new Set(weak.map((x) => x.id));
+    mind.beliefs = mind.beliefs.filter((b) => !gone.has(b.id));
+  }
+
+  // Forgetting: past capacity, the faintest ordinary memories go (decay as in Anderson & Schooler 1991).
+  const cap = PARAMS.memory.capacity;
+  if (mind.episodes.length > cap) {
+    const keep = new Set<string>([
+      ...mind.schemas.flatMap((s) => [...(s.origin ?? []), ...(s.deepenedBy ?? []).map((d) => d.episode)]),
+      ...mind.beliefs.filter((b) => b.confidence >= 0.4).flatMap((b) => [...b.evidence.slice(-2), ...(b.claim?.episodeHint ? [b.claim.episodeHint] : [])]),
+      // How the town began is not let go: it is told every year. (Other people's stories of it can be.)
+      ...mind.episodes.filter((e) => (e.source.kind !== "told" && (e.topics.includes("crossing") || e.topics.includes("leaving"))) || e.topics.includes("founding")).map((e) => e.id),
+    ]);
+    const faint = mind.episodes
+      .filter((e) => !keep.has(e.id))
+      .map((e) => ({ id: e.id, a: baseLevel(e.retrievals, now, PARAMS.memory.gistDecay) + 2 * Math.abs(e.valence) * e.arousal }))
+      .sort((x, y) => x.a - y.a)
+      .slice(0, mind.episodes.length - cap);
+    const drop = new Set(faint.map((x) => x.id));
+    mind.episodes = mind.episodes.filter((e) => !drop.has(e.id));
+    if (drop.size) notes.push(`Forgot ${drop.size} faint ${drop.size === 1 ? "memory" : "memories"}.`);
+  }
+  if (mind.expressions.length > 200) mind.expressions.splice(0, mind.expressions.length - 200);
 
   const af = mind.affect;
   af.stress *= 1 - S.stressRecovery;

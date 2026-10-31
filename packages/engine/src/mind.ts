@@ -4,7 +4,7 @@
 import { applyAppraisal, appraise, passTime, updateTrust } from "./affect.js";
 import { decide, nameOf, styleFor } from "./decide.js";
 import { detectBiases, headline } from "./explain.js";
-import { clamp, reconsolidate, render, retrieve } from "./memory.js";
+import { clamp, reconsolidate, render, retrieve, use } from "./memory.js";
 import { PARAMS } from "./params.js";
 import type { Faculties, Percept, PerceiveResponse, StableIdentity } from "./ports.js";
 import { nextId } from "./rng.js";
@@ -14,7 +14,7 @@ import type { Episode, MindState, Tick } from "./types.js";
 import { compete } from "./workspace.js";
 
 export function identityOf(mind: MindState): StableIdentity {
-  return { name: mind.name, summary: mind.identity.summary, voice: mind.identity.voice };
+  return { id: mind.id, name: mind.name, summary: mind.identity.summary, voice: mind.identity.voice };
 }
 
 export const hourOf = (t: Tick) => (((t % 1440) + 1440) % 1440) / 60;
@@ -49,6 +49,12 @@ export async function perceiveText(
   return { ...res, id: nextId(mind, "pc"), tick: mind.tick, rawText: text, actor: speaker };
 }
 
+/** A reply matters when it answers you, tells a memory, comes out of deliberation, or the moment is big. */
+export function speechSalience(p: Percept, relevance: number, shared: number, system: 1 | 2): number {
+  if (p.actor === "visitor") return 1;
+  return clamp(Math.max(relevance * 0.8, shared > 0 ? 0.6 : 0, system === 2 ? 0.6 : 0, p.features.intensity >= 0.6 ? 0.6 : 0));
+}
+
 function settleExpressions(mind: MindState): void {
   for (const x of mind.expressions) if (x.outcome === undefined) x.outcome = mind.affect.valence - x.baseline;
 }
@@ -67,8 +73,9 @@ function absorbClaims(mind: MindState, p: Percept, episodeId: string): Contribut
         known.confidence = clamp(known.confidence + gain);
         out.push({ name: `heard again: ${known.proposition}`, value: gain, ref: known.id });
       }
-      known.retrievals.push(p.tick);
+      use(known.retrievals, p.tick);
       known.evidence.push(episodeId);
+      if (known.evidence.length > 8) known.evidence.splice(0, known.evidence.length - 8);
       continue;
     }
     let confidence = credibility * 0.9;
@@ -142,7 +149,7 @@ export async function runPercept(mind: MindState, p: Percept, faculties: Faculti
     if (w) w.text = render(ep);
   };
   for (const w of winners) {
-    if (w.kind === "belief") mind.beliefs.find((b) => b.id === w.ref)!.retrievals.push(p.tick);
+    if (w.kind === "belief") use(mind.beliefs.find((b) => b.id === w.ref)!.retrievals, p.tick);
     if (w.kind === "memory") await recall(w.ref, false);
   }
 
@@ -152,7 +159,8 @@ export async function runPercept(mind: MindState, p: Percept, faculties: Faculti
     kind: "perceive",
     percept: p,
     appraisal,
-    retrieval,
+    // Everything retrieved, and the strongest of what was not: a long life has hundreds of candidates.
+    retrieval: [...retrieval.filter((r) => r.retrieved), ...retrieval.filter((r) => !r.retrieved).sort((x, y) => y.activation - x.activation).slice(0, 12)],
     workspace: winners,
     subliminal,
     reconsolidations,
@@ -160,6 +168,8 @@ export async function runPercept(mind: MindState, p: Percept, faculties: Faculti
     llmCalls,
     headline: { question: "", answer: "" },
     notes,
+    encoded: episodeId,
+    changes: [...trustChanges, ...claimChanges],
   };
 
   const concernsSelf = p.addressedToSelf || Math.abs(p.features.outcomeForSelf) > 0.05;
@@ -205,6 +215,7 @@ export async function runPercept(mind: MindState, p: Percept, faculties: Faculti
         content,
         style: styleFor(mind, p, expressed, option),
         stance,
+        salience: speechSalience(p, appraisal.relevance, content.length, decision.system),
       });
       llmCalls.push("speak");
       trace.action = { kind: "speech", text: res.utterance, option: option.id, content: content.map((c) => c.id) };

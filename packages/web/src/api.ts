@@ -1,9 +1,10 @@
-import type { Ablations, AgentState, FeedItem, MindState, PlaceId, Rumor, Trace, WorldInput } from "@psyche/engine";
+import type { Scene3D, Timeline, Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
 
 export interface AgentSummary {
   id: string;
   name: string;
   role: string;
+  household?: string;
   place: PlaceId;
   activity: string;
   talking: boolean;
@@ -30,8 +31,17 @@ export interface RumorView extends Rumor {
   believers: { agent: string; confidence: number; text: string }[];
 }
 
+export type Scenario = "island" | "village" | "region";
+
 export interface WorldView {
   faculties: "claude" | "mock";
+  scenario: Scenario;
+  name: string;
+  places: Record<PlaceId, Place>;
+  village?: VillageView;
+  /** Present when the world is a region of towns; `town` is the one being watched. */
+  region?: RegionView;
+  town?: string;
   seed: number;
   running: boolean;
   speed: number;
@@ -43,8 +53,40 @@ export interface WorldView {
   feed: FeedItem[];
   rumors: RumorView[];
   rewind: { index: number; tick: number; dayStart: boolean }[];
+  /** Years passing on the offline mock, when they are. */
+  fastForward?: { from: number; to: number; at: number; started: number };
   calls: number;
+  cost: CostView;
   conversations: number;
+}
+
+export interface CostView {
+  mode: "claude" | "mock";
+  estimated: boolean;
+  level: "normal" | "economy" | "thrifty" | "offline";
+  levelMeans: string;
+  capUsd: number;
+  todayUsd: number;
+  sessionUsd: number;
+  perSimDay?: number;
+  calls: number;
+  templated: number;
+  cacheHitRate: number;
+  byFaculty: Record<string, { calls: number; templated: number; usd: number; input: number; output: number; cacheRead: number }>;
+  byModel: Record<string, { calls: number; usd: number }>;
+}
+
+export interface ConcernView extends Concern {
+  decisions: number;
+  direct: number;
+  minds: string[];
+}
+
+export interface WhyView {
+  tree: WhyTree;
+  chain: LedgerNode[];
+  genealogy: { ancestors: number; roots: LedgerNode[]; minds: string[] };
+  influence: { direct: number; total: number; decisions: { node: LedgerNode; share: number; steps: number }[]; minds: string[] };
 }
 
 export interface TraceSummary {
@@ -86,5 +128,18 @@ export const api = {
   control: (c: { running?: boolean; speed?: number }) => call<WorldView>("/api/control", c),
   input: (input: WorldInput) => call<WorldView>("/api/input", { input }),
   rewind: (index: number) => call<WorldView>("/api/rewind", { index }),
-  reset: (opts: { seed?: number; ablations?: Partial<Ablations> }) => call<WorldView>("/api/reset", opts),
+  concerns: (id: string) => call<{ concerns: ConcernView[]; nodes: number; edges: number }>(`/api/concerns/${id}`),
+  why: (q: { node?: string; agent?: string; trace?: string }) => call<WhyView>(`/api/why?${new URLSearchParams(q as Record<string, string>)}`),
+  focus: (agents: string[]) => call<{ focus: string[] }>("/api/focus", { agents }),
+  reset: (opts: { seed?: number; ablations?: Partial<Ablations>; scenario?: Scenario }) => call<WorldView>("/api/reset", opts),
+  divergence: () => call<{ events: DivergenceEntry[] }>("/api/divergence"),
+  town: (town: string) => call<WorldView>("/api/town", { town }),
+  myths: () => call<MythComparison>("/api/myths"),
+  timeline: () => call<Timeline>("/api/timeline"),
+  town3d: () => call<Scene3D>("/api/town3d"),
+  digest: (from?: number) => call<{ from: number; to: number; text: string }>(`/api/digest${from ? `?from=${from}` : ""}`),
+  atlas: () => call<{ beliefs: AtlasEntry[] }>("/api/atlas"),
+  years: (years: number) => call<WorldView>("/api/years", { years }),
+  counterfactual: (edit: CounterfactualEdit & { days?: number }) => call<Counterfactual>("/api/counterfactual", edit),
+  account: (agent: string, trace: string) => call<SaysVsWas>(`/api/account?${new URLSearchParams({ agent, trace })}`),
 };
