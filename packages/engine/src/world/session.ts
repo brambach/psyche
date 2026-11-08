@@ -7,12 +7,15 @@ import { recording, replaying } from "../session.js";
 import type { Faculties } from "../ports.js";
 import type { Tick } from "../types.js";
 import { dayOf } from "../mind.js";
+import { applyEdit, type EditInput } from "./edits.js";
 import { advance, inject, say, type FeedItem, type Sink, type WorldEvent, type WorldState, type WorldTrace } from "./world.js";
 
 export type WorldInput =
   | { type: "advance"; minutes: number }
   | { type: "inject"; event: WorldEvent }
-  | { type: "say"; to: string; text: string };
+  | { type: "say"; to: string; text: string }
+  /** The player changes someone's mind (see edits.ts). */
+  | { type: "edit"; edit: EditInput };
 
 export interface WorldFrame {
   index: number;
@@ -77,6 +80,7 @@ export class WorldSession {
     const before = this.world.tick;
     if (input.type === "advance") await advance(this.world, input.minutes, f, sink);
     else if (input.type === "inject") await inject(this.world, input.event, f, sink);
+    else if (input.type === "edit") applyEdit(this.world, input.edit, sink);
     else await say(this.world, input.to, input.text, f, sink);
     const dayStart = dayOf(this.world.tick) !== dayOf(before);
     const keep = opts.snapshot ?? (dayStart || (this.opts.keepRecent ?? KEEP_RECENT) > 0);

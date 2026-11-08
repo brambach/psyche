@@ -98,6 +98,8 @@ export async function sleep(mind: MindState, now: Tick, faculties: Faculties): P
       if (shifts.length) notes.push(`Trait drift: ${shifts.join(", ")}.`);
     }
   }
+  // Traits the player locked hold where they were set.
+  for (const l of mind.locks ?? []) mind.traits[l.trait] = l.value;
 
   // Beliefs fade too: past sixty, the weakest and least used go first.
   if (mind.beliefs.length > 60) {
