@@ -685,7 +685,8 @@ function settleCalls(world: WorldState, h: HeresyState, sink: Sink): void {
 
 // ---------------------------------------------------------------- telling people
 
-const HERESY_TOPICS = ["world", UNCANNY, MADE];
+/** Talk about the idea is not itself uncanny: only what people lived through counts as evidence. */
+const HERESY_TOPICS = ["world", MADE];
 
 /** Believers tell people they trust, a pair at a time, when they find themselves together. */
 async function confiding(world: WorldState, h: HeresyState, faculties: Faculties, sink: Sink): Promise<void> {
@@ -1182,7 +1183,7 @@ export interface HeresyView {
   events: (HeresyEvent & { names: string[] })[];
   lines: { id: string; origin: AgentId; originName: string; first: string; believers: number; hops: { tick: Tick; from: AgentId; to: AgentId; fromName: string; toName: string; text: string; confidence: number; overheard?: boolean }[] }[];
   census: HeresyState["census"];
-  leader?: { id: AgentId; name: string; stance: "believer" | "tolerant" | "suppresses" | "unaware" };
+  leader?: { id: AgentId; name: string; stance: "believer" | "tolerant" | "suppresses" | "dismisses" | "unaware" };
   calls: { who: AgentId; name: string; tick: Tick; answered: boolean; open: boolean }[];
 }
 
@@ -1255,6 +1256,7 @@ export function heresyView(world: WorldState): HeresyView | undefined {
     if (conf(heresyOf(world.minds[leader]!)) >= 0.5) stance = "believer";
     else if (h.events.some((e) => e.kind === "denounce" && e.agents[0] === leader)) stance = "suppresses";
     else if (h.last.tolerated === leader) stance = "tolerant";
+    else if (conf(orthodoxyOf(world.minds[leader]!)) > 0 || conf(heresyOf(world.minds[leader]!)) > 0) stance = "dismisses";
   }
   return {
     people,

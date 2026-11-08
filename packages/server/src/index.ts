@@ -610,6 +610,15 @@ function townCard(w: WorldState) {
 }
 
 /** The made world at a glance, for the chip in the corner: who believes, and who is asking for a sign. */
+/** The made-world view, with links only to moments the session still holds (old traces are let go). */
+function heresyLive() {
+  const v = heresyView(session.world);
+  if (!v) return v;
+  const kept = new Set(session.traces.map((t) => t.trace.id));
+  const keep = <T extends { trace?: string }>(x: T): T => (x.trace && !kept.has(x.trace) ? { ...x, trace: undefined } : x);
+  return { ...v, events: v.events.map(keep), anomalies: v.anomalies.map(keep), people: v.people.map((p) => ({ ...p, chain: p.chain.map(keep) })) };
+}
+
 function heresySummary() {
   const v = heresyView(session.world);
   if (!v) return undefined;
@@ -853,7 +862,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     if (p === "/api/myths") return region ? send(res, 200, compareMyths(region)) : send(res, 404, { error: "Only a region has more than one town." });
     if (p === "/api/atlas") return send(res, 200, { beliefs: atlas(session.world) });
     if (p === "/api/heresy") {
-      const v = heresyView(session.world);
+      const v = heresyLive();
       return v ? send(res, 200, v) : send(res, 404, { error: "The made world is switched off (PSYCHE_HERESY=0)." });
     }
     if (p === "/api/town3d") return session.world.village ? send(res, 200, townScene(session.world, session.feed.slice(-120), session.feed.filter((f) => f.kind === "event" || f.kind === "insight").slice(-12))) : send(res, 404, { error: "Only a village has a 3D view." });
@@ -1012,7 +1021,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       if (!text) return send(res, 400, { error: "Say something." });
       await exclusive(() => session.apply({ type: "sky", to: b.agent!, text }));
       save(true);
-      return send(res, 200, heresyView(session.world) ?? {});
+      return send(res, 200, heresyLive() ?? {});
     }
     if (p === "/api/rewind") {
       if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });

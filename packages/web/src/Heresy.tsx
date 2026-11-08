@@ -16,6 +16,7 @@ export const FACTION_LABEL: Record<Faction, string> = {
   authority: "Authority",
   unaware: "Unaware",
 };
+const FACTION_ONE: Record<Faction, string> = { believer: "Believer", hidden: "In secret", doubter: "Doubter", skeptic: "Skeptic", authority: "Authority", unaware: "Unaware" };
 const FACTION_ORDER: Faction[] = ["believer", "hidden", "doubter", "skeptic", "authority", "unaware"];
 
 const KIND_LABEL: Record<string, string> = {
@@ -109,7 +110,7 @@ export function HeresyPanel({ tick, onMind, onClose }: { tick: number; onMind: (
                   <span>
                     <b>{a.name}</b>: {a.text}
                   </span>
-                  {a.trace && <button className="g-mini" onClick={() => onMind(a.agent, a.trace)}>mind</button>}
+                  <button className="g-mini" onClick={() => onMind(a.agent, a.trace)}>mind</button>
                 </li>
               ))}
             </ol>
@@ -140,7 +141,7 @@ function Factions({ v }: { v: HeresyView }) {
       {leader && (
         <p className="hz-leader">
           {leader.name} leads the town and{" "}
-          {leader.stance === "believer" ? "believes it." : leader.stance === "suppresses" ? "has spoken against it at the fire." : leader.stance === "tolerant" ? "lets people say what they like." : "has not heard of it yet, or not from anyone they believe."}
+          {leader.stance === "believer" ? "believes it." : leader.stance === "suppresses" ? "has spoken against it at the fire." : leader.stance === "tolerant" ? "lets people say what they like." : leader.stance === "dismisses" ? "has heard it and thinks it nonsense, but has said nothing at the fire." : "has not heard of it yet, or not from anyone they believe."}
         </p>
       )}
     </section>
@@ -221,12 +222,12 @@ function Person({ p, open, onToggle, onMind }: { p: HeresyPerson; open: boolean;
   return (
     <li className="hz-person">
       <button className="hz-person-head" onClick={onToggle} aria-expanded={open}>
-        <span className={`hz-pill hz-${p.faction}`}>{FACTION_LABEL[p.faction]}</span>
+        <span className={`hz-pill hz-${p.faction}`}>{FACTION_ONE[p.faction]}</span>
         <b>{p.name}</b>
         <span className="hz-meter" title={`Believes it ${Math.round(p.heresy * 100)}%`}>
           <span style={{ width: `${Math.round(p.heresy * 100)}%` }} />
         </span>
-        <span className="hz-quote">{p.belief ? `“${p.belief}”` : p.doubt > 0 ? "uneasy, says nothing" : ""}</span>
+        <span className="hz-quote">{stance(p)}</span>
         {p.core && <span className="hz-core" title="A core belief now: Nothing here is real. Something is watching.">core</span>}
       </button>
       {open && (
@@ -249,6 +250,15 @@ function Person({ p, open, onToggle, onMind }: { p: HeresyPerson; open: boolean;
   );
 }
 
+/** What someone would say about it, in a line. */
+function stance(p: HeresyPerson): string {
+  if (p.faction === "believer" || p.faction === "hidden" || p.faction === "doubter") return p.belief ? `“${p.belief}”` : "";
+  if (p.faction === "authority") return "spoke against it at the fire";
+  if (p.faction === "skeptic") return p.orthodoxy > 0 ? "“The world is only the world. Talk of it being made is madness.”" : "thinks it nonsense";
+  if (p.heresy > 0) return "heard it, didn't take it in";
+  return p.doubt > 0 ? "uneasy, says nothing" : "";
+}
+
 function Chain({ steps, onMind }: { steps: ChainStep[]; onMind: (id: string, trace?: string) => void }) {
   return (
     <ol className="hz-chain" aria-label="Where it came from">
@@ -258,7 +268,7 @@ function Chain({ steps, onMind }: { steps: ChainStep[]; onMind: (id: string, tra
           <span>
             {s.anomaly && <span className={`hz-kind hz-kind-${s.anomaly}`}>{KIND_LABEL[s.anomaly] ?? s.anomaly}</span>} {s.text}
           </span>
-          {s.trace && <button className="g-mini" onClick={() => onMind(s.agent, s.trace)}>mind</button>}
+          {(s.trace || s.kind !== "firsthand") && <button className="g-mini" onClick={() => onMind(s.agent, s.trace)}>mind</button>}
         </li>
       ))}
     </ol>

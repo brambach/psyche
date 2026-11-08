@@ -116,6 +116,26 @@ A region can now grow to thousands, because only the town you're looking at has 
 
 `npm run century -- 100` runs a century headless: the first two years live, the rest on rules, writing `digest.md` (a decade at a time), `timeline.json` and a save the server can open (`PSYCHE_DATA=out/century npm run dev`). With seed 11 it reaches about 1,800 people in 16 towns, in about 35 seconds, with no model calls.
 
+## The made world: people come to suspect it
+
+People in Hollow Bay can come to suspect that their world is made, and that someone is watching (`world/heresy.ts`). Nothing in it is scripted. The suspicion is built from things they actually live through, it is held as an ordinary belief, it travels the way any story does, and every step of it opens in the ledger.
+
+- **Seams.** The engine notices moments that don't fit the world's own rules, and each becomes an uncanny memory for the person who lived it:
+  - a voice from someone with no body (the god voice; a voice that names something the person never told anyone counts for much more)
+  - the same words from three different mouths (the mock's stock lines make this happen on its own)
+  - a moment that comes round again after a rewind (déjà vu)
+  - a friend whose temperament jumped overnight, or a certainty in your own head with no memory behind it (an edit made from outside)
+  - weather with no warning (an injected storm, gale or blight)
+- **Doubt.** Each morning a person weighs those memories by kind and vividness. How much weight they carry depends on temperament: openness and low felt control make patterns easier to see, and careful, conventional people discount them (Whitson & Galinsky 2008). Past a threshold, the evidence becomes a belief about the world, "Something about the world is not right", which firms up to "The world was made, and someone is watching it." A strong belief resting on a formative memory becomes a core belief.
+- **Heresy.** Believers confide in people they like, more readily if they have told nobody yet. The listener's own temperament, their own uncanny memories and how much they like the teller decide between hearing them out, saying they've seen it too, laughing it off, or calling it madness. Each telling is a hop on the story's lineage, and the ledger links the teller's belief to the listener's ("passed on"). Repeated tellings firm it up (illusory truth). People who call it madness come to hold the orthodox line, and a scornful belief about the teller spreads as gossip.
+- **The fire and the leader.** A firm believer may preach at the evening fire. A leader who is closed and orderly denounces it. The agreeable go quiet and keep it to themselves (Noelle-Neumann's spiral of silence), and the open and contrary believe it harder (Brehm's reactance). A tolerant leader lets it be, and a leader can come to believe it too.
+- **Asking for a sign.** A firm, open believer may call out to whoever is watching. If the player answers within the day, that becomes the strongest seam of all. If nobody answers, someone who has told many people preaches harder rather than let it go (Festinger, *When Prophecy Fails*), and the rest lose a little faith.
+- **The made world panel.** The chip above the town opens it: the town split into believers, believers in secret, doubters, skeptics, authority and the unaware, day by day; each person's chain back to the moment they lived through; who told whom; what the town has done about it; and an open call you can answer from the sky (`POST /api/heresy/answer`).
+
+`npm run heresy -- 12 11` runs the story headless: on day 2 a voice speaks to the most open person, on day 4 a voice tells a second person something they never told anyone, and on day 6 a gale comes from nowhere. With `--organic` the player does nothing, and only the seams the engine makes by itself can start it (they make people uneasy, not believers). Different seeds go different ways: a leader who denounces it and drives believers underground, a leader who comes to believe it, a slow simmer. It is on by default in the live game; `PSYCHE_HERESY=0` turns it off.
+
+Other features can feed it without calling into it: speech from any actor with no body in the town (the god voice speaks as `sky` or `dream`; a `visitor` is a stranger with a body and doesn't count) is picked up from the traces, and so are trait or schema edits made from outside.
+
 ## Watching it in 3D
 
 Open **Watch in 3D** in the village or region scenario. The town is laid out on a block grid (`world/town3d.ts`): shore and jetty, fire circle, store, rows of home plots, quarry, pinewood and barley field. The land is built in the browser from the seed, and `/api/town3d` says only what changes. The 3D view reads the simulation and decides nothing.
@@ -239,6 +259,11 @@ Every number is in `packages/engine/src/params.ts` with its source, or marked as
 | Self-efficacy, controllability | Bandura 1977; Maier & Seligman 2016 |
 | Consolidation, prioritized replay, emotional tempering | McClelland, McNaughton & O'Reilly 1995; Mattar & Daw 2018; Walker & van der Helm 2009 |
 | Courtesy as a social norm | Bicchieri 2006 |
+| Lack of control and illusory pattern perception | Whitson & Galinsky 2008 |
+| Spiral of silence | Noelle-Neumann 1974 |
+| Reactance | Brehm 1966 |
+| Commitment after a failed prophecy | Festinger, Riecken & Schachter 1956 |
+| Illusory truth | Hasher, Goldstein & Toppino 1977 |
 
 ## What the tests show
 

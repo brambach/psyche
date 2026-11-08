@@ -27,7 +27,7 @@
 .hz-calls { border: 1px solid var(--bel); background: var(--bel-soft); border-radius: 10px; padding: 4px 12px 10px; margin-top: 14px; }
 .hz-calls h3 { color: var(--bel); margin-top: 10px; }
 .hz-call p { margin: 0 0 6px; font-size: 14px; }
-.hz-call input { color: var(--ink); background: var(--surface); border-color: var(--line); }
+.hz .hz-call .g-row input { color: var(--ink); background: var(--surface); border-color: var(--line); }
 .hz-people { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
 .hz-person-head { display: grid; grid-template-columns: 116px 80px 70px 1fr auto; align-items: center; gap: 8px; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; color: var(--ink); font: 14px var(--body); cursor: pointer; }
 .hz-person-head b { font: 600 14px var(--display); }
