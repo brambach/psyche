@@ -174,7 +174,7 @@ export async function runPercept(mind: MindState, p: Percept, faculties: Faculti
     changes: [...trustChanges, ...claimChanges],
   };
 
-  const concernsSelf = p.addressedToSelf || Math.abs(p.features.outcomeForSelf) > 0.05;
+  const concernsSelf = p.addressedToSelf || p.reflect || Math.abs(p.features.outcomeForSelf) > 0.05;
   let optionSpec;
   if (concernsSelf) {
     const novelty = retrieval.some((r) => r.retrieved && r.kind === "episode") ? 0.4 : 1;

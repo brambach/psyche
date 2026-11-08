@@ -22,6 +22,10 @@ import type { Trace } from "../trace.js";
 import { TRAIT_NAMES, type AgentId, type Episode, type MindState, type Schema, type Tick } from "../types.js";
 import { baseMind } from "./cast.js";
 import { inheritEdits } from "./edits.js";
+import { stands } from "./works.js";
+import { intentOf } from "./intentions.js";
+
+const courts = (world: WorldState, a: AgentId, b: AgentId) => intentOf(world, a)?.kind === "court" && intentOf(world, a)?.target === b;
 import { craftBonus, learn, CRAFTS } from "./knowledge.js";
 import { createSettlers, FIRST_NAMES, other, routineFor, uniqueId } from "./people.js";
 import type { RoutineEntry } from "./places.js";
@@ -89,6 +93,8 @@ export async function lifeTurn(world: WorldState, faculties: Faculties, sink: Si
     const yearly = age < 3 ? 0.04 : age < 50 ? 0.008 : 0.015 + (age - 50) ** 2 * 0.0006;
     // Herb lore, where someone still knows it, saves some from fevers.
     let p = (yearly / 4) * (age < 50 ? 1 - craftBonus(world, "health") : 1);
+    // A well means clean water: fewer fevers among the young and middle-aged.
+    if (age < 50 && stands(world, "well")) p *= 0.6;
     if (m.needs.energy < 0.15) p += 0.06;
     if (luck(world, "death", id) < p) await die(world, id, age >= 50 ? "old age" : m.needs.energy < 0.15 ? "hunger and cold" : "a fever", faculties, sink);
   }
@@ -101,7 +107,8 @@ export async function lifeTurn(world: WorldState, faculties: Faculties, sink: Si
     const kin = new Set([...v.life[a]!.parents, ...world.order.filter((x) => v.life[x]!.parents.some((p) => v.life[a]!.parents.includes(p)) || v.life[x]!.parents.includes(a))]);
     const best = single
       .filter((b) => b !== a && !paired.has(b) && !kin.has(b) && !v.life[b]!.parents.includes(a))
-      .map((b) => ({ b, mutual: ((A.others[b]?.liking ?? 0.5) + (world.minds[b]!.others[a]?.liking ?? 0.5)) / 2 }))
+      // Someone who set out to court the other this season tips it.
+      .map((b) => ({ b, mutual: ((A.others[b]?.liking ?? 0.5) + (world.minds[b]!.others[a]?.liking ?? 0.5)) / 2 + (courts(world, a, b) || courts(world, b, a) ? 0.15 : 0) }))
       .sort((x, y) => y.mutual - x.mutual)[0];
     if (best && best.mutual > 0.6 && luck(world, "pair", a, best.b) < 0.45) {
       paired.add(a).add(best.b);

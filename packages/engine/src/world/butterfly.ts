@@ -29,6 +29,8 @@ export interface TownSide {
   deaths: number;
   store: number;
   houses: number;
+  /** What the town built together and still stands (or lies in ruins), e.g. "the granary, the hall". */
+  works: string;
   leader?: string;
   laws: number;
   norms: number;
@@ -92,6 +94,7 @@ function side(w: WorldState, s: WorldSession, from: Tick, changed: AgentId[]): T
     deaths: life.filter((l) => l.died !== undefined && l.died >= from).length,
     store: Math.round(v?.store.food ?? 0),
     houses: v ? Object.values(v.households).filter((h) => h.shelter === "house").length : 0,
+    works: (v?.works ?? []).filter((x) => x.status !== "rejected" && x.status !== "proposed").map((x) => (x.status === "ruin" ? `ruins of ${x.name}` : x.status === "building" ? `${x.name} (going up)` : x.name)).join(", ") || "nothing",
     leader: v?.civic?.leader,
     laws: v?.civic?.laws.length ?? 0,
     norms: v?.norms.filter((n) => n.established).length ?? 0,
@@ -216,9 +219,10 @@ function tell(b: Butterfly, W: WorldState, O: WorldState): string[] {
   const T = b.town;
   const diffs: string[] = [];
   if (T.with.store !== T.without.store) diffs.push(`the common store holds ${T.with.store} food instead of ${T.without.store}`);
+  if (T.with.works !== T.without.works) diffs.push(`the town has built ${T.with.works} instead of ${T.without.works}`);
   if (T.with.houses !== T.without.houses) diffs.push(`${T.with.houses} houses stand instead of ${T.without.houses}`);
   if (T.with.leader !== T.without.leader) diffs.push(`${T.with.leader ? name(T.with.leader) : "nobody"} leads instead of ${T.without.leader ? name(T.without.leader) : "nobody"}`);
-  if (T.with.laws !== T.without.laws) diffs.push(`${T.with.laws} laws instead of ${T.without.laws}`);
+  if (T.with.laws !== T.without.laws) diffs.push(`${T.with.laws} law${T.with.laws === 1 ? "" : "s"} instead of ${T.without.laws}`);
   if (T.with.people !== T.without.people) diffs.push(`${T.with.people} people live there instead of ${T.without.people}`);
   if (T.with.crafts !== T.without.crafts) diffs.push(`${T.with.crafts} crafts are known instead of ${T.without.crafts}`);
   if (Math.abs(T.with.warmth - T.without.warmth) >= 0.005) diffs.push(`people like each other ${T.with.warmth > T.without.warmth ? "more" : "less"} (${T.with.warmth.toFixed(2)} vs ${T.without.warmth.toFixed(2)})`);
