@@ -17,7 +17,7 @@ import { dayOf, runPercept } from "../mind.js";
 import type { Faculties, Percept } from "../ports.js";
 import { nextId, nextRandom } from "../rng.js";
 import type { AgentId, Episode, MindState, Tick } from "../types.js";
-import { aggAdvance, dematerialize, materialize } from "./aggregate.js";
+import { aggAdvance, dematerialize, materialize, tidy } from "./aggregate.js";
 import { foundingVersion, rootOf } from "./civic.js";
 import { craft, craftBonus, knows, learn, townCrafts } from "./knowledge.js";
 import { ageOf, hearStory, isChild, schemaLineage, yearOf } from "./life.js";
@@ -241,7 +241,13 @@ export class RegionSession {
   }
 
   rebase(): void {
-    for (const s of Object.values(this.towns)) s.rebase();
+    this.harvest();
+    for (const [id, s] of Object.entries(this.towns)) {
+      tidy(s.world);
+      s.rebase();
+      // The feed may have been trimmed; the chronicle has read all of it.
+      this.region.last.feed[id] = s.feed.length;
+    }
   }
 
   private reserve(town: string): void {

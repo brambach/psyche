@@ -160,7 +160,9 @@ export async function runPercept(mind: MindState, p: Percept, faculties: Faculti
     percept: p,
     appraisal,
     // Everything retrieved, and the strongest of what was not: a long life has hundreds of candidates.
-    retrieval: [...retrieval.filter((r) => r.retrieved), ...retrieval.filter((r) => !r.retrieved).sort((x, y) => y.activation - x.activation).slice(0, 12)],
+    // The strongest of what came back and the nearest misses: a long life retrieves hundreds of things,
+    // and every trace kept them all.
+    retrieval: [...retrieval.filter((r) => r.retrieved).sort((x, y) => y.activation - x.activation).slice(0, 24), ...retrieval.filter((r) => !r.retrieved).sort((x, y) => y.activation - x.activation).slice(0, 12)],
     workspace: winners,
     subliminal,
     reconsolidations,

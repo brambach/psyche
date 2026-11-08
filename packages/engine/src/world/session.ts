@@ -37,6 +37,8 @@ export interface WorldSessionOptions {
   keepDays?: number;
   /** Only the most recent traces are kept in memory; older ones fall out of the ledger. Default: all. */
   maxTraces?: number;
+  /** On a rebase, only the newest this many feed items are kept (nothing can rewind past a rebase). Default: all. */
+  maxFeed?: number;
 }
 
 export class WorldSession {
@@ -132,6 +134,8 @@ export class WorldSession {
     this.frames = [];
     this.log = [];
     this.pruned = 0;
+    const extra = this.feed.length - (this.opts.maxFeed ?? Infinity);
+    if (extra > 0) this.feed.splice(0, extra);
     this.baseFeed = this.feed.length;
     this.baseTrace = this.traceBase + this.traces.length;
   }

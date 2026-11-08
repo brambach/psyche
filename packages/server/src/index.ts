@@ -119,10 +119,10 @@ function makeWorld() {
   return scenario === "village" ? createVillage(seed, ablations) : createWorld(seed, ablations);
 }
 // A village runs for years: keep fewer snapshots and let the oldest traces go.
-// A region runs unattended for years, so it keeps the least: two days of day-start snapshots and the
-// newest 4000 traces (the ledger and the chronicle hold what matters from before).
+// A region runs unattended for years, so it keeps the least: two days of day-start snapshots, the
+// newest 4000 traces and 2000 feed items (the ledger and the chronicle hold what matters from before).
 const sessionOpts = (): WorldSessionOptions =>
-  scenario === "island" ? {} : scenario === "region" ? { keepRecent: 24, keepDays: 2, maxTraces: 4_000 } : { keepRecent: 24, keepDays: 14, maxTraces: 15_000 };
+  scenario === "island" ? {} : scenario === "region" ? { keepRecent: 24, keepDays: 2, maxTraces: 4_000, maxFeed: 2_000 } : { keepRecent: 24, keepDays: 14, maxTraces: 15_000, maxFeed: 5_000 };
 /**
  * Towns run live (hour by hour, on Claude) only while watched: by default one at a time, the rest on
  * the aggregate tier, on rules. PSYCHE_LIVE_TOWNS raises it.

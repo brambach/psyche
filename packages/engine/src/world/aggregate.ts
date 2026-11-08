@@ -90,8 +90,30 @@ export function materialize(agg: WorldState): WorldState {
  * remembered only the memories someone living still traces a story back to.
  */
 export function compactMinds(w: WorldState): void {
-  const living = new Set(w.order);
   for (const id of w.order) compactMind(w, w.minds[id]!);
+  pruneDead(w);
+}
+
+/**
+ * A live town that runs for years keeps everyone who ever lived there. The long dead (a year or more)
+ * born here are kept only as far as the living's memories point to them (stories told by someone now
+ * gone); the founding generation stays whole, since every town's telling of the crossing leads to them;
+ * people who moved away stay whole, since other towns remember them through those copies. Each
+ * rumor keeps only its latest retellings.
+ */
+export function tidy(w: WorldState): void {
+  const v = w.village;
+  if (v) {
+    const year = v.seasonDays * 4 * 1440;
+    const gone = new Set(Object.keys(w.minds).filter((id) => !w.order.includes(id) && v.life[id]?.died !== undefined && w.tick - v.life[id]!.died! > year && v.life[id]!.generation > 0));
+    if (gone.size) pruneDead(w, gone);
+  }
+  for (const r of Object.values(w.rumors)) if (r.hops.length > 40) r.hops.splice(0, r.hops.length - 40);
+}
+
+/** Strip the minds of the dead (all who aren't living, or only those in `only`) to what the living's memories need. */
+function pruneDead(w: WorldState, only?: Set<AgentId>): void {
+  const living = new Set(w.order);
   // Follow every kept memory's told-by pointer, so the chains stay whole.
   const needed = new Map<AgentId, Set<string>>();
   const queue: { agent: AgentId; ep: Episode }[] = w.order.flatMap((id) => w.minds[id]!.episodes.map((ep) => ({ agent: id, ep })));
@@ -107,7 +129,7 @@ export function compactMinds(w: WorldState): void {
     if (next) queue.push({ agent: s.from, ep: next });
   }
   for (const [id, m] of Object.entries(w.minds)) {
-    if (living.has(id)) continue;
+    if (living.has(id) || (only && !only.has(id))) continue;
     const keep = needed.get(id);
     if (!keep) {
       delete w.minds[id];
