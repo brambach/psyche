@@ -129,9 +129,11 @@ export function scoreOption(mind: MindState, p: Percept, opt: OptionSpec, ws: Wo
       if (opt.coping === "problem" && g.tags.some((t) => p.topics.includes(t))) add(`serves goal: ${g.text}`, g.priority * 0.4, g.id);
     }
   }
+  for (const t of opt.pull ?? []) add(t.name, t.value, t.ref);
   for (const h of mind.habits) {
     if (opt.coping && p.topics.includes(h.cue) && h.action === opt.coping) add(`habit: ${h.cue}`, h.strength * 0.4, h.id);
   }
+  for (const f of opt.situation ?? []) add(f.name, f.value, f.ref);
   add("noise", gaussian(mind) * D.noise);
   return { id: opt.id, label: opt.label, description: opt.description, utility: terms.reduce((s, t) => s + t.value, 0), terms };
 }
@@ -183,7 +185,7 @@ export async function decide(
   const conflict = clamp(1 - (best.utility - runnerUp.utility) / 0.5);
   const drive = 0.45 * conflict + 0.25 * novelty + 0.5 * stakes;
   let probability = capacity / (1 + Math.exp(-(D.s2Gain * drive + D.s2Bias)));
-  if (mind.ablations.systemTwo === "always") probability = 1;
+  if (mind.ablations.systemTwo === "always" || p.reflect) probability = 1;
   if (mind.ablations.systemTwo === "never") probability = 0;
   const useS2 = nextRandom(mind) < probability;
   const stance = stanceFor(mind, p, x);

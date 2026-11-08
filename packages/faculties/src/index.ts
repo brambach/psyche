@@ -20,3 +20,4 @@ export function createFaculties(
   const governor = new Governor({ ...opts, mode: useClaude ? "claude" : "mock" });
   return { kind: governor.mode, faculties: governor.faculties, governor };
 }
+export { createClaudeReader, MAX_WRITING_CHARS, type ClaudeReaderOptions } from "./persona.js";

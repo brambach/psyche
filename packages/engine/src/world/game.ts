@@ -117,6 +117,8 @@ export interface Beat {
 /** How much each kind of moment is worth a cut, by what the feed says it is. */
 const RULES: [RegExp, number, boolean?][] = [
   [/ dies\b| drowned| is lost at sea/, 0.95],
+  [/prophecy comes true|never comes|faith is born|Schism|voice speaks out of the sky|dreams the same words|rite takes hold/, 0.92],
+  [/prophet preaches|stranger stops|preaches at/, 0.8],
   [/ is asked to lead /, 0.9],
   [/law/i, 0.85],
   [/ is born /, 0.85],
@@ -178,7 +180,7 @@ export interface Notice {
   agent?: AgentId;
 }
 
-const CHRONICLE_NOTICE: Partial<Record<ChronicleEntry["kind"], true>> = { founding: true, leader: true, law: true, death: true, quarrel: true, peace: true, hunger: true, craft: true, lost: true };
+const CHRONICLE_NOTICE: Partial<Record<ChronicleEntry["kind"], true>> = { faith: true, founding: true, leader: true, law: true, death: true, quarrel: true, peace: true, hunger: true, craft: true, lost: true, engine: true, work: true, ruin: true };
 
 /** Warnings about the watched world: a craft down to its last keeper, a town close to splitting. */
 export function warnings(w: WorldState, town: string | undefined, region?: RegionSession): Notice[] {
@@ -250,7 +252,7 @@ export interface AwaySummary {
   total: number;
 }
 
-const WEIGHT: Record<ChronicleEntry["kind"], number> = { founding: 10, lost: 9, quarrel: 8, law: 7, leader: 6, hunger: 6, peace: 5, craft: 5, heresy: 5, death: 4, trade: 1 };
+const WEIGHT: Record<ChronicleEntry["kind"], number> = { faith: 8, founding: 10, lost: 9, engine: 9, quarrel: 8, law: 7, leader: 6, hunger: 6, peace: 5, craft: 5, heresy: 5, work: 6, ruin: 5, death: 4, trade: 1 };
 
 /** What changed in a region between two ticks: populations then and now, new towns, and what the chronicle kept. */
 export function awaySummary(rs: RegionSession, from: Tick, to = rs.region.tick): AwaySummary {

@@ -47,6 +47,12 @@ export interface EditRecord {
   /** In plain words, from the player's side: "You gave Mara a fear: …". */
   label: string;
   notice: boolean;
+  /** Not a player's change: this piece of a mind was read from the person's own writing (see persona/). */
+  source?: "writing";
+  /** The words it was read from. */
+  quote?: string;
+  /** Whose writing. */
+  persona?: AgentId;
 }
 
 /** Ready-made core beliefs, with triggers on the topics the world actually uses. */
