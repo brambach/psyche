@@ -66,6 +66,15 @@ export const PARAMS = {
     hostileAttribution: 0.6,
     /** Attitude-congruent claims gain this much confidence (Kunda 1990). Tuned. */
     motivatedUpdating: 0.35,
+    /** Confidence gained when a known story is heard again from a new teller (illusory truth). Tuned. */
+    illusoryTruth: 0.2,
+    /**
+     * A told story whose activation (detail decay) has fallen below this is rebuilt when retold,
+     * and drifts toward the teller's attitude (Allport & Postman 1947; Bartlett 1932). Tuned.
+     */
+    retellFade: -1.5,
+    /** How strongly liking for a story's subject colours its retelling, added to mood. Tuned. */
+    retellAttitude: 0.8,
   },
   workspace: {
     /** About four items (Cowan 2001). */

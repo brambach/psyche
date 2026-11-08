@@ -86,7 +86,8 @@ export interface Trace {
   subliminal: WorkspaceEntry[];
   decision?: DecisionTrace;
   reconsolidations: ReconsolidationTrace[];
-  action?: { kind: "speech" | "act" | "none"; text: string };
+  /** `content` lists the episodes a reply drew on, when it told a memory. */
+  action?: { kind: "speech" | "act" | "none"; text: string; option?: string; content?: string[] };
   biases: BiasFlag[];
   llmCalls: string[];
   /** Plain-language question and answer for the Story view. Generated from this trace, not by the model. */

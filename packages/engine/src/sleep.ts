@@ -45,7 +45,7 @@ export async function sleep(mind: MindState, now: Tick, faculties: Faculties): P
       // The engine, not the model, decides whether the evidence supports a generalization.
       const evidence = g.evidence
         .map((id) => mind.episodes.find((e) => e.id === id))
-        .filter((e) => e && e.about.includes(g.about) && Math.sign(e.valence) === Math.sign(g.valence));
+        .filter((e) => e && e.about[0] === g.about && Math.sign(e.valence) === Math.sign(g.valence));
       if (evidence.length < S.generalizeAt) continue;
       const existing = mind.beliefs.find((b) => b.about === g.about && b.source.kind === "inferred" && Math.sign(b.valence) === Math.sign(g.valence));
       if (existing) {

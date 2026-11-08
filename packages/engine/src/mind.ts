@@ -59,6 +59,18 @@ function absorbClaims(mind: MindState, p: Percept, episodeId: string): Contribut
   const teller = mind.others[p.actor];
   for (const c of p.claims) {
     const credibility = teller ? teller.trust.integrity : 0.5;
+    const known = c.rumor ? mind.beliefs.find((b) => b.rumor === c.rumor) : undefined;
+    if (known) {
+      // A story heard again, from someone new, feels truer (illusory truth; Hasher, Goldstein & Toppino 1977).
+      if (known.source.from !== p.actor && mind.ablations.illusoryTruth) {
+        const gain = PARAMS.social.illusoryTruth * credibility * (1 - known.confidence);
+        known.confidence = clamp(known.confidence + gain);
+        out.push({ name: `heard again: ${known.proposition}`, value: gain, ref: known.id });
+      }
+      known.retrievals.push(p.tick);
+      known.evidence.push(episodeId);
+      continue;
+    }
     let confidence = credibility * 0.9;
     const subject = mind.others[c.about];
     if (subject && mind.ablations.motivatedUpdating) {
@@ -81,6 +93,7 @@ function absorbClaims(mind: MindState, p: Percept, episodeId: string): Contribut
       evidence: [episodeId],
       retrievals: [p.tick],
       claim: c.slotKey && c.value ? { slotKey: c.slotKey, value: c.value, episodeHint: c.episodeHint } : undefined,
+      rumor: c.rumor,
     });
     if (subject) subject.liking = clamp(subject.liking + c.valence * confidence * 0.12);
     out.push({ name: `new belief: ${c.proposition}`, value: confidence, ref: id });
@@ -97,7 +110,7 @@ export async function runPercept(mind: MindState, p: Percept, faculties: Faculti
   applyAppraisal(mind, appraisal);
   const trustChanges = updateTrust(mind, p);
   // The episode for this moment is encoded at the end of the cycle; claims heard now rest on it.
-  const episodeId = nextId(mind, "ep");
+  const episodeId = p.eventId && !mind.episodes.some((e) => e.id === p.eventId) ? p.eventId : nextId(mind, "ep");
   const claimChanges = absorbClaims(mind, p, episodeId);
   for (const c of [...trustChanges, ...claimChanges]) notes.push(`${c.name} (${c.value > 0 ? "+" : ""}${c.value.toFixed(2)})`);
 
@@ -164,13 +177,19 @@ export async function runPercept(mind: MindState, p: Percept, faculties: Faculti
     optionSpec = option;
 
     if (p.kind === "speech" && p.addressedToSelf) {
-      const recallTopics = new Set([...(p.asksRecall?.topics ?? []), ...(p.asksRecall?.about ?? [])]);
       // What to share: the memories in mind that answer the question, recalled in full if told in full.
+      // Unprompted, a memory is only shared if it bears on what was just said, and not one about the
+      // person you are talking to.
+      const asked = !!p.asksRecall;
+      const recallTopics = asked
+        ? new Set([...p.asksRecall!.topics, ...p.asksRecall!.about])
+        : new Set([...p.topics, ...p.about.filter((a) => a !== p.actor)]);
       const overlap = (ep: Episode) => [...ep.topics, ...ep.about].filter((t) => recallTopics.has(t)).length;
       const candidates = winners
         .filter((w) => w.kind === "memory")
         .map((w) => mind.episodes.find((e) => e.id === w.ref)!)
-        .filter((ep) => ep.details.length > 0 && (recallTopics.size === 0 || overlap(ep) > 0));
+        .filter((ep) => ep.id !== episodeId && !p.alreadySaid?.includes(ep.id) && (asked ? recallTopics.size === 0 || overlap(ep) > 0 : ep.details.length > 0 && overlap(ep) > 0 && !ep.about.includes(p.actor)))
+        .filter((ep) => !asked || ep.details.length > 0 || ep.tick > mind.lastSleep - 1440 * 3);
       const best = Math.max(0, ...candidates.map(overlap));
       const answering = option.disclosure > 0.3 ? candidates.filter((ep) => overlap(ep) === best).slice(0, 1) : [];
       const content: { id: string; text: string }[] = [];
@@ -188,10 +207,10 @@ export async function runPercept(mind: MindState, p: Percept, faculties: Faculti
         stance,
       });
       llmCalls.push("speak");
-      trace.action = { kind: "speech", text: res.utterance };
+      trace.action = { kind: "speech", text: res.utterance, option: option.id, content: content.map((c) => c.id) };
       mind.needs.relatedness = clamp(mind.needs.relatedness + 0.04 * option.prosocial);
     } else {
-      trace.action = { kind: "act", text: `${mind.name} ${option.act ?? option.description.toLowerCase()}` };
+      trace.action = { kind: "act", text: `${mind.name} ${option.act ?? option.description.toLowerCase()}`, option: option.id };
     }
 
     mind.expressions.push({ tick: p.tick, expressed, baseline: mind.affect.valence });

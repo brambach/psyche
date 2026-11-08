@@ -8,7 +8,7 @@ function slot(key: string, value: string, salience: number, rehearsals: number[]
   return { key, value, original: value, source: { kind: "witnessed" }, salience, rehearsals };
 }
 
-function episode(
+export function episode(
   e: Omit<Episode, "valenceAtEncoding" | "versions" | "replays" | "source" | "details" | "retrievals" | "coping" | "agency"> & {
     details?: [string, string, number][];
     rehearsed: number[];
