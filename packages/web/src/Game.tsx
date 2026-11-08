@@ -399,6 +399,17 @@ function TownCard({ view, onGo, onLook }: { view: GameView; onGo: (town: string)
             )}
             <dt>Common store</dt>
             <dd>{c.store} food put by</dd>
+            {c.money && c.money.deals.give + c.money.deals.lend + c.money.deals.sell + c.money.deals.refuse > 0 && (
+              <>
+                <dt>Between households</dt>
+                <dd>
+                  {c.money.deals.give} given, {c.money.deals.lend} lent, {c.money.deals.sell} sold for {c.money.good}, {c.money.deals.refuse} turned away
+                  {c.money.owed > 0 && <span className="g-sub">{c.money.owed} debts open{c.money.overdue ? `, ${c.money.overdue} past due` : ""}</span>}
+                </dd>
+                <dt>Money</dt>
+                <dd>{c.money.established ? `${c.money.good} is money: ${Math.round(c.money.share * 100)}% take it` : `none yet; ${Math.round(c.money.share * 100)}% would take ${c.money.good}`}</dd>
+              </>
+            )}
             {c.laws > 0 && (
               <>
                 <dt>Laws</dt>

@@ -24,6 +24,7 @@ import type { AgentId, Episode, MindState } from "../types.js";
 import { civicOf, considerLaw, elect, enforceLaws, foundingVersion, rootOf, toldFrom } from "./civic.js";
 import { craftBonus, knowledgeTurn } from "./knowledge.js";
 import { aggWorks, stands } from "./works.js";
+import { aggMoney, moneySeason } from "./money.js";
 import { ageOf, CHILDHOOD, hearStory, isChild, lifeTurn, normHeld, settleNorms, storeNorm, yearOf } from "./life.js";
 import { CROSSING, other } from "./people.js";
 import { GALE_CHANCE, JOBS, RATE, RATION, SEASON_YIELD, SPOIL, seasonOf, type Pledge } from "./village.js";
@@ -216,6 +217,8 @@ export async function aggSeason(w: WorldState, faculties: Faculties, sink: Sink)
   knowledgeTurn(w, sink);
   if (v.season === "spring") elect(w, sink);
   aggWorks(w, sink);
+  aggMoney(w, sink);
+  moneySeason(w);
   await pledgeRound(w, faculties, sink);
   if (v.season === "summer" && yearOf(w) > 1) for (const f of [...new Set([v.founding ?? CROSSING, CROSSING])]) tellFounding(w, f);
   bedtimes(w);

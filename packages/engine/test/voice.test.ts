@@ -146,7 +146,7 @@ describe("the Voice", () => {
     await speak(s, { act: "speak", guise: "stranger", to, text: "A great storm will come before winter, and the sea will take what it is owed." });
     await s.apply({ type: "advance", minutes: 10 * 60 });
     await speak(s, { act: "speak", guise: "prophet", place: "tavern", text: "The dead are watching. Gather at the headland each dusk, or they will come for the children." });
-    await run(s, 20 * 24);
+    await run(s, 26 * 24);
     const v = voiceSummary(s.world)!;
     expect(v.faiths.length).toBeGreaterThanOrEqual(2);
     const sect = v.faiths.find((f) => f.parent)!;

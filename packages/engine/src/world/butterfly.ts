@@ -3,6 +3,7 @@
 // side. Every difference then comes from the change, either straight through the minds it touched
 // (the ledger can trace it) or through what those people did differently (a ripple).
 
+import { acceptedShare, type Deal } from "./money.js";
 import { buildLedger, influence, nodeId } from "../ledger.js";
 import type { Faculties } from "../ports.js";
 import type { AgentId, Tick } from "../types.js";
@@ -31,6 +32,10 @@ export interface TownSide {
   houses: number;
   /** What the town built together and still stands (or lies in ruins), e.g. "the granary, the hall". */
   works: string;
+  /** How people get food from each other: gifts, loans, sales for amber, refusals. */
+  deals: string;
+  /** Share of adults who take amber for food. */
+  money: number;
   leader?: string;
   laws: number;
   norms: number;
@@ -83,7 +88,7 @@ const choices = (traces: WorldTrace[]) => {
   return out;
 };
 
-function side(w: WorldState, s: WorldSession, from: Tick, changed: AgentId[]): TownSide {
+function side(w: WorldState, s: WorldSession, from: Tick, changed: AgentId[], before?: Partial<Record<Deal, number>>): TownSide {
   const v = w.village;
   const living = w.order;
   const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
@@ -95,6 +100,13 @@ function side(w: WorldState, s: WorldSession, from: Tick, changed: AgentId[]): T
     store: Math.round(v?.store.food ?? 0),
     houses: v ? Object.values(v.households).filter((h) => h.shelter === "house").length : 0,
     works: (v?.works ?? []).filter((x) => x.status !== "rejected" && x.status !== "proposed").map((x) => (x.status === "ruin" ? `ruins of ${x.name}` : x.status === "building" ? `${x.name} (going up)` : x.name)).join(", ") || "nothing",
+    deals: (() => {
+      // Counted from the moment the two runs part, so the row shows what each did differently.
+      const d = v?.money?.deals;
+      const n = (k: Deal) => (d?.[k] ?? 0) - (before?.[k] ?? 0);
+      return d ? `${n("give")} given, ${n("lend")} lent, ${n("sell")} sold for amber, ${n("refuse")} turned away` : "none yet";
+    })(),
+    money: Number(acceptedShare(w).toFixed(2)),
     leader: v?.civic?.leader,
     laws: v?.civic?.laws.length ?? 0,
     norms: v?.norms.filter((n) => n.established).length ?? 0,
@@ -173,7 +185,8 @@ export async function butterfly(before: WorldState, edits: EditInput[], facultie
     }
   }
   liking.sort((p, q) => Math.abs(q.with - q.without) - Math.abs(p.with - p.without));
-  const town = { with: side(w.world, w, from, who), without: side(o.world, o, from, who) };
+  const was = before.village?.money?.deals;
+  const town = { with: side(w.world, w, from, who, was), without: side(o.world, o, from, who, was) };
   const out: Butterfly = {
     labels: records.map((r) => r.label),
     who,
@@ -220,6 +233,7 @@ function tell(b: Butterfly, W: WorldState, O: WorldState): string[] {
   const diffs: string[] = [];
   if (T.with.store !== T.without.store) diffs.push(`the common store holds ${T.with.store} food instead of ${T.without.store}`);
   if (T.with.works !== T.without.works) diffs.push(`the town has built ${T.with.works} instead of ${T.without.works}`);
+  if (T.with.money !== T.without.money) diffs.push(`${Math.round(T.with.money * 100)}% take amber for food instead of ${Math.round(T.without.money * 100)}%`);
   if (T.with.houses !== T.without.houses) diffs.push(`${T.with.houses} houses stand instead of ${T.without.houses}`);
   if (T.with.leader !== T.without.leader) diffs.push(`${T.with.leader ? name(T.with.leader) : "nobody"} leads instead of ${T.without.leader ? name(T.without.leader) : "nobody"}`);
   if (T.with.laws !== T.without.laws) diffs.push(`${T.with.laws} law${T.with.laws === 1 ? "" : "s"} instead of ${T.without.laws}`);

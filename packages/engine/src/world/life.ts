@@ -391,6 +391,8 @@ export function hearStory(world: WorldState, teller: AgentId, told: Episode, lis
   // What is passed on is the memory as the teller has it now, drift and all.
   heard.gist = thirdPerson(render(told), T.name, T.pronouns);
   heard.source = { kind: "told", from: teller, ref: told.id };
+  const own = T.episodes.find((e) => e.id === told.id);
+  if (own) own.toldOn = world.tick;
   heard.topics = [...new Set([...told.topics, ...heard.topics.filter((t) => t === "stories")])];
   heard.about = [...new Set([...told.about.filter((x) => x !== listener), ...(told.source.kind === "told" ? [] : [teller])])];
   heard.valence = Number((told.valence * 0.7).toFixed(2));

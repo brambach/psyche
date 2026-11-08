@@ -23,6 +23,7 @@ import { ageOf, bedtime, hearStory, initLife, isChild, yearOf, lifeTurn, normHel
 import { carryKnowledge, craftBonus, knowledgeTurn, seedKnowledge, type Knowledge } from "./knowledge.js";
 import { buildWork, civicSite, stands, worksDay, worksSeason, type Work } from "./works.js";
 import { intentionsSeason, steer, type Intention } from "./intentions.js";
+import { market, moneyDay, moneySeason, settle, type Money } from "./money.js";
 import { CROSSING, createSettlers, crossingMemory, other } from "./people.js";
 import type { Place, PlaceId, RoutineEntry } from "./places.js";
 import { claimFromEpisode, eventPercept, feed, hop, luck, isNight, personName, record, thirdPerson, type AgentState, type Sink, type WorldState } from "./world.js";
@@ -116,6 +117,8 @@ export interface VillageState {
   intent?: Record<AgentId, Intention>;
   /** Intentions over the seasons, newest last. */
   intentions?: Intention[];
+  /** Loans, debts, and the amber that may or may not become money (absent before currency). */
+  money?: Money;
 }
 
 export type VillageEvent = { kind: "pledge" } | { kind: "blight" } | { kind: "gale" };
@@ -396,6 +399,7 @@ async function newDay(world: WorldState, faculties: Faculties, sink: Sink): Prom
     knowledgeTurn(world, sink);
     if (v.season === "spring") elect(world, sink);
     await worksSeason(world, faculties, sink, ask);
+    moneySeason(world);
   }
   const r = luck(world, "weather");
   v.weather = r < GALE_CHANCE[v.season] ? "gale" : r < GALE_CHANCE[v.season] + 0.25 ? "rain" : "fair";
@@ -411,6 +415,7 @@ async function newDay(world: WorldState, faculties: Faculties, sink: Sink): Prom
   const spoil = SPOIL * (1 - craftBonus(world, "keep")) * (stands(world, "granary") ? 0.5 : 1);
   for (const hh of Object.values(v.households)) hh.food = Number((hh.food * (1 - spoil)).toFixed(2));
   worksDay(world, sink);
+  moneyDay(world, sink);
 }
 
 const SEASON_TEXT: Record<Season, string> = {
@@ -611,6 +616,9 @@ async function supper(world: WorldState, faculties: Faculties, sink: Sink): Prom
   const put: string[] = [];
   const took: string[] = [];
   const hungry: AgentId[] = [];
+  // Debts first, then those running low ask the neighbours before anyone goes to the store.
+  await settle(world, faculties, sink, ration);
+  await market(world, faculties, sink, ration);
   for (const hh of Object.values(v.households)) {
     const need = ration * hh.members.reduce((n, m) => n + (isChild(world, m) ? 0.6 : 1), 0);
     // Committed households put a share of what is over two days' needs into the store.

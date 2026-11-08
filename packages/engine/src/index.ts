@@ -169,6 +169,7 @@ export {
 } from "./world/voice.js";
 export { applyEdit, editable, shapeFear, inheritEdits, FEARS, PRESETS, type MindEdit, type EditInput, type EditRecord } from "./world/edits.js";
 export { WORKS, WORK_KINDS, CIVIC_SLOTS, works, stands, civicSite, concernFor, worksSeason, worksDay, aggWorks, shownBlocks, type Work, type WorkKind } from "./world/works.js";
+export { moneyOf, acceptedShare, openDebts, market, settle, moneyDay, aggMoney, PRICE, type Money, type Debt, type Deal } from "./world/money.js";
 export { intentOf, intentionsSeason, menu as intentMenu, steer, type Intention, type IntentKind } from "./world/intentions.js";
 export { butterfly, type Butterfly, type Flip, type TownSide } from "./world/butterfly.js";
 export {

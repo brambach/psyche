@@ -92,6 +92,8 @@ import {
   personaLife,
   SAMPLE_PERSONA,
   WORKS,
+  acceptedShare,
+  openDebts,
 } from "@psyche/engine";
 import { createClaudeReader, createFaculties, createMockFaculties } from "@psyche/faculties";
 
@@ -611,6 +613,15 @@ function simDaysPerHour() {
   return 3600 / (waking / Math.max(1, Math.min(speed, pace || speed)) + 1);
 }
 
+/** Money and debt in a town: who takes amber, how food has changed hands, what is owed. */
+function moneyCard(w: WorldState) {
+  const M = w.village?.money;
+  if (!M) return undefined;
+  const open = M.debts.filter((d) => !d.repaid);
+  const established = !!M.established && !(M.lost && M.lost > M.established);
+  return { good: M.good, share: Number(acceptedShare(w).toFixed(2)), established, deals: M.deals, owed: open.length, overdue: open.filter((d) => d.overdue).length, amber: Object.entries(M.held).filter(([id]) => w.order.includes(id)).reduce((s, [, n]) => s + n, 0) };
+}
+
 /** What the town means to do this season, most common first. */
 function planCounts(w: WorldState): { kind: string; text: string; n: number }[] {
   const PLAN: Record<string, string> = { propose: "to ask for a work", store: "to put more by", help: "to help build", teach: "to teach", court: "to court someone", amends: "to make peace", challenge: "to stand against the leader", keep: "to keep to themselves" };
@@ -637,6 +648,7 @@ function townCard(w: WorldState) {
       .filter((x) => x.status !== "rejected")
       .map((x) => ({ id: x.id, kind: x.kind, name: x.name, status: x.status, progress: Number((x.work / Math.max(0.1, x.hours)).toFixed(2)), condition: Number(x.condition.toFixed(2)), mending: !!x.mending, proposer: x.proposer, proposerName: w.agents[x.proposer]?.name ?? vv.people.find((p) => p.id === x.proposer)?.name, why: x.why, does: WORKS[x.kind].does, design: x.blueprint?.name, trace: x.trace })),
     plans: planCounts(w),
+    money: moneyCard(w),
     store: Math.round(vv.store.food),
     leader: vv.leader,
     leaderName: vv.leader ? (w.agents[vv.leader]?.name ?? vv.people.find((p) => p.id === vv.leader)?.name) : undefined,
@@ -922,7 +934,11 @@ function agentView(id: AgentId) {
   const own = w.village?.intent?.[id];
   const intent = own && governor.mode === "mock" ? { ...own, words: undefined } : own;
   const past = (w.village?.intentions ?? []).filter((x) => x.agent === id && x !== own).slice(-4).reverse().map((x) => ({ ...x, words: governor.mode === "mock" ? undefined : x.words }));
-  return { mind, agent: w.agents[id], traces, actual, intent, past };
+  // What they hold and owe.
+  const M = w.village?.money;
+  const nm = (x: string) => w.agents[x]?.name ?? x;
+  const purse = M ? { good: M.good, held: M.held[id] ?? 0, accept: M.accept[id] ?? 0, owes: openDebts(w, id).filter((d) => d.debtor === id).map((d) => ({ to: d.creditor, name: nm(d.creditor), amount: d.amount, overdue: !!d.overdue })), owed: openDebts(w, id).filter((d) => d.creditor === id).map((d) => ({ by: d.debtor, name: nm(d.debtor), amount: d.amount, overdue: !!d.overdue })) } : undefined;
+  return { mind, agent: w.agents[id], traces, actual, intent, past, purse };
 }
 
 function traceView(agent: AgentId, traceId: string) {

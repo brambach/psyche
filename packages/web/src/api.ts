@@ -109,6 +109,7 @@ export interface AgentView {
   actual: Record<string, number>;
   intent?: Intention;
   past?: Intention[];
+  purse?: { good: string; held: number; accept: number; owes: { to: string; name: string; amount: number; overdue: boolean }[]; owed: { by: string; name: string; amount: number; overdue: boolean }[] };
 }
 
 export interface TraceView {
@@ -228,6 +229,7 @@ export interface GameView {
     building: { name: string; progress: number }[];
     works: { id: string; kind: string; name: string; status: "proposed" | "building" | "done" | "ruin"; progress: number; condition: number; mending: boolean; proposer: string; proposerName?: string; why: string; does: string; design?: string; trace?: string }[];
     plans: { kind: string; text: string; n: number }[];
+    money?: { good: string; share: number; established: boolean; deals: { give: number; lend: number; sell: number; refuse: number }; owed: number; overdue: number; amber: number };
     store: number;
     leader?: string;
     leaderName?: string;
