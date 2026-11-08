@@ -153,7 +153,7 @@ function compactMind(w: WorldState, m: MindState): void {
   const l = v.life[m.id];
   for (const s of m.schemas) if (s.deepenedBy && s.deepenedBy.length > 4) s.deepenedBy.splice(0, s.deepenedBy.length - 4);
   // Beliefs: everything about the town and the other towns, and the most confident of the rest.
-  const civic = m.beliefs.filter((b) => b.about === "village" || b.about.startsWith("town:"));
+  const civic = m.beliefs.filter((b) => b.about === "village" || b.about === "faith" || b.about.startsWith("town:"));
   const rest = m.beliefs.filter((b) => !civic.includes(b)).sort((a, b) => b.confidence - a.confidence).slice(0, 15);
   m.beliefs = [...civic, ...rest];
   for (const b of m.beliefs) {

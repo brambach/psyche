@@ -13,6 +13,7 @@ import type { ReconsolidationTrace, Trace } from "../trace.js";
 import type { Ablations, AgentId, Belief, Episode, MindState, Pronouns, Tick } from "../types.js";
 import { CAST_ORDER, createCast, WORLD_START } from "./cast.js";
 import { PLACES, type Place, type PlaceId, type RoutineEntry, type Want } from "./places.js";
+import { voiceStep, type VoiceState } from "./voice.js";
 import { injectVillage, overhear, villageStep, villageWorkplace, type VillageEvent, type VillageState } from "./village.js";
 
 const STEP = 10;
@@ -62,6 +63,8 @@ export interface Rumor {
   slotKey?: string;
   first: string;
   hops: RumorHop[];
+  /** Words you spoke into the world: the guise you spoke them in. */
+  guise?: string;
 }
 
 export interface WorldEventRecord {
@@ -89,6 +92,8 @@ export interface WorldState {
   events: WorldEventRecord[];
   /** Present when this world is a village with food, houses and a common store. */
   village?: VillageState;
+  /** Present once you have spoken into this world (voice.ts). */
+  voice?: VoiceState;
   /** What the player changed in people's minds, oldest first. */
   edits?: EditRecord[];
   /** Chance is keyed by what it decides (see luck()), so twin runs share their luck. */
@@ -242,6 +247,7 @@ export async function advance(world: WorldState, minutes: number, faculties: Fac
     if (slept.length > 0) morning(world, sink, slept);
     updatePositions(world, sink);
     if (world.village) await villageStep(world, dt, faculties, sink);
+    if (world.voice) await voiceStep(world, faculties, sink);
     if (isNight(world.tick)) continue;
     await encounters(world, faculties, sink);
   }

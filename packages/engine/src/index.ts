@@ -107,6 +107,32 @@ export { CRAFTS, craft, craftBonus, craftLineage, knows, townCrafts, knowledgeOf
 export { digest, timeline, type Timeline } from "./world/digest.js";
 export { luck } from "./world/world.js";
 export { frameDelta, applyDelta, deltaMemory, beats, beatOf, warnings, momentNotices, chronicleNotices, awaySummary, type Frame as GameFrame, type FrameDelta, type DeltaMemory, type Beat, type Notice, type AwaySummary } from "./world/game.js";
+export {
+  voiceOf,
+  voiceAct,
+  voiceSummary,
+  voiceBends,
+  lineage as voiceLineage,
+  readWord,
+  renderVersion,
+  versionDistance,
+  faithOf,
+  guiseName,
+  LADDER,
+  type Guise,
+  type VoiceAct,
+  type VoiceState,
+  type VoiceSummary,
+  type WordSummary,
+  type Word,
+  type Carrier,
+  type Bend,
+  type BendKind,
+  type Faith,
+  type Lineage as VoiceLineage,
+  type LineageNode,
+  type VoiceLog,
+} from "./world/voice.js";
 export { applyEdit, editable, shapeFear, inheritEdits, FEARS, PRESETS, type MindEdit, type EditInput, type EditRecord } from "./world/edits.js";
 export { WORKS, WORK_KINDS, CIVIC_SLOTS, works, stands, civicSite, concernFor, worksSeason, worksDay, aggWorks, shownBlocks, type Work, type WorkKind } from "./world/works.js";
 export { intentOf, intentionsSeason, menu as intentMenu, steer, type Intention, type IntentKind } from "./world/intentions.js";

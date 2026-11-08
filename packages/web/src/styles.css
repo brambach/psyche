@@ -709,3 +709,92 @@ a.btn { color: inherit; text-decoration: none; display: inline-block; }
 .bf-flips ins { text-decoration: none; color: var(--accent); font-weight: 600; }
 .bf-flips del { color: var(--muted); }
 .bf-flips .kind { margin-left: auto; }
+
+/* ---------------------------------------------------------------- the Voice: speaking into the world */
+.v-panel { position: absolute; left: 12px; top: 64px; bottom: 232px; width: min(400px, calc(100% - 24px)); overflow-y: auto; background: var(--glass-strong); border: 1px solid var(--glass-line); border-radius: 12px; backdrop-filter: blur(10px); z-index: 6; padding: 12px 14px; display: grid; gap: 9px; align-content: start; color: var(--g-ink); animation: g-in 0.25s ease-out; }
+.v-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.v-head small { display: block; font: 600 10.5px var(--mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--g-accent); }
+.v-head b { font: 700 18px/1.15 var(--display); }
+.v-guises { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.v-guises button { font: 600 13px var(--display); color: var(--g-ink); background: rgba(255, 255, 255, 0.05); border: 1px solid var(--glass-line); border-radius: 8px; padding: 7px 8px; text-align: left; }
+.v-guises button.on { background: rgba(255, 211, 77, 0.18); border-color: var(--g-accent); color: var(--g-accent); }
+.v-field { display: grid; gap: 3px; font: 11px var(--mono); color: var(--g-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.v-field select, .v-say textarea { font: 14px var(--body); color: var(--g-ink); background: rgba(255, 255, 255, 0.06); border: 1px solid var(--glass-line); border-radius: 8px; padding: 6px 8px; text-transform: none; letter-spacing: 0; width: 100%; min-width: 0; }
+.v-field select option { color: #111; }
+.v-say { display: grid; gap: 6px; }
+.v-say textarea { resize: vertical; line-height: 1.4; }
+.v-say .g-btn { justify-self: end; }
+.v-ideas { display: flex; flex-wrap: wrap; gap: 4px; }
+.v-ideas .g-mini { text-align: left; white-space: normal; border-radius: 8px; padding: 3px 8px; }
+.v-h { margin: 6px 0 0; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--g-muted); }
+.v-words, .v-faiths, .v-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.v-word { border: 1px solid var(--glass-line); border-radius: 10px; padding: 8px 10px; display: grid; gap: 5px; background: rgba(255, 255, 255, 0.03); }
+.v-word-top { display: flex; gap: 6px; align-items: baseline; }
+.v-word q, .v-far q { font: italic 14px/1.4 var(--body); }
+.v-stats { display: flex; flex-wrap: wrap; gap: 4px 10px; font: 12px var(--mono); color: var(--g-muted); }
+.v-believe { color: var(--g-accent); }
+.v-prophecy { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; font: 13px var(--body); padding: 5px 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); }
+.v-prophecy.v-fulfilled { color: #9be7a7; }
+.v-prophecy.v-failed { color: var(--g-warn); }
+.v-chip { font: 12.5px var(--body); color: var(--g-ink); border-left: 3px solid var(--g-accent); padding-left: 7px; }
+.v-far { display: grid; gap: 2px; padding: 5px 8px; border-radius: 8px; background: rgba(255, 155, 107, 0.08); }
+.v-far small { font: 11.5px var(--mono); color: var(--g-muted); }
+.v-trace { justify-self: start; }
+.v-link { font: inherit; color: var(--g-accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-decoration-color: rgba(255, 211, 77, 0.35); text-underline-offset: 2px; }
+.v-faiths li { display: grid; gap: 2px; border: 1px solid var(--glass-line); border-radius: 8px; padding: 6px 9px; }
+.v-faiths li b { font: 700 14px var(--display); }
+.v-faiths li span, .v-faiths li small { font: 12px var(--body); color: var(--g-muted); }
+.v-faiths li.ended { opacity: 0.55; }
+.v-log li { font: 12.5px/1.4 var(--body); color: var(--g-muted); }
+.v-log time { font: 11px var(--mono); margin-right: 4px; }
+.v-log .v-log-fulfilled, .v-log .v-log-faith, .v-log .v-log-schism, .v-log .v-log-rite { color: var(--g-ink); }
+
+.vl { position: absolute; inset: 0; z-index: 8; background: rgba(0, 0, 0, 0.5); display: grid; place-items: center; padding: 16px; }
+.vl-box { position: relative; width: min(1180px, 100%); max-height: 100%; overflow: auto; background: var(--glass-strong); border: 1px solid var(--glass-line); border-radius: 16px; padding: 20px 22px 26px; color: var(--g-ink); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); backdrop-filter: blur(12px); }
+.vl-close { position: absolute; top: 14px; right: 14px; }
+.vl-head small { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--g-accent); }
+.vl-head h2 { margin: 4px 40px 6px 0; font: 600 24px/1.2 var(--display); }
+.vl-sum { margin: 0; font: 15px/1.45 var(--body); color: var(--g-muted); }
+.vl-sum b { color: var(--g-ink); }
+.vl-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; margin-top: 14px; }
+.vl h3 { margin: 10px 0 6px; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--g-muted); }
+.vl-filter { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.vl-filter button { font: 12px var(--mono); color: var(--g-ink); background: none; border: 1px solid var(--glass-line); border-radius: 999px; padding: 2px 9px; }
+.vl-filter button.on { background: var(--g-accent); color: #1a1a1a; border-color: var(--g-accent); }
+.vl-tree { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.vl-tree > li { border-left: 2px solid var(--glass-line); padding: 4px 0 4px 10px; }
+.vl-tree > li.dim { opacity: 0.35; }
+.vl-tree > li.lapsed .vl-text { text-decoration: line-through; text-decoration-color: rgba(255, 255, 255, 0.3); }
+.vl-who { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font: 600 14px var(--display); }
+.vl-faith { display: inline-block; width: 54px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.vl-faith i { display: block; height: 100%; background: var(--g-accent); }
+.vl-badge { font: 600 10.5px var(--mono); text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid var(--glass-line); border-radius: 999px; padding: 1px 7px; color: var(--g-muted); }
+.vl-badge.hot { color: var(--g-warn); border-color: var(--g-warn); }
+.vl-text { margin: 3px 0 0; font: 14.5px/1.45 var(--body); }
+.vl-text mark { background: rgba(255, 155, 107, 0.28); color: inherit; border-radius: 3px; padding: 0 1px; }
+.vl-bends { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; font: 12.5px/1.4 var(--body); color: var(--g-muted); }
+.vl-bends b, .vl-mech b { font: 600 10.5px var(--mono); text-transform: uppercase; letter-spacing: 0.04em; border-radius: 4px; padding: 1px 5px; margin-right: 4px; background: rgba(255, 255, 255, 0.1); color: var(--g-ink); }
+.vb-scapegoat b, b.vb-scapegoat, .vl-filter .vb-scapegoat.on { background: #c2453b; color: #fff; }
+.vb-sharpened b, b.vb-sharpened { background: #b8742a; color: #fff; }
+.vb-source b, b.vb-source { background: #6f5bd3; color: #fff; }
+.vb-moralized b, b.vb-moralized { background: #2f8a6b; color: #fff; }
+.vb-chosen b, b.vb-chosen, .vb-self b, b.vb-self { background: #2d6fb8; color: #fff; }
+.vl-cause { color: var(--g-muted); }
+.vl-side { display: grid; align-content: start; gap: 4px; }
+.vl-curve { width: 100%; height: auto; }
+.vl-axis { stroke: var(--glass-line); }
+.vl-tick { font: 10px var(--mono); fill: var(--g-muted); }
+.vl-heard { fill: none; stroke: #8fb3c9; stroke-width: 2; }
+.vl-believe { fill: none; stroke: var(--g-accent); stroke-width: 2.5; }
+.vl-lab { font: 10.5px var(--mono); }
+.vl-lab.heard { fill: #8fb3c9; }
+.vl-lab.believe { fill: var(--g-accent); }
+.vl-culprits, .vl-mech { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font: 13.5px/1.4 var(--body); }
+.vl-culprits small, .vl-mech small { display: block; font: 12px var(--body); color: var(--g-muted); }
+@media (max-width: 900px) { .vl-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 720px) {
+  .v-panel { top: auto; bottom: 0; left: 0; width: 100%; max-height: 70%; border-radius: 12px 12px 0 0; z-index: 8; }
+  .vl { padding: 0; }
+  .vl-box { border-radius: 0; height: 100%; padding: 16px; }
+  .vl-tree > li { margin-left: 0 !important; }
+}
