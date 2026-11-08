@@ -59,6 +59,19 @@ In the island UI, open anyone's head. **What weighs on them** lists their core b
 npm run why -- mara 3 7 --storm   # what weighs on Mara after three days, and where each thing came from
 ```
 
+## The experiments: Milgram, Asch, Darley & Latané, Stanford
+
+```bash
+npm run lab                         # seed 11, 40 volunteers, offline mock, about 5 s; writes out/lab/lab.html
+npm run lab -- 7 out/lab7 --quick  # another seed, skip the counterfactual sweeps
+```
+
+Forty generated volunteers, each with a formative past and a core belief, go through the shock generator (8 of Milgram's conditions), Asch's line judgments (group sizes 1 to 15, an ally, written answers), the seizure and smoke-filled-room studies, and a six-day prison (the Stanford briefing against the BBC study's). Same minds in every room, so you can ask whether the person who went to 450 V also went along with the lines, and how long they sat listening to the seizure.
+
+The report (`lab.html`) sets every condition beside the human number and opens a case file on anyone: the forces behind their decisive choice, what they said when asked why, what they left out (Nisbett & Wilson), the causal ledger back to the memory that installed their core belief, and the exact counterfactual without that memory. Ablations switch one mechanism off and rerun everyone.
+
+Honest caveat: the situation weights were hand-tuned against the human results, so matching the numbers is a calibration, not a prediction. What is not tuned: the ordering across conditions falls out of the same forces, the same minds are reused across all four studies, and the pasts and trait correlates come from the engine. Code in `packages/engine/src/lab/`.
+
 ## Hollow Bay (C1): the village
 
 The Kettle five and ten generated settlers land on an empty shore at the end of summer (`packages/engine/src/world/village.ts`, `people.ts`). Same minds, same engine; the world now pushes back:

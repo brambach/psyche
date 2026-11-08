@@ -106,3 +106,4 @@ export { dematerialize, materialize, aggAdvance, aggSeason, compactMinds, drift,
 export { CRAFTS, craft, craftBonus, craftLineage, knows, townCrafts, knowledgeOf, type Craft, type Know, type Knowledge, type KnowledgeEvent } from "./world/knowledge.js";
 export { digest, timeline, type Timeline } from "./world/digest.js";
 export { frameDelta, applyDelta, deltaMemory, beats, beatOf, warnings, momentNotices, chronicleNotices, awaySummary, type Frame as GameFrame, type FrameDelta, type DeltaMemory, type Beat, type Notice, type AwaySummary } from "./world/game.js";
+export * as lab from "./lab/index.js";

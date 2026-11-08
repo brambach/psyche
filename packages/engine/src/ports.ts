@@ -84,6 +84,11 @@ export interface ActionOption {
   coping?: "problem" | "emotion" | "avoid" | "social";
   /** Third-person text for a non-speech action. */
   act?: string;
+  /**
+   * Forces the situation itself puts on this option (an authority's order, a group's answer, a
+   * victim's cries), worked out by whoever built the percept. Scored as given, refs and all.
+   */
+  situation?: { name: string; value: number; ref?: string }[];
 }
 
 // ---------------------------------------------------------------- faculty requests
