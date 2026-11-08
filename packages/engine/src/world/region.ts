@@ -57,7 +57,7 @@ export interface ChronicleEntry {
   tick: Tick;
   year: number;
   town?: string;
-  kind: "founding" | "leader" | "law" | "death" | "trade" | "quarrel" | "peace" | "hunger" | "craft" | "lost";
+  kind: "founding" | "leader" | "law" | "death" | "trade" | "quarrel" | "peace" | "hunger" | "craft" | "lost" | "work" | "ruin";
   text: string;
   agents?: AgentId[];
   /** What led to it, as far back as the records go: the people, their reasons and the memories behind them. */

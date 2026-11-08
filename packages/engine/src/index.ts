@@ -52,7 +52,7 @@ export {
   type Weather,
   type Resource,
 } from "./world/village.js";
-export { townTerrain, terrainOf, townScene, fellingOrder, LOGS_PER_TREE, homePlot, homeOrder, SPOTS, TOWN, type TownTerrain, type Scene3D } from "./world/town3d.js";
+export { townTerrain, terrainOf, townScene, civicPlot, fellingOrder, LOGS_PER_TREE, homePlot, homeOrder, SPOTS, TOWN, type TownTerrain, type Scene3D } from "./world/town3d.js";
 export { createSettlers, TRADES, type Settler } from "./world/people.js";
 export { MATERIALS, M, get, generateIsland, encodeGrid, census, standY, type Material, type Grid, type Plot, type Terrain, type Tree } from "./founders/voxel.js";
 export { check, compile, bill, describe, siteOf, PACE, SIDES, type Blueprint, type Side, type Furniture, type Placement, type Part, type Bill, type Item } from "./founders/blueprint.js";
@@ -108,4 +108,6 @@ export { digest, timeline, type Timeline } from "./world/digest.js";
 export { luck } from "./world/world.js";
 export { frameDelta, applyDelta, deltaMemory, beats, beatOf, warnings, momentNotices, chronicleNotices, awaySummary, type Frame as GameFrame, type FrameDelta, type DeltaMemory, type Beat, type Notice, type AwaySummary } from "./world/game.js";
 export { applyEdit, editable, shapeFear, inheritEdits, FEARS, PRESETS, type MindEdit, type EditInput, type EditRecord } from "./world/edits.js";
+export { WORKS, WORK_KINDS, CIVIC_SLOTS, works, stands, civicSite, concernFor, worksSeason, worksDay, aggWorks, shownBlocks, type Work, type WorkKind } from "./world/works.js";
+export { intentOf, intentionsSeason, menu as intentMenu, steer, type Intention, type IntentKind } from "./world/intentions.js";
 export { butterfly, type Butterfly, type Flip, type TownSide } from "./world/butterfly.js";
