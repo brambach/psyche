@@ -9,7 +9,7 @@
 import { nextRandom } from "../rng.js";
 import type { AgentId, Tick } from "../types.js";
 import { ageOf, isChild } from "./life.js";
-import { feed, personName, type Sink, type Why, type WorldState } from "./world.js";
+import { feed, luck, personName, type Sink, type Why, type WorldState } from "./world.js";
 
 export type CraftEffect = "fish" | "farm" | "keep" | "health" | "build" | "boats";
 
@@ -164,14 +164,14 @@ export function knowledgeTurn(world: WorldState, sink: Sink): void {
     const mine = K.known[t] ?? [];
     if (!mine.length) continue;
     const m = world.minds[t]!;
-    if (nextRandom(world) > 0.15 + 0.3 * (m.traits.agreeableness + m.traits.extraversion) / 2) continue;
+    if (luck(world, "teach", t) > 0.15 + 0.3 * (m.traits.agreeableness + m.traits.extraversion) / 2) continue;
     const kin = world.order.filter((x) => v.life[x]?.parents.includes(t) && ageOf(world, x) >= 9);
     const home = Object.values(v.households).find((h) => h.members.includes(t))?.members.filter((x) => x !== t && ageOf(world, x) >= 9) ?? [];
     for (const k of mine) {
       const pool = [kin, home, adults.filter((x) => x !== t && (m.others[x]?.liking ?? 0.5) > 0.55)].map((xs) => xs.filter((x) => !knows(world, x, k.craft)));
       const group = pool.find((xs) => xs.length);
       if (!group) continue;
-      const learner = group[Math.floor(nextRandom(world) * group.length)]!;
+      const learner = group[Math.floor(luck(world, "pupil", t, k.craft) * group.length)]!;
       learn(world, learner, { craft: k.craft, tick: world.tick, how: "taught", from: t });
       break;
     }
@@ -186,8 +186,8 @@ export function knowledgeTurn(world: WorldState, sink: Sink): void {
       const m = world.minds[id]!;
       // A craft once known here is half-remembered, so easier to work out again.
       const p = 0.01 * (0.4 + m.traits.openness) * (0.5 + m.traits.conscientiousness);
-      if (nextRandom(world) > p) continue;
-      const c = open[Math.floor(nextRandom(world) * open.length)]!;
+      if (luck(world, "discover", id) > p) continue;
+      const c = open[Math.floor(luck(world, "discovery", id) * open.length)]!;
       const lostAt = K.lost[c.id];
       const again = lostAt !== undefined;
       learn(world, id, { craft: c.id, tick: world.tick, how: "worked out" });

@@ -7,7 +7,7 @@ import { baseLevel, clamp, reconsolidate, render, use } from "../memory.js";
 import { dayOf, hourOf, identityOf, perceiveText, runPercept, wait } from "../mind.js";
 import { PARAMS } from "../params.js";
 import type { Claim, Faculties, Percept, SpeakRequest, StyleVector } from "../ports.js";
-import { nextId, nextRandom } from "../rng.js";
+import { keyedRandom, nextId, nextRandom } from "../rng.js";
 import type { ReconsolidationTrace, Trace } from "../trace.js";
 import type { Ablations, AgentId, Belief, Episode, MindState, Pronouns, Tick } from "../types.js";
 import { CAST_ORDER, createCast, WORLD_START } from "./cast.js";
@@ -74,6 +74,8 @@ export interface WorldEventRecord {
   topics: string[];
 }
 
+import type { EditRecord } from "./edits.js";
+
 export interface WorldState {
   /** Shown in the feed and the header. */
   name: string;
@@ -91,6 +93,10 @@ export interface WorldState {
   village?: VillageState;
   /** Present once you have spoken into this world (voice.ts). */
   voice?: VoiceState;
+  /** What the player changed in people's minds, oldest first. */
+  edits?: EditRecord[];
+  /** Chance is keyed by what it decides (see luck()), so twin runs share their luck. */
+  keyedLuck?: boolean;
 }
 
 export interface FeedLine {
@@ -184,6 +190,15 @@ function name(world: WorldState, id: string): string {
   return world.agents[id]?.name ?? id;
 }
 
+/**
+ * The world's chance for one decision. Normally the next draw from the world's own stream; with
+ * `keyedLuck`, a draw keyed by the tick and what it is for (who meets whom, who falls ill), so a run
+ * where one mind was changed keeps the same luck as the run where it wasn't.
+ */
+export function luck(world: WorldState, ...key: (string | number)[]): number {
+  return world.keyedLuck ? keyedRandom(world.seed, world.tick, key.join("|")) : nextRandom(world);
+}
+
 function feed(world: WorldState, sink: Sink, item: Omit<FeedItem, "id" | "tick">): FeedItem {
   const f = { id: nextId(world, "f"), tick: world.tick, ...item };
   sink.feed.push(f);
@@ -271,7 +286,7 @@ function scheduled(world: WorldState, a: AgentState): { place: PlaceId; activity
       const m = world.minds[a.id]!;
       // Going out: extraverts and the lonely go; stress and avoidance keep people in.
       const p = clamp(0.15 + 0.45 * m.traits.extraversion + 0.5 * (1 - m.needs.relatedness) - 0.3 * m.affect.stress - 0.2 * m.attachment.avoidance);
-      a.evening = { day, out: nextRandom(world) < p };
+      a.evening = { day, out: luck(world, "evening", a.id) < p };
     }
     if (a.evening.out) return entry.evening;
   }
@@ -362,10 +377,10 @@ async function encounters(world: WorldState, faculties: Faculties, sink: Sink): 
         if (place === "tavern") p *= 1.4;
         if (place === "fishshed") p += 0.04;
         if (pendingWant(world, a, b) || pendingWant(world, b, a)) p += 0.06;
-        if (nextRandom(world) >= p) continue;
+        if (luck(world, "meet", a, b) >= p) continue;
         busy.add(a);
         busy.add(b);
-        const aFirst = pendingWant(world, a, b) ? true : pendingWant(world, b, a) ? false : nextRandom(world) < ma.traits.extraversion / (ma.traits.extraversion + mb.traits.extraversion);
+        const aFirst = pendingWant(world, a, b) ? true : pendingWant(world, b, a) ? false : luck(world, "first", a, b) < ma.traits.extraversion / (ma.traits.extraversion + mb.traits.extraversion);
         await converse(world, aFirst ? a : b, aFirst ? b : a, place, faculties, sink);
       }
     }
@@ -407,7 +422,7 @@ async function chooseOpener(world: WorldState, a: AgentId, b: AgentId, place: Pl
   const bName = name(world, b);
   const aName = A.name;
   const want = pendingWant(world, a, b);
-  if (want && (want.kind !== "confide" || nextRandom(world) < 0.5 + 0.4 * A.traits.agreeableness - 0.3 * A.attachment.avoidance)) {
+  if (want && (want.kind !== "confide" || luck(world, "confide", a, b) < 0.5 + 0.4 * A.traits.agreeableness - 0.3 * A.attachment.avoidance)) {
     if (want.kind === "request") {
       return { kind: "request", label: "Ask a favour", description: `Ask ${bName} to ${want.what}.`, content: [], topics: want.topics, about: [], want, summary: `${aName} asked ${bName} to ${want.what}` };
     }
@@ -458,7 +473,7 @@ async function chooseOpener(world: WorldState, a: AgentId, b: AgentId, place: Pl
   const best = cands[0];
   if (best) {
     const p = clamp(best.score * 1.5) * (0.4 + 0.8 * A.traits.extraversion) * (0.6 + 0.8 * (A.others[b]?.liking ?? 0.5));
-    if (nextRandom(world) < p) {
+    if (luck(world, "gossip", a, b) < p) {
       const recalled = best.ep ? await tell(world, a, best.ep, faculties) : undefined;
       const built = best.ep ? claimFromEpisode(world, a, best.ep, b, best.subject) : await claimFromBelief(world, a, best.bel!, faculties);
       return {
@@ -479,7 +494,7 @@ async function chooseOpener(world: WorldState, a: AgentId, b: AgentId, place: Pl
 
   // A shared event worth asking about.
   const recent = [...world.events].reverse().find((e) => world.tick - e.tick < 36 * 60 && !ag.told.includes(`ask:${e.id}>${b}`) && world.minds[b]!.episodes.some((x) => x.id === e.id));
-  if (recent && nextRandom(world) < 0.6) {
+  if (recent && luck(world, "ask", a, b) < 0.6) {
     return {
       kind: "ask",
       label: "Ask about",
@@ -930,7 +945,7 @@ function eventPercept(
 async function storm(world: WorldState, faculties: Faculties, sink: Sink): Promise<void> {
   const id = nextId(world, "ev_storm");
   const fishers = world.order.filter((x) => world.agents[x]!.role === "fisher");
-  const victim = fishers[Math.floor(nextRandom(world) * fishers.length)]!;
+  const victim = fishers[Math.floor(luck(world, "storm") * fishers.length)]!;
   world.events.push({ id, tick: world.tick, kind: "storm", label: "the storm", topics: ["storm", id] });
   feed(world, sink, {
     kind: "event",
