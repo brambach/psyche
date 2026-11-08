@@ -157,6 +157,8 @@ export interface Episode {
   /** Coping potential at encoding; low coping plus high arousal marks a formative event. */
   coping: number;
   agency: "self" | "other" | "circumstance";
+  /** Put there by the player (an implanted memory). The mind takes it for its own; only the record knows. */
+  edit?: string;
 }
 
 export interface Belief {
@@ -175,6 +177,8 @@ export interface Belief {
   claim?: { slotKey: string; value: string; episodeHint?: string };
   /** Rumor lineage: beliefs passed along by gossip share the id of the story they came from. */
   rumor?: string;
+  /** Whispered by the player: the edit that put it there. */
+  edit?: string;
 }
 
 /** Context to action link strengthened by repetition (Wood & Neal 2007). */
@@ -199,6 +203,10 @@ export interface Schema {
   origin?: string[];
   /** Later episodes that deepened it in sleep, with when. */
   deepenedBy?: { episode: string; tick: Tick }[];
+  /** Given by the player: the edit that installed it (kept by children who inherit it). */
+  edit?: string;
+  /** Passed to children born after, as if learned at the cradle. */
+  heritable?: boolean;
 }
 
 // ---------------------------------------------------------------- inner life
@@ -213,6 +221,8 @@ export interface Goal {
   invested: number;
   /** Smoothed rate of progress; affect follows rate, not just state (Carver & Scheier 1990). */
   rate: number;
+  /** Given by the player. */
+  edit?: string;
 }
 
 /** Self-Determination Theory needs plus bodily needs, as satisfaction in [0, 1]. */
@@ -238,6 +248,8 @@ export interface OtherModel {
   bond: number;
   /** Believed feeling of the other toward me, in [-1, 1]. */
   believedRegard: number;
+  /** Last set by the player. */
+  edit?: string;
 }
 
 export interface SelfModel {
@@ -333,4 +345,6 @@ export interface MindState {
   expressions: StateExpression[];
   lastSleep: Tick;
   ablations: Ablations;
+  /** Traits the player has locked: nightly drift can't move them. */
+  locks?: { trait: TraitName; value: number; heritable?: boolean; edit: string }[];
 }
