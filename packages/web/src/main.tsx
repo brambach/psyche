@@ -1,12 +1,13 @@
 import { lazy, StrictMode, Suspense, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { Game } from "./Game";
 import "./styles.css";
 
 // Three.js only loads when you open Founders.
 const Founders = lazy(() => import("./founders/Founders").then((m) => ({ default: m.Founders })));
 
-/** Two worlds: Kettle Island at #/, Founders at #/founders. */
+/** The live game at #/, the lab (every analysis view) at #/lab, Founders at #/founders. */
 function Root() {
   const [hash, setHash] = useState(location.hash);
   useEffect(() => {
@@ -18,8 +19,10 @@ function Root() {
     <Suspense fallback={<div className="app"><p className="empty">Rowing out to the islet...</p></div>}>
       <Founders />
     </Suspense>
-  ) : (
+  ) : hash.startsWith("#/lab") ? (
     <App />
+  ) : (
+    <Game />
   );
 }
 

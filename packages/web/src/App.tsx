@@ -165,6 +165,7 @@ export function App() {
             Years passing: {Math.round(((view.fastForward.at - view.fastForward.from) / (view.fastForward.to - view.fastForward.from)) * 100)}%
           </span>
         )}
+        <a className="btn primary" href="#/" title="The live game: the world full-screen, a director, notices">Play</a>
         <a className="btn" href="#/founders" title="One mind, an empty islet, a storm on the way: watch it design and build a house">Founders</a>
         <div className="menus">
           {(["events", "talk", "rumor", "rewind", "mechanisms"] as const).map((p) => (

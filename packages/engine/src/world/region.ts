@@ -17,7 +17,7 @@ import { dayOf, runPercept } from "../mind.js";
 import type { Faculties, Percept } from "../ports.js";
 import { nextId, nextRandom } from "../rng.js";
 import type { AgentId, Episode, MindState, Tick } from "../types.js";
-import { aggAdvance, dematerialize, materialize } from "./aggregate.js";
+import { aggAdvance, dematerialize, materialize, tidy } from "./aggregate.js";
 import { foundingVersion, rootOf } from "./civic.js";
 import { craft, craftBonus, knows, learn, townCrafts } from "./knowledge.js";
 import { ageOf, hearStory, isChild, schemaLineage, yearOf } from "./life.js";
@@ -241,7 +241,13 @@ export class RegionSession {
   }
 
   rebase(): void {
-    for (const s of Object.values(this.towns)) s.rebase();
+    this.harvest();
+    for (const [id, s] of Object.entries(this.towns)) {
+      tidy(s.world);
+      s.rebase();
+      // The feed may have been trimmed; the chronicle has read all of it.
+      this.region.last.feed[id] = s.feed.length;
+    }
   }
 
   private reserve(town: string): void {
@@ -343,17 +349,32 @@ export class RegionSession {
     }
   }
 
+  /**
+   * The split that next spring would bring, if a town is already big enough: which town, and who
+   * would lead the leavers. The same test `maybeSplit` runs, so a warning names the person it would be.
+   */
+  splitWatch(): { town: string; people: number; leaver: AgentId; belonging: number } | undefined {
+    const r = this.region;
+    if (r.towns.length >= (this.opts.maxTowns ?? MAX_TOWNS)) return undefined;
+    const last = Math.max(...r.towns.map((t) => t.founded));
+    const yearTicks = this.world(r.towns[0]!.id).village!.seasonDays * 4 * 1440;
+    if (r.tick - last < 2 * yearTicks - yearTicks / 4) return undefined;
+    for (const t of r.towns) {
+      const w = this.world(t.id);
+      if (w.order.length < (this.opts.splitAt ?? SPLIT_AT)) continue;
+      const least = leastBelonging(w);
+      return least && { town: t.id, people: w.order.length, leaver: least.id, belonging: least.belonging };
+    }
+    return undefined;
+  }
+
   private async split(from: Town, w: WorldState): Promise<void> {
     const r = this.region;
     const v = w.village!;
     const adults = w.order.filter((x) => !isChild(w, x) && ageOf(w, x) >= 18);
-    const belonging = (id: AgentId) => {
-      const m = w.minds[id]!;
-      const xs = adults.filter((o) => o !== id).map((o) => m.others[o]?.liking ?? 0.5);
-      return xs.reduce((s, x) => s + x, 0) / (xs.length || 1);
-    };
+    const belonging = (id: AgentId) => belongingOf(w, id, adults);
     const hhOf = (id: AgentId) => Object.values(v.households).find((h) => h.members.includes(id));
-    const seed = [...adults].filter((x) => hhOf(x)).sort((a, b) => belonging(a) - belonging(b) || a.localeCompare(b))[0];
+    const seed = leastBelonging(w)?.id;
     if (!seed) return;
     const S = w.minds[seed]!;
     const group: Household[] = [hhOf(seed)!];
@@ -722,6 +743,22 @@ function believeOf(m: MindState, town: Town, valence: number, confidence: number
  * the people who told them, so a lineage can be followed inside one town. `self` also carries the
  * starting memories themselves (a visitor's own story).
  */
+/** How at home someone is: how much, on average, they like the other adults in their town. */
+export function belongingOf(w: WorldState, id: AgentId, adults = w.order.filter((x) => !isChild(w, x) && ageOf(w, x) >= 18)): number {
+  const m = w.minds[id]!;
+  const xs = adults.filter((o) => o !== id).map((o) => m.others[o]?.liking ?? 0.5);
+  return xs.reduce((s, x) => s + x, 0) / (xs.length || 1);
+}
+
+/** The adult (with a household) who least belongs: the one who would lead a split. */
+export function leastBelonging(w: WorldState): { id: AgentId; belonging: number } | undefined {
+  const v = w.village!;
+  const adults = w.order.filter((x) => !isChild(w, x) && ageOf(w, x) >= 18);
+  const housed = adults.filter((x) => Object.values(v.households).some((h) => h.members.includes(x)));
+  const scored = housed.map((id) => ({ id, belonging: belongingOf(w, id, adults) }));
+  return scored.sort((a, b) => a.belonging - b.belonging || a.id.localeCompare(b.id))[0];
+}
+
 export function carryLineage(from: Record<AgentId, MindState>, to: WorldState, starts: { agent: AgentId; ep: Episode }[], self = false): void {
   const queue = starts.map((s) => ({ agent: s.agent, ep: s.ep, own: self }));
   const seen = new Set<string>();

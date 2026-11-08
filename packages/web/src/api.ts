@@ -1,4 +1,4 @@
-import type { Scene3D, Timeline, Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
+import type { AwaySummary, Beat, ChronicleEntry, Notice, Scene3D, Timeline, Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
 
 export interface AgentSummary {
   id: string;
@@ -142,4 +142,66 @@ export const api = {
   years: (years: number) => call<WorldView>("/api/years", { years }),
   counterfactual: (edit: CounterfactualEdit & { days?: number }) => call<Counterfactual>("/api/counterfactual", edit),
   account: (agent: string, trace: string) => call<SaysVsWas>(`/api/account?${new URLSearchParams({ agent, trace })}`),
+  slots: () => call<{ slots: Slot[] }>("/api/slots"),
+  saveSlot: (name: string) => call<{ slots: Slot[] }>("/api/slots/save", { name }),
+  loadSlot: (name: string) => call<{ slots: Slot[] }>("/api/slots/load", { name }),
+  deleteSlot: (name: string) => call<{ slots: Slot[] }>("/api/slots/delete", { name }),
 };
+
+export interface Slot {
+  name: string;
+  savedAt: number;
+  scenario: Scenario;
+  tick?: number;
+  year?: number;
+  towns?: number;
+  people?: number;
+}
+
+/** One frame of the live game, as the stream builds it (see the server's gameFrame). */
+export interface GameView {
+  scenario: Scenario;
+  name: string;
+  seed: number;
+  faculties: "claude" | "mock";
+  running: boolean;
+  speed: number;
+  /** Sim minutes actually covered in the last real second. */
+  pace: number;
+  /** Why speech is on the free mock right now, if it is. */
+  free?: "away" | "fast";
+  tick: number;
+  town?: string;
+  fastForward?: { from: number; to: number; at: number; started: number };
+  viewers: number;
+  cost: { sessionUsd: number; todayUsd: number; capUsd: number; level: string; estimated: boolean; perSimDay?: number; perHour?: number; perHourAt1x?: number };
+  card?: {
+    people: number;
+    adults: number;
+    children: number;
+    households: number;
+    houses: number;
+    tents: number;
+    building: { name: string; progress: number }[];
+    store: number;
+    leader?: string;
+    leaderName?: string;
+    laws: number;
+    norms: string[];
+    year: number;
+    season: string;
+    weather: string;
+  };
+  towns?: { id: string; name: string; people: number; children: number; leaderName?: string; tier: "live" | "aggregate"; crafts: string[]; lost: string[]; laws: number; store: number; founded: number; from?: string }[];
+  year?: number;
+  chronicle?: ChronicleEntry[];
+  places?: Record<PlaceId, Place>;
+  agents?: { id: string; name: string; role: string; activity: string; place: string; mood: number; emotion?: string }[];
+  feed?: { id: string; tick: number; kind: FeedItem["kind"]; title: string; text?: string; agents: string[]; refs?: { agent: string; trace: string }[]; line?: { speaker: string; text: string } }[];
+  beats?: Beat[];
+  notices?: Notice[];
+  /** The town's 3D scene, put back together from its `scene.*` keys. */
+  scene?: Scene3D;
+}
+
+export type { AwaySummary };

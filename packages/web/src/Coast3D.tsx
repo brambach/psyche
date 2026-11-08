@@ -11,7 +11,7 @@ import { api } from "./api";
 import { boatAt, buildCoast, D, H, hash, SEA, strHash, townsAt, W, type TownNow } from "./coastScene";
 import { buildMesh, COLOR } from "./voxelMesh";
 
-export function Coast3D({ seed, current, onVisit }: { seed: number; current?: string; onVisit: (town: string) => void }) {
+export function Coast3D({ seed, current, onVisit, game }: { seed: number; current?: string; onVisit: (town: string) => void; game?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const labels = useRef<HTMLDivElement>(null);
   const [tl, setTl] = useState<Timeline>();
@@ -227,10 +227,10 @@ export function Coast3D({ seed, current, onVisit }: { seed: number; current?: st
   const year = tl?.years.at(-1);
   const people = towns.reduce((s, t) => s + t.people, 0);
   return (
-    <div className="town3d">
+    <div className={`town3d${game ? " t3-game" : ""}`}>
       <div ref={host} className="t3-stage" role="img" aria-label="The whole coast in 3D. Drag to turn, scroll to zoom, click a town's name to go there.">
         <div ref={labels} className="t3-labels c3-labels" />
-        {tl && (
+        {tl && !game && (
           <div className="t3-hud">
             <b>Year {year}</b>
             <span>
@@ -240,7 +240,7 @@ export function Coast3D({ seed, current, onVisit }: { seed: number; current?: st
         )}
         {error && <div className="t3-hud t3-error">{error}</div>}
       </div>
-      <p className="t3-help">Each little block house is a house in that town. Boats run between towns that trade; towns that have fallen out send none (their names are outlined in red). Click a town's name to fly down to it: it comes to life, and the town you left carries on by rules.</p>
+      {!game && <p className="t3-help">Each little block house is a house in that town. Boats run between towns that trade; towns that have fallen out send none (their names are outlined in red). Click a town's name to fly down to it: it comes to life, and the town you left carries on by rules.</p>}
     </div>
   );
 }
