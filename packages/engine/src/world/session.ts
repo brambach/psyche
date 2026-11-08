@@ -9,6 +9,8 @@ import type { Tick } from "../types.js";
 import { dayOf } from "../mind.js";
 import { voiceAct, type VoiceAct } from "./voice.js";
 import { applyEdit, type EditInput } from "./edits.js";
+import { admitPersona } from "../persona/arrive.js";
+import type { PersonaReading } from "../persona/types.js";
 import { advance, inject, say, type FeedItem, type Sink, type WorldEvent, type WorldState, type WorldTrace } from "./world.js";
 
 export type WorldInput =
@@ -18,7 +20,9 @@ export type WorldInput =
   /** You, speaking into the world as a stranger, a prophet, a voice from the sky or a dream (voice.ts). */
   | { type: "voice"; act: VoiceAct }
   /** The player changes someone's mind (see edits.ts). */
-  | { type: "edit"; edit: EditInput };
+  | { type: "edit"; edit: EditInput }
+  /** Someone read from their own writing comes ashore (see persona/). */
+  | { type: "arrive"; persona: PersonaReading };
 
 export interface WorldFrame {
   index: number;
@@ -85,6 +89,7 @@ export class WorldSession {
     else if (input.type === "inject") await inject(this.world, input.event, f, sink);
     else if (input.type === "voice") await voiceAct(this.world, input.act, f, sink);
     else if (input.type === "edit") applyEdit(this.world, input.edit, sink);
+    else if (input.type === "arrive") admitPersona(this.world, input.persona, sink);
     else await say(this.world, input.to, input.text, f, sink);
     const dayStart = dayOf(this.world.tick) !== dayOf(before);
     const keep = opts.snapshot ?? (dayStart || (this.opts.keepRecent ?? KEEP_RECENT) > 0);

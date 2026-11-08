@@ -72,7 +72,9 @@ export type Mechanism =
   | "you changed"
   | "handed down"
   /** An intention made at the turn of the season leaned on this later choice. */
-  | "meant to";
+  | "meant to"
+  /** A piece of someone's mind that came from their own writing (persona/). */
+  | "in their own words";
 
 export interface LedgerEdge {
   from: string;
@@ -186,11 +188,11 @@ export function buildLedger(input: LedgerInput): Ledger {
   };
 
   // The player's edits: each a node, and the traits each one set, per person, for the decisions they tilt.
-  const traitEdits = new Map<AgentId, { trait: string; tick: Tick; node: string }[]>();
+  const traitEdits = new Map<AgentId, { trait: string; tick: Tick; node: string; writing: boolean }[]>();
   for (const r of input.edits ?? []) {
     const N = node({ id: nodeId.world(r.id), kind: "edit", tick: r.tick, label: r.label });
     if (r.edit.kind !== "trait") continue;
-    for (const a of r.who) (traitEdits.get(a) ?? traitEdits.set(a, []).get(a)!).push({ trait: r.edit.trait, tick: r.tick, node: N });
+    for (const a of r.who) (traitEdits.get(a) ?? traitEdits.set(a, []).get(a)!).push({ trait: r.edit.trait, tick: r.tick, node: N, writing: r.source === "writing" });
   }
 
   for (const { agent: a, trace: t } of input.traces) {
@@ -268,11 +270,11 @@ export function buildLedger(input: LedgerInput): Ledger {
       const D = node({ id: nodeId.decision(a, t.id), kind: "decision", agent: a, tick: p.tick, label: `${nameOf(a)} chose: ${opt?.label ?? t.decision.choice}`, trace: t.id });
       const because = new Map(t.decision.because.map((b) => [b.ref, b.weight]));
       // A trait the player set shows up as a term in the choice ("agreeableness today"); the latest edit of it gets the credit.
-      const latest = new Map<string, string>();
-      for (const te of traitEdits.get(a) ?? []) if (te.tick <= p.tick) latest.set(te.trait, te.node);
-      for (const [trait, N] of latest) {
+      const latest = new Map<string, { node: string; writing: boolean }>();
+      for (const te of traitEdits.get(a) ?? []) if (te.tick <= p.tick) latest.set(te.trait, te);
+      for (const [trait, te] of latest) {
         const v = opt?.terms.find((x) => x.name === `${trait} today`)?.value ?? 0;
-        if (Math.abs(v) >= 0.01) edge({ from: N, to: D, mechanism: "you changed", weight: Math.min(1, Math.abs(v) * 3), tick: p.tick });
+        if (Math.abs(v) >= 0.01) edge({ from: te.node, to: D, mechanism: te.writing ? "in their own words" : "you changed", weight: Math.min(1, Math.abs(v) * 3), tick: p.tick });
       }
       // What they meant to do this season, decided earlier, leans on the choice.
       for (const term of opt?.terms ?? []) {
@@ -368,7 +370,7 @@ export function buildLedger(input: LedgerInput): Ledger {
     const link = (a: AgentId, edit: string | undefined, to: string | undefined, tick: Tick) => {
       const r = edit ? by.get(edit) : undefined;
       if (!r || !to) return;
-      edge({ from: nodeId.world(r.id), to, mechanism: r.who.includes(a) ? "you changed" : "handed down", weight: 1, tick: Math.max(r.tick, tick === -Infinity ? r.tick : tick) });
+      edge({ from: nodeId.world(r.id), to, mechanism: !r.who.includes(a) ? "handed down" : r.source === "writing" ? "in their own words" : "you changed", weight: 1, tick: Math.max(r.tick, tick === -Infinity ? r.tick : tick) });
     };
     for (const [a, mind] of Object.entries(minds)) {
       for (const s of mind.schemas) if (s.edit) link(a, s.edit, schemaNode(a, s.id), -Infinity);

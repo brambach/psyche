@@ -9,6 +9,9 @@ import { api, type EditReach, type GameView, type Slot } from "./api";
 import { AgentPanel } from "./AgentPanel";
 import { Coast3D } from "./Coast3D";
 import { MindEditor } from "./MindEditor";
+import { Life } from "./persona/Life";
+import { personaApi } from "./persona/api";
+import { Studio } from "./persona/Studio";
 import { useGameStream } from "./stream";
 import { Town3D, type Shot } from "./Town3D";
 import { Lineage, VoicePanel } from "./Voice";
@@ -29,7 +32,10 @@ type Strip = "feed" | "chronicle" | "notices" | "changes";
 
 export function Game() {
   const { view, connected, away, dismissAway } = useGameStream();
-  const [mind, setMind] = useState<{ id: string; trace?: string; edit?: boolean; ripple?: string }>();
+  const [mind, setMind] = useState<{ id: string; trace?: string; edit?: boolean; ripple?: string; life?: boolean }>();
+  // Bringing someone in from their own writing, and who here came that way.
+  const [studio, setStudio] = useState(false);
+  const [personas, setPersonas] = useState<Set<string>>(new Set());
   const [mode, setMode] = useState<"town" | "coast">("town");
   const [director, setDirector] = useState(() => localGet("psyche.director") !== "0");
   const [shot, setShot] = useState<Shot>();
@@ -127,6 +133,15 @@ export function Game() {
     return () => window.removeEventListener("keydown", on);
   }, [view, act, menu, traceWord]);
 
+  const peopleKey = `${view?.town ?? ""}:${view?.agents?.length ?? 0}`;
+  useEffect(() => {
+    let live = true;
+    personaApi.list().then((r) => live && setPersonas(new Set(r.personas.filter((p) => p.alive).map((p) => p.id))), () => undefined);
+    return () => {
+      live = false;
+    };
+  }, [peopleKey]);
+
   const names = useMemo(() => Object.fromEntries((view?.agents ?? []).map((a) => [a.id, a.name])), [view?.agents]);
   const order = useMemo(() => (view?.agents ?? []).map((a) => a.id), [view?.agents]);
   const colors = useMemo(() => agentColors(order), [order]);
@@ -215,6 +230,11 @@ export function Game() {
               🗣 Speak
             </button>
           )}
+          {village && (
+            <button className={`g-btn ${studio ? "on" : ""}`} onClick={() => setStudio(true)} title="Bring someone into the world from their own writing">
+              ＋ Someone real
+            </button>
+          )}
           <button className={`g-btn ${director ? "on" : ""}`} aria-pressed={director} onClick={() => setDirector(!director)} title="The director cuts to whatever matters most (D)">
             🎬 Director
           </button>
@@ -257,7 +277,8 @@ export function Game() {
         <aside className="g-mind" aria-label={`Inside ${names[mind.id] ?? mind.id}'s head`}>
           <div className="g-mind-bar">
             <div className="g-seg" role="tablist">
-              <button role="tab" aria-selected={!mind.edit} className={!mind.edit ? "on" : ""} onClick={() => setMind({ id: mind.id, trace: mind.trace })}>Their mind</button>
+              <button role="tab" aria-selected={!mind.edit && !mind.life} className={!mind.edit && !mind.life ? "on" : ""} onClick={() => setMind({ id: mind.id, trace: mind.trace })}>Their mind</button>
+              {personas.has(mind.id) && <button role="tab" aria-selected={!!mind.life} className={mind.life ? "on" : ""} onClick={() => setMind({ id: mind.id, life: true })} title="Who they were when they came, from their own writing, and what it has shaped since">Their writing</button>}
               <button role="tab" aria-selected={!!mind.edit} className={mind.edit ? "on" : ""} onClick={() => setMind({ id: mind.id, edit: true })}>Change them</button>
             </div>
             <button className="g-btn" onClick={() => goTo(mind.id)}>Find in town</button>
@@ -265,6 +286,8 @@ export function Game() {
           </div>
           {mind.edit ? (
             <MindEditor key={`${mind.id}|${mind.ripple ?? ""}`} id={mind.id} names={names} ripple={mind.ripple} />
+          ) : mind.life && personas.has(mind.id) ? (
+            <Life key={mind.id} id={mind.id} tick={mindTick} names={names} onOpen={(id, t) => setMind({ id, trace: t })} />
           ) : (
             <AgentPanel key={mind.id} id={mind.id} tick={mindTick} names={names} trace={mind.trace} onTrace={(t) => setMind({ id: mind.id, trace: t })} onOpen={(id, t) => setMind({ id, trace: t })} />
           )}
@@ -274,6 +297,19 @@ export function Game() {
       {traceWord && <Lineage id={traceWord} tick={view.tick} onClose={() => setTraceWord(undefined)} onMind={(id, trace) => setMind({ id, trace })} />}
 
       {menu && <Menu view={view} busy={busy} act={act} onClose={() => setMenu(false)} />}
+      {studio && (
+        <Studio
+          town={view.name}
+          faculties={view.faculties}
+          onClose={() => setStudio(false)}
+          onArrived={(id) => {
+            setStudio(false);
+            setPersonas((s) => new Set([...s, id]));
+            setMind({ id, life: true });
+            goTo(id);
+          }}
+        />
+      )}
       {away && <Away away={away} onClose={dismissAway} />}
     </div>
   );

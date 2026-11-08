@@ -137,3 +137,9 @@ export { applyEdit, editable, shapeFear, inheritEdits, FEARS, PRESETS, type Mind
 export { WORKS, WORK_KINDS, CIVIC_SLOTS, works, stands, civicSite, concernFor, worksSeason, worksDay, aggWorks, shownBlocks, type Work, type WorkKind } from "./world/works.js";
 export { intentOf, intentionsSeason, menu as intentMenu, steer, type Intention, type IntentKind } from "./world/intentions.js";
 export { butterfly, type Butterfly, type Flip, type TownSide } from "./world/butterfly.js";
+export { readPerson, finishReading, sanitizeReading, mockReader, pronounsOf, VALUE_GOALS } from "./persona/finish.js";
+export { mockRead } from "./persona/mock.js";
+export { parseWriting, quoteFound, worldTopics, shapeBelief, inWorldWords } from "./persona/text.js";
+export { admitPersona, personaMind, personaLife, type PersonaOrigin, type PersonaLife } from "./persona/arrive.js";
+export { SAMPLE_PERSONA, SAMPLE_CHAT } from "./persona/sample.js";
+export { VALUES, PERSONA_TRADES, type RawReading, type PersonaReading, type PersonaReader, type WritingInput, type Quote, type PersonaTrait, type PersonaMemory, type PersonaBelief, type PersonaValue, type PersonaPerson, type ValueName, type PersonaTrade } from "./persona/types.js";
