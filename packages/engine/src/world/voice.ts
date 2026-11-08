@@ -49,7 +49,7 @@ import { feed, isNight, personName, record, type FeedItem, type RumorHop, type S
 
 export type Guise = "stranger" | "prophet" | "sky" | "dream";
 export type ProphecyEvent = "gale" | "blight" | "hunger" | "death" | "birth";
-export type BendKind = "source" | "deflated" | "levelled" | "sharpened" | "scapegoat" | "chosen" | "self" | "moralized" | "rationalized";
+export type BendKind = "source" | "deflated" | "levelled" | "sharpened" | "scapegoat" | "chosen" | "self" | "moralized" | "rationalized" | "conformed";
 
 /** Who people say said it, from least to most authority. */
 export const LADDER = ["a stranger", "a traveller who knew things", "a prophet", "a dream sent in the night", "a messenger from beyond the sea", "the sky itself", "the gods"];
@@ -349,7 +349,7 @@ const SHARPEN: [RegExp, string][] = [
   [/\b(might|may|could)\b/, "will"],
   [/\ba storm\b/, "a great storm"],
   [/\bsoon\b/, "any day now"],
-  [/\bwill come\b/, "is coming for us"],
+  [/\b(storm|sea|wind|winter|death|hunger|blight|it) will come\b(?! for)/, "$1 is coming for us"],
   [/\bsome of you\b/, "all of you"],
   [/\bwatching\b/, "watching and counting"],
   [/\bangry\b/, "furious"],
@@ -589,9 +589,9 @@ async function hear(
       const bel = m.beliefs.find((b) => b.id === known.belief);
       // A different version from someone liked can overwrite your own (memory conformity; Gabbert, Memon & Allan 2003).
       const lik = m.others[o.from]?.liking ?? 0;
-      if (!YOU.has(o.from) && versionDistance(o.version, known.version) > 0 && rand(v) < 0.4 * lik * (1 - 0.4 * known.faith)) {
+      if (!YOU.has(o.from) && o.version.blame !== o.listener && versionDistance(o.version, known.version) > 0 && rand(v) < 0.4 * lik * (1 - 0.4 * known.faith)) {
         known.version = o.version;
-        known.bends = [...o.bends, { kind: "levelled", agent: o.listener, text: `took on ${personName(world, o.from)}'s version`, cause: { kind: "relation", id: o.from, text: `${m.name} likes ${personName(world, o.from)} (liking ${lik.toFixed(2)})` } }];
+        known.bends = [...o.bends, { kind: "conformed", agent: o.listener, text: `took on ${personName(world, o.from)}'s version`, cause: { kind: "relation", id: o.from, text: `${m.name} likes ${personName(world, o.from)} (liking ${lik.toFixed(2)})` } }];
         if (bel) bel.proposition = renderVersion(world, known.version);
       }
       if (bel) bel.confidence = known.faith;

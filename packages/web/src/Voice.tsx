@@ -32,6 +32,7 @@ export const BEND_LABEL: Record<BendKind, { label: string; tip: string }> = {
   self: { label: "self-insertion", tip: "The teller put themself in it (low honesty-humility)." },
   moralized: { label: "grew a condition", tip: "A warning grew an 'unless we...', from the teller's own values. Conditions become practices." },
   rationalized: { label: "explained away", tip: "After a failed prophecy." },
+  conformed: { label: "took their version", tip: "Heard a different version from someone they like and let it overwrite their own (memory conformity; Gabbert, Memon & Allan 2003)." },
 };
 
 type Props = {
