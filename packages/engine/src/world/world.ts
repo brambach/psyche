@@ -3,6 +3,7 @@
 // routines, bump into each other, and talk. Most steps need no language model at all: the engine
 // decides who talks to whom and about what, and the Speak faculty only puts it into words.
 
+import { intentOf } from "./intentions.js";
 import { baseLevel, clamp, reconsolidate, render, use } from "../memory.js";
 import { dayOf, hourOf, identityOf, perceiveText, runPercept, wait } from "../mind.js";
 import { PARAMS } from "../params.js";
@@ -279,7 +280,8 @@ function scheduled(world: WorldState, a: AgentState): { place: PlaceId; activity
     if (!a.evening || a.evening.day !== day) {
       const m = world.minds[a.id]!;
       // Going out: extraverts and the lonely go; stress and avoidance keep people in.
-      const p = clamp(0.15 + 0.45 * m.traits.extraversion + 0.5 * (1 - m.needs.relatedness) - 0.3 * m.affect.stress - 0.2 * m.attachment.avoidance);
+      const it = intentOf(world, a.id)?.kind;
+      const p = clamp(0.15 + 0.45 * m.traits.extraversion + 0.5 * (1 - m.needs.relatedness) - 0.3 * m.affect.stress - 0.2 * m.attachment.avoidance + (it === "keep" ? -0.35 : it === "court" ? 0.2 : 0));
       a.evening = { day, out: luck(world, "evening", a.id) < p };
     }
     if (a.evening.out) return entry.evening;

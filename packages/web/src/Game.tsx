@@ -219,7 +219,7 @@ export function Game() {
       {!connected && <div className="g-lag g-warn">Lost the connection to the world. Reconnecting...</div>}
       {error && <div className="g-lag g-warn" role="alert" onClick={() => setError(undefined)}>{error}</div>}
 
-      {card && mode === "town" && <TownCard view={view} onGo={(t) => goTo(undefined, t)} />}
+      {card && mode === "town" && <TownCard view={view} onGo={(t) => goTo(undefined, t)} onLook={(id) => setFocusReq({ id: `at:${id}`, n: Date.now() })} />}
 
       <div className="g-toasts" aria-live="polite">
         {toasts.map((t) => (
@@ -282,7 +282,7 @@ function CostChip({ view, free }: { view: GameView; free?: string }) {
   );
 }
 
-function TownCard({ view, onGo }: { view: GameView; onGo: (town: string) => void }) {
+function TownCard({ view, onGo, onLook }: { view: GameView; onGo: (town: string) => void; onLook: (structure: string) => void }) {
   const c = view.card!;
   const here = view.towns?.find((t) => t.id === view.town);
   // On a phone the card starts folded, so the town has the screen.
@@ -304,6 +304,24 @@ function TownCard({ view, onGo }: { view: GameView; onGo: (town: string) => void
               <>
                 <dt>Going up</dt>
                 <dd>{c.building.map((b) => `${b.name} ${Math.round(b.progress * 100)}%`).join(", ")}</dd>
+              </>
+            )}
+            {c.works?.length > 0 && (
+              <>
+                <dt>Built together</dt>
+                <dd className="g-works">
+                  {c.works.map((wk) => (
+                    <button key={wk.id} className={`g-work w-${wk.status}`} onClick={() => onLook(wk.id)} title={`${wk.proposerName ?? "Someone"} asked for it, with ${wk.why} on their mind. ${wk.does} Click to look at it.`}>
+                      {wk.status === "ruin" ? `ruins of ${wk.name}` : wk.status === "building" ? `${wk.name} ${Math.round(wk.progress * 100)}%` : wk.mending ? `${wk.name} (being mended)` : wk.condition < 0.55 ? `${wk.name} (worn)` : wk.name}
+                    </button>
+                  ))}
+                </dd>
+              </>
+            )}
+            {c.plans?.length > 0 && (
+              <>
+                <dt>This {c.season}</dt>
+                <dd>{c.plans.slice(0, 4).map((p) => `${p.n} ${p.text}`).join(", ")}</dd>
               </>
             )}
             <dt>Common store</dt>

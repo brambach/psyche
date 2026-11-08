@@ -84,6 +84,37 @@ After any change, **Both ways** runs the town on from that moment twice, once wi
 | Laws (made to force giving) | 3 | none |
 | Leader | someone else | the usual leader |
 
+## Builders (G4): what a town raises together, and what each person means to do
+
+**Civic works.** Once a season, someone may stand up at the fire and ask the town to build something: a granary, a well, a meeting hall, a jetty and boat shed, or a memorial. Who asks, and for what, comes from what is on their mind: a core belief about hunger, a goal, a grief, a lean store, a town of fishers. Every adult then votes through their own mind (each vote is a traced choice). If it passes, the person who asked designs it with the Architect, and builders and volunteers raise it block by block from the town's timber, stone and reeds, over days. You can watch it go up in 3D on its own plot (the jetty by the landing, the rest near the fire). Click a work on the town card to fly the camera to it.
+
+Each work changes life once it stands:
+
+| Work | What it does |
+|---|---|
+| Granary | Households lose half as much food to spoiling |
+| Well | The young and middle-aged die of fevers less often |
+| Hall | Nobody gets as lonely; winter is less of a strain |
+| Jetty | Fishers bring in a quarter more |
+| Memorial | The bereaved carry their grief more easily |
+
+Works wear. Below a point they need mending, and builders go to it. Left unmended for about three years, a work falls to ruin: you see a stump in 3D, the chronicle records it, and it stops doing its job. Towns nobody is watching build and mend on rules, a season at a time. See `packages/engine/src/world/works.ts`.
+
+Personality decides what gets built. A test makes the whole town hard and suspicious, then puts the hall to a vote. The warm town votes 14 to 1 and builds it. The hard town votes it down, 9 against. **Both ways** now compares what each town has built.
+
+**Seasonal intentions.** When a season turns, each adult sits with it and decides what they mean to do with the next one. They choose from a typed menu built from the world and their own mind:
+
+- ask the town for a work
+- put more by in the store
+- give spare hours to the work going up
+- teach a craft
+- court someone
+- make peace with someone they have fallen out with
+- stand against the leader in spring
+- keep to themselves
+
+Each person thinks this through (System 2, citing what is in mind; Sonnet on Claude for the people you watch). The intention then leans on what they do all season: the pledge, the vote, whom they court and teach, whether they go out of an evening. Each lean is a term in a later choice. The ledger shows it as a **meant to** edge from the season's decision to the choice it shaped. Open anyone's mind to see what they mean to do this season and why. The town card counts what the town means to do. See `packages/engine/src/world/intentions.ts`.
+
 ## Why: the causal ledger
 
 The brain scan shows one moment. The ledger (`packages/engine/src/ledger.ts`) joins every moment into one graph of what caused what, across time and across people: the event a memory came from, the beliefs and trust it moved, what was in mind at each choice, who told whom, which belief rewrote which memory, and the formative night behind a core belief. Nothing in it causes behaviour; it is built from the traces after the fact.
