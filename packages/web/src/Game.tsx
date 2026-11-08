@@ -14,6 +14,7 @@ import { personaApi } from "./persona/api";
 import { Studio } from "./persona/Studio";
 import { useGameStream } from "./stream";
 import { Town3D, type Shot } from "./Town3D";
+import { Lineage, VoicePanel } from "./Voice";
 import { agentColors, clock, setPlaces } from "./util";
 
 /** The clock's speeds, in sim minutes a real second. 1x is a sim day in about four real minutes. */
@@ -41,6 +42,9 @@ export function Game() {
   const [focusReq, setFocusReq] = useState<{ id: string; n: number }>();
   const [strip, setStrip] = useState<Strip | "">(() => (localGet("psyche.strip") as Strip | "") ?? "feed");
   const [menu, setMenu] = useState(false);
+  // Speaking into the world (voice), and the word whose lineage is open.
+  const [voice, setVoice] = useState(false);
+  const [traceWord, setTraceWord] = useState<string>();
   const [toasts, setToasts] = useState<{ id: string; text: string; kind: string; town?: string; agent?: string; at: number }[]>([]);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -121,12 +125,13 @@ export function Game() {
       else if ((e.key === "m" || e.key === "M") && view.towns) setMode((m) => (m === "town" ? "coast" : "town"));
       else if (e.key === "Escape") {
         if (menu) setMenu(false);
+        else if (traceWord) setTraceWord(undefined);
         else setMind(undefined);
       }
     };
     window.addEventListener("keydown", on);
     return () => window.removeEventListener("keydown", on);
-  }, [view, act, menu]);
+  }, [view, act, menu, traceWord]);
 
   const peopleKey = `${view?.town ?? ""}:${view?.agents?.length ?? 0}`;
   useEffect(() => {
@@ -221,6 +226,11 @@ export function Game() {
             </button>
           )}
           {village && (
+            <button className={`g-btn ${voice ? "on" : ""}`} aria-pressed={voice} onClick={() => setVoice(!voice)} title="Speak into the world: as a stranger, a prophet, a voice from the sky, or a dream">
+              🗣 Speak
+            </button>
+          )}
+          {village && (
             <button className={`g-btn ${studio ? "on" : ""}`} onClick={() => setStudio(true)} title="Bring someone into the world from their own writing">
               ＋ Someone real
             </button>
@@ -239,7 +249,8 @@ export function Game() {
       {!connected && <div className="g-lag g-warn">Lost the connection to the world. Reconnecting...</div>}
       {error && <div className="g-lag g-warn" role="alert" onClick={() => setError(undefined)}>{error}</div>}
 
-      {card && mode === "town" && <TownCard view={view} onGo={(t) => goTo(undefined, t)} />}
+      {card && mode === "town" && !voice && <TownCard view={view} onGo={(t) => goTo(undefined, t)} onLook={(id) => setFocusReq({ id: `at:${id}`, n: Date.now() })} />}
+      {voice && mode === "town" && village && <VoicePanel view={view} busy={busy} act={act} onClose={() => setVoice(false)} onMind={(id, trace) => setMind({ id, trace })} onTrace={setTraceWord} />}
 
       <div className="g-toasts" aria-live="polite">
         {toasts.map((t) => (
@@ -283,6 +294,8 @@ export function Game() {
         </aside>
       )}
 
+      {traceWord && <Lineage id={traceWord} tick={view.tick} onClose={() => setTraceWord(undefined)} onMind={(id, trace) => setMind({ id, trace })} />}
+
       {menu && <Menu view={view} busy={busy} act={act} onClose={() => setMenu(false)} />}
       {studio && (
         <Studio
@@ -318,7 +331,7 @@ function CostChip({ view, free }: { view: GameView; free?: string }) {
   );
 }
 
-function TownCard({ view, onGo }: { view: GameView; onGo: (town: string) => void }) {
+function TownCard({ view, onGo, onLook }: { view: GameView; onGo: (town: string) => void; onLook: (structure: string) => void }) {
   const c = view.card!;
   const here = view.towns?.find((t) => t.id === view.town);
   // On a phone the card starts folded, so the town has the screen.
@@ -340,6 +353,24 @@ function TownCard({ view, onGo }: { view: GameView; onGo: (town: string) => void
               <>
                 <dt>Going up</dt>
                 <dd>{c.building.map((b) => `${b.name} ${Math.round(b.progress * 100)}%`).join(", ")}</dd>
+              </>
+            )}
+            {c.works?.length > 0 && (
+              <>
+                <dt>Built together</dt>
+                <dd className="g-works">
+                  {c.works.map((wk) => (
+                    <button key={wk.id} className={`g-work w-${wk.status}`} onClick={() => onLook(wk.id)} title={`${wk.proposerName ?? "Someone"} asked for it, with ${wk.why} on their mind. ${wk.does} Click to look at it.`}>
+                      {wk.status === "ruin" ? `ruins of ${wk.name}` : wk.status === "building" ? `${wk.name} ${Math.round(wk.progress * 100)}%` : wk.mending ? `${wk.name} (being mended)` : wk.condition < 0.55 ? `${wk.name} (worn)` : wk.name}
+                    </button>
+                  ))}
+                </dd>
+              </>
+            )}
+            {c.plans?.length > 0 && (
+              <>
+                <dt>This {c.season}</dt>
+                <dd>{c.plans.slice(0, 4).map((p) => `${p.n} ${p.text}`).join(", ")}</dd>
               </>
             )}
             <dt>Common store</dt>

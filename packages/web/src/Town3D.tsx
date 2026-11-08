@@ -483,6 +483,19 @@ export function Town3D(props: {
   }, [props.focusReq]);
   useEffect(() => {
     if (!focus) return;
+    // "at:<structure id>": look at something the town built rather than at a person.
+    if (focus.id.startsWith("at:")) {
+      const t = three.current;
+      const st = scene?.structures.find((x) => x.id === focus.id.slice(3));
+      if (t && st) {
+        t.touched = performance.now();
+        t.controls.autoRotate = false;
+        setFollow(false);
+        const c = t.camera.position.clone().set(st.plot.x0 + st.plot.w / 2, st.plot.y + 3, st.plot.z0 + st.plot.d / 2);
+        t.flyTo(c, 46, { elevation: 0.55 });
+      }
+      return;
+    }
     setSelected(focus.id);
     setFollow(true);
     const t = three.current;
@@ -712,7 +725,7 @@ export function Town3D(props: {
 
   const person = scene?.people.find((p) => p.id === selected);
   const building = scene?.structures.filter((s) => !s.done) ?? [];
-  const built = scene?.structures.filter((s) => s.done).length ?? 0;
+  const built = scene?.structures.filter((s) => s.done && !s.work).length ?? 0;
   return (
     <div className={`town3d${game ? " t3-game" : ""}`}>
       <div ref={host} className="t3-stage" role="img" aria-label="The town in 3D. Drag to turn, scroll to zoom, click a person.">

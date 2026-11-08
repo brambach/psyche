@@ -34,6 +34,10 @@ import {
   momentNotices,
   chronicleNotices,
   awaySummary,
+  voiceSummary,
+  voiceLineage,
+  voiceBends,
+  type Guise,
   editable,
   shapeFear,
   FEARS,
@@ -79,6 +83,7 @@ import {
   sanitizeReading,
   personaLife,
   SAMPLE_PERSONA,
+  WORKS,
 } from "@psyche/engine";
 import { createClaudeReader, createFaculties, createMockFaculties } from "@psyche/faculties";
 
@@ -524,7 +529,7 @@ function ledger(): Ledger {
   const stamp = session.traceBase + session.traces.length + (session.world.edits?.length ?? 0) * 1e9;
   if (ledgerCache?.session !== session || ledgerCache.traces !== stamp) {
     const w = session.world;
-    ledgerCache = { session, traces: stamp, ledger: buildLedger({ minds: w.minds, traces: session.traces, rumors: w.rumors, events: w.events, village: w.village, edits: w.edits }) };
+    ledgerCache = { session, traces: stamp, ledger: buildLedger({ minds: w.minds, traces: session.traces, rumors: w.rumors, events: w.events, village: w.village, edits: w.edits, bends: voiceBends(w) }) };
   }
   return ledgerCache.ledger;
 }
@@ -580,6 +585,14 @@ function simDaysPerHour() {
   return 3600 / (waking / Math.max(1, Math.min(speed, pace || speed)) + 1);
 }
 
+/** What the town means to do this season, most common first. */
+function planCounts(w: WorldState): { kind: string; text: string; n: number }[] {
+  const PLAN: Record<string, string> = { propose: "to ask for a work", store: "to put more by", help: "to help build", teach: "to teach", court: "to court someone", amends: "to make peace", challenge: "to stand against the leader", keep: "to keep to themselves" };
+  const by = new Map<string, number>();
+  for (const it of Object.values(w.village?.intent ?? {})) by.set(it.kind, (by.get(it.kind) ?? 0) + 1);
+  return [...by.entries()].sort((a, b) => b[1] - a[1]).map(([kind, n]) => ({ kind, text: PLAN[kind] ?? kind, n }));
+}
+
 function townCard(w: WorldState) {
   const v = w.village;
   if (!v) return undefined;
@@ -594,6 +607,10 @@ function townCard(w: WorldState) {
     houses: homes.filter((h) => h.shelter === "house").length,
     tents: homes.filter((h) => h.shelter !== "house").length,
     building: vv.structures.filter((x) => !x.done).map((x) => ({ name: x.name, progress: x.progress })),
+    works: (v.works ?? [])
+      .filter((x) => x.status !== "rejected")
+      .map((x) => ({ id: x.id, kind: x.kind, name: x.name, status: x.status, progress: Number((x.work / Math.max(0.1, x.hours)).toFixed(2)), condition: Number(x.condition.toFixed(2)), mending: !!x.mending, proposer: x.proposer, proposerName: w.agents[x.proposer]?.name ?? vv.people.find((p) => p.id === x.proposer)?.name, why: x.why, does: WORKS[x.kind].does, design: x.blueprint?.name, trace: x.trace })),
+    plans: planCounts(w),
     store: Math.round(vv.store.food),
     leader: vv.leader,
     leaderName: vv.leader ? (w.agents[vv.leader]?.name ?? vv.people.find((p) => p.id === vv.leader)?.name) : undefined,
@@ -651,6 +668,8 @@ function gameFrame(): GameFrame {
     feed: session.feed.slice(-40).reverse().map((f) => ({ id: f.id, tick: f.tick, kind: f.kind, title: f.title, text: f.text, agents: f.agents, refs: f.refs?.slice(0, 1), line: f.lines?.[0] })),
     beats: beats(session.feed.slice(-200), w.tick),
     notices,
+    // Your words in this town: who heard them, who believes, what they have become (voice.ts).
+    voice: voiceSummary(w),
   };
   if (w.village) {
     const scene = townScene(w, session.feed.slice(-120), session.feed.filter((f) => f.kind === "event" || f.kind === "insight").slice(-12));
@@ -815,7 +834,12 @@ function agentView(id: AgentId) {
     }));
   // How others actually feel about this person, to set against what this person believes.
   const actual = Object.fromEntries(w.order.filter((o) => o !== id).map((o) => [o, w.minds[o]!.others[id]?.liking ?? 0.5]));
-  return { mind, agent: w.agents[id], traces, actual };
+  // What they mean to do this season, and what they meant in seasons before.
+  // The offline mock's "thinking" is a plain template, not words anyone would say, so it isn't shown.
+  const own = w.village?.intent?.[id];
+  const intent = own && governor.mode === "mock" ? { ...own, words: undefined } : own;
+  const past = (w.village?.intentions ?? []).filter((x) => x.agent === id && x !== own).slice(-4).reverse().map((x) => ({ ...x, words: governor.mode === "mock" ? undefined : x.words }));
+  return { mind, agent: w.agents[id], traces, actual, intent, past };
 }
 
 function traceView(agent: AgentId, traceId: string) {
@@ -892,6 +916,11 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     if (ftrace) {
       const v = foundersTrace(ftrace[1]!);
       return v ? send(res, 200, v) : send(res, 404, { error: "That moment is gone (it was rewound)." });
+    }
+    if (p === "/api/voice") return send(res, 200, { summary: voiceSummary(session.world) ?? { words: [], faiths: [], log: [] } });
+    if (p === "/api/voice/word") {
+      const v = voiceLineage(session.world, url.searchParams.get("id") ?? "");
+      return v ? send(res, 200, v) : send(res, 404, { error: "No such words in this town." });
     }
     if (p === "/api/world") return send(res, 200, view());
     if (p === "/api/cost") return send(res, 200, costView());
@@ -1021,6 +1050,17 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       const name = slotName((await body<{ name?: string }>(req)).name);
       if (name && existsSync(slotFile(name))) unlinkSync(slotFile(name));
       return send(res, 200, { slots: listSlots() });
+    }
+    if (p === "/api/voice/speak" || p === "/api/voice/fulfil") {
+      // You, speaking into the watched town: a stranger, a prophet, a voice from the sky, a dream.
+      if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
+      const b = await body<{ guise?: Guise; text?: string; to?: string; place?: string; word?: string }>(req);
+      const GUISES: Guise[] = ["stranger", "prophet", "sky", "dream"];
+      if (p === "/api/voice/speak" && (!b.text?.trim() || !b.guise || !GUISES.includes(b.guise))) return send(res, 400, { error: "Say something, and pick how you appear." });
+      const act = p === "/api/voice/speak" ? { act: "speak" as const, guise: b.guise!, text: b.text!.slice(0, 400), to: b.to, place: b.place } : { act: "fulfil" as const, word: b.word ?? "" };
+      await exclusive(() => session.apply({ type: "voice", act }));
+      save(true);
+      return send(res, 200, { summary: voiceSummary(session.world) });
     }
     if (p === "/api/edit") {
       // Change someone's mind (or everyone's), as recorded inputs; a preset is several at once.

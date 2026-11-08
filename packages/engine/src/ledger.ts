@@ -67,8 +67,12 @@ export type Mechanism =
   | "deepened by"
   | "sanctioned"
   | "expected"
+  /** A teller's grudge, fear or vanity changed the words on their way to a listener (voice.ts). */
+  | "bent by"
   | "you changed"
   | "handed down"
+  /** An intention made at the turn of the season leaned on this later choice. */
+  | "meant to"
   /** A piece of someone's mind that came from their own writing (persona/). */
   | "in their own words";
 
@@ -97,6 +101,8 @@ export interface LedgerInput {
   events?: WorldEventRecord[];
   /** A village's norms and pledges, when there is one. */
   village?: VillageState;
+  /** What bent your words on the way: something in a teller's mind, and the listener's belief it shaped. */
+  bends?: { from: { agent: AgentId; kind: "belief" | "schema" | "relation" | "episode"; id: string }; to: { agent: AgentId; id: string }; tick: Tick; label: string }[];
   /** What the player changed in people's minds. */
   edits?: EditRecord[];
 }
@@ -270,6 +276,12 @@ export function buildLedger(input: LedgerInput): Ledger {
         const v = opt?.terms.find((x) => x.name === `${trait} today`)?.value ?? 0;
         if (Math.abs(v) >= 0.01) edge({ from: te.node, to: D, mechanism: te.writing ? "in their own words" : "you changed", weight: Math.min(1, Math.abs(v) * 3), tick: p.tick });
       }
+      // What they meant to do this season, decided earlier, leans on the choice.
+      for (const term of opt?.terms ?? []) {
+        if (!term.ref?.startsWith("intent:") || term.value <= 0) continue;
+        const I = nodeId.decision(a, term.ref.slice(7));
+        if (L.nodes.has(I)) edge({ from: I, to: D, mechanism: "meant to", weight: Math.min(1, term.value * 2), tick: p.tick });
+      }
       for (const w of t.workspace) {
         const src = sourceOf(a, t, w);
         if (!src) continue;
@@ -317,7 +329,7 @@ export function buildLedger(input: LedgerInput): Ledger {
           if (theirs) src = beliefNode(from, theirs.id);
           else if (rumor?.origin === from) src = episodeNode(from, b.rumor.slice(`rum_${from}_`.length)) ?? beliefNode(from, b.rumor.slice(`rum_${from}_`.length));
         } else {
-          src = node({ id: nodeId.world(`teller:${from}:${b.rumor}`), kind: "outside", tick: b.formed, label: from === "visitor" ? "A stranger off the ferry told the story" : `${nameOf(from)} told the story` });
+          src = node({ id: nodeId.world(`teller:${from}:${b.rumor}`), kind: "outside", tick: b.formed, label: rumor?.guise ? `You spoke, as ${rumor.guise === "sky" ? "a voice from the sky" : rumor.guise === "dream" ? "a dream" : `a ${rumor.guise}`}: "${rumor.first}"` : from === "visitor" ? "A stranger off the ferry told the story" : `${nameOf(from)} told the story` });
         }
         if (src) edge({ from: src, to: B, mechanism: "passed on", weight: 0.7, tick: b.formed });
       }
@@ -384,6 +396,13 @@ export function buildLedger(input: LedgerInput): Ledger {
         if (held > 0.1 && L.nodes.has(D)) edge({ from: N, to: D, mechanism: "expected", weight: Math.min(1, held * 0.6), tick: round.tick });
       }
     }
+  }
+
+  // Your words, bent on the way: the teller's grudge, fear or vanity shaped the listener's belief.
+  for (const b of input.bends ?? []) {
+    const from = b.from.kind === "belief" ? beliefNode(b.from.agent, b.from.id) : b.from.kind === "schema" ? schemaNode(b.from.agent, b.from.id) : b.from.kind === "episode" ? episodeNode(b.from.agent, b.from.id) : relationNode(b.from.agent, b.from.id);
+    const to = beliefNode(b.to.agent, b.to.id);
+    if (from && to) edge({ from, to, mechanism: "bent by", weight: 0.5, tick: b.tick });
   }
 
   // Duplicate edges (the same link seen from a trace and from state) collapse to the strongest.

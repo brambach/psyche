@@ -11,6 +11,7 @@ export function AgentPanel({ id, tick, names, trace, onTrace, onOpen }: { id: st
   const [view, setView] = useState<AgentView>();
   const [scan, setScan] = useState<TraceView>();
   const [error, setError] = useState<string>();
+  const [scanError, setScanError] = useState<string>();
   const [worries, setWorries] = useState<ConcernView[]>([]);
   const [lineage, setLineage] = useState<LineageQuery>();
   const [account, setAccount] = useState(false);
@@ -34,9 +35,11 @@ export function AgentPanel({ id, tick, names, trace, onTrace, onOpen }: { id: st
   const latest = view?.traces[view.traces.length - 1]?.id;
   const shown = trace ?? latest;
   useEffect(() => {
+    setScanError(undefined);
     if (!shown) return setScan(undefined);
     let live = true;
-    api.trace(id, shown).then((v) => live && setScan(v), (e) => live && setError(e instanceof Error ? e.message : String(e)));
+    // A moment that was rewound or trimmed away is gone, but the mind itself is still worth showing.
+    api.trace(id, shown).then((v) => live && setScan(v), (e) => live && (setScan(undefined), setScanError(e instanceof Error ? e.message : String(e))));
     return () => {
       live = false;
     };
@@ -57,6 +60,18 @@ export function AgentPanel({ id, tick, names, trace, onTrace, onOpen }: { id: st
         </div>
       </header>
       <p className="bio">{m.identity.summary}</p>
+      {view.intent && (
+        <div className="pane intent">
+          <h3>This {view.intent.season}, {m.name} means to</h3>
+          <p className="intent-what">
+            <b>{view.intent.label.replace(/^./, (c) => c.toLowerCase())}</b>{" "}
+            <button className="linkish small" onClick={() => onTrace(view.intent!.trace)}>see the decision</button>
+          </p>
+          {view.intent.words && <p className="small">“{view.intent.words}”</p>}
+          {view.intent.because.length > 0 && <p className="small">With in mind: {view.intent.because.join("; ")}</p>}
+          {view.past && view.past.length > 0 && <p className="small">Before: {view.past.map((p) => `${p.season} year ${p.year}, ${p.label.replace(/^./, (c) => c.toLowerCase())}`).join(" · ")}</p>}
+        </div>
+      )}
       <div className="grid2">
         <div className="pane">
           <h3>How {m.name} reads the others</h3>
@@ -147,6 +162,7 @@ export function AgentPanel({ id, tick, names, trace, onTrace, onOpen }: { id: st
             </div>
           )}
           {account && scan?.trace.decision && <Account key={scan.trace.id} agent={id} trace={scan.trace.id} names={names} onOpen={(a, t) => (a === id ? onTrace(t) : onOpen(a, t))} />}
+          {scanError && <p className="small">{scanError} Pick a later moment below.</p>}
           {scan ? <Scan trace={scan.trace} state={scan.state} trail={scan.trail} /> : <p className="empty">Pick a moment to see why {m.name} did what {m.pronouns.subject} did.</p>}
         </section>
       </div>

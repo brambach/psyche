@@ -1,4 +1,5 @@
-import type { Butterfly, EditRecord, MindEdit, TraitName, AwaySummary, Beat, ChronicleEntry, Notice, Scene3D, Timeline, Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
+import type { VoiceSummary, VoiceLineage, Guise } from "@psyche/engine";
+import type { Intention, Butterfly, EditRecord, MindEdit, TraitName, AwaySummary, Beat, ChronicleEntry, Notice, Scene3D, Timeline, Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
 
 export interface AgentSummary {
   id: string;
@@ -106,6 +107,8 @@ export interface AgentView {
   agent: AgentState;
   traces: TraceSummary[];
   actual: Record<string, number>;
+  intent?: Intention;
+  past?: Intention[];
 }
 
 export interface TraceView {
@@ -173,6 +176,9 @@ export const api = {
   saveSlot: (name: string) => call<{ slots: Slot[] }>("/api/slots/save", { name }),
   loadSlot: (name: string) => call<{ slots: Slot[] }>("/api/slots/load", { name }),
   deleteSlot: (name: string) => call<{ slots: Slot[] }>("/api/slots/delete", { name }),
+  speak: (b: { guise: Guise; text: string; to?: string; place?: string }) => call<{ summary: VoiceSummary }>("/api/voice/speak", b),
+  fulfil: (word: string) => call<{ summary: VoiceSummary }>("/api/voice/fulfil", { word }),
+  voiceWord: (id: string) => call<VoiceLineage>(`/api/voice/word?id=${encodeURIComponent(id)}`),
   editable: (id: string) => call<Editable>(`/api/editable/${id}`),
   edit: (b: { who: string; edit?: MindEdit & { written?: boolean }; preset?: string; notice?: boolean }) => call<{ records: EditRecord[]; editable?: Omit<Editable, "fears" | "presets"> }>("/api/edit", b),
   edits: () => call<{ edits: EditReach[] }>("/api/edits"),
@@ -214,6 +220,8 @@ export interface GameView {
     houses: number;
     tents: number;
     building: { name: string; progress: number }[];
+    works: { id: string; kind: string; name: string; status: "proposed" | "building" | "done" | "ruin"; progress: number; condition: number; mending: boolean; proposer: string; proposerName?: string; why: string; does: string; design?: string; trace?: string }[];
+    plans: { kind: string; text: string; n: number }[];
     store: number;
     leader?: string;
     leaderName?: string;
@@ -231,6 +239,8 @@ export interface GameView {
   feed?: { id: string; tick: number; kind: FeedItem["kind"]; title: string; text?: string; agents: string[]; refs?: { agent: string; trace: string }[]; line?: { speaker: string; text: string } }[];
   beats?: Beat[];
   notices?: Notice[];
+  /** Your words in this town, once you have spoken. */
+  voice?: VoiceSummary;
   /** The town's 3D scene, put back together from its `scene.*` keys. */
   scene?: Scene3D;
 }
