@@ -72,6 +72,16 @@ export function AgentPanel({ id, tick, names, trace, onTrace, onOpen }: { id: st
           {view.past && view.past.length > 0 && <p className="small">Before: {view.past.map((p) => `${p.season} year ${p.year}, ${p.label.replace(/^./, (c) => c.toLowerCase())}`).join(" · ")}</p>}
         </div>
       )}
+      {view.purse && (view.purse.held > 0 || view.purse.owes.length > 0 || view.purse.owed.length > 0) && (
+        <div className="pane intent">
+          <h3>What {m.name} holds and owes</h3>
+          <p className="small">
+            {view.purse.held} piece{view.purse.held === 1 ? "" : "s"} of {view.purse.good}. Thinks {view.purse.good} {view.purse.accept > 0.65 ? "will surely buy food" : view.purse.accept > 0.5 ? "will probably buy food" : view.purse.accept > 0.3 ? "might buy food from someone" : "is only pretty"} ({view.purse.accept.toFixed(2)}).
+          </p>
+          {view.purse.owes.length > 0 && <p className="small">Owes {view.purse.owes.map((d) => `${d.name} ${d.amount} food${d.overdue ? " (past due)" : ""}`).join(", ")}.</p>}
+          {view.purse.owed.length > 0 && <p className="small">Is owed by {view.purse.owed.map((d) => `${d.name} ${d.amount} food${d.overdue ? " (past due)" : ""}`).join(", ")}.</p>}
+        </div>
+      )}
       <div className="grid2">
         <div className="pane">
           <h3>How {m.name} reads the others</h3>

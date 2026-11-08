@@ -159,6 +159,8 @@ export interface Episode {
   agency: "self" | "other" | "circumstance";
   /** Put there by the player (an implanted memory). The mind takes it for its own; only the record knows. */
   edit?: string;
+  /** Last time this memory was told to someone else. A story you have passed on is one you keep. */
+  toldOn?: Tick;
 }
 
 export interface Belief {

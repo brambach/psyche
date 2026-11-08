@@ -115,6 +115,16 @@ Personality decides what gets built. A test makes the whole town hard and suspic
 
 Each person thinks this through (System 2, citing what is in mind; Sonnet on Claude for the people you watch). The intention then leans on what they do all season: the pledge, the vote, whom they court and teach, whether they go out of an evening. Each lean is a term in a later choice. The ledger shows it as a **meant to** edge from the season's decision to the choice it shaped. Open anyone's mind to see what they mean to do this season and why. The town card counts what the town means to do. See `packages/engine/src/world/intentions.ts`.
 
+## Money and debt: food between households, and amber that might become money
+
+Nobody is told what money is. At supper, a household that is short asks a neighbour who has some to spare. The neighbour decides through their own mind (a traced choice) whether to **give** it, **lend** it, **sell** it for a piece of amber, or **refuse**. What pushes each option is visible in the decision: whether they trust the asker to pay it back, whether amber will buy anything later, what they would get in return, whether they have been burned before.
+
+- **Debts.** A loan is remembered on both sides and falls due in a season. A debtor with food to spare weighs paying it back. When a debt goes past due, the lender notices ("hasn't paid me back"), and that memory is there the next time the same person asks.
+- **Amber.** People find amber on the beach (fishers and people on the shore more often). It starts out as something pretty. Each person carries a sense of whether others would take it for food. That sense spreads by conformity, rises when a sale goes through, and drops when an offer is refused.
+- **Money.** When more than 60% of adults think amber will buy food, the chronicle records that amber has become money in that town. If that falls below 30%, it is lost again. Towns nobody is watching run the same thing on rules, a season at a time.
+
+Personality decides which economy appears. A warm town runs on gifts and loans and never needs amber. A hard, suspicious town refuses and trades instead, and amber creeps toward money. In a 48-day test the warm town made 24 gifts and 12 loans, and the hard town made 0 gifts, 13 sales and 46 refusals. The town card shows food between households, open and overdue debts, and whether amber is money. Anyone's mind shows what they hold and owe. **Both ways** compares how food moved in each run. See `packages/engine/src/world/money.ts`.
+
 ## Someone real: a mind read from their own writing
 
 Pick **＋ Someone real** in the game header and paste a person's own writing: chat messages, notes to self, a journal. A chat export ("Name: message" lines, with or without timestamps) works too; only their own lines are read. Psyche reads a mind from it (`packages/engine/src/persona/`):

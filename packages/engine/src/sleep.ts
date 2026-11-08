@@ -119,6 +119,8 @@ export async function sleep(mind: MindState, now: Tick, faculties: Faculties): P
       ...mind.beliefs.filter((b) => b.confidence >= 0.4).flatMap((b) => [...b.evidence.slice(-2), ...(b.claim?.episodeHint ? [b.claim.episodeHint] : [])]),
       // How the town began is not let go: it is told every year. (Other people's stories of it can be.)
       ...mind.episodes.filter((e) => (e.source.kind !== "told" && (e.topics.includes("crossing") || e.topics.includes("leaving"))) || e.topics.includes("founding")).map((e) => e.id),
+      // Stories you have told someone else stay with you (the most recent forty), so the chain of who told whom holds.
+      ...mind.episodes.filter((e) => e.toldOn !== undefined).sort((a, b) => b.toldOn! - a.toldOn!).slice(0, 40).map((e) => e.id),
     ]);
     const faint = mind.episodes
       .filter((e) => !keep.has(e.id))
