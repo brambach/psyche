@@ -9,6 +9,7 @@ import { api, type EditReach, type GameView, type Slot } from "./api";
 import { AgentPanel } from "./AgentPanel";
 import { Coast3D } from "./Coast3D";
 import { MindEditor } from "./MindEditor";
+import { Nested } from "./Nested";
 import { useGameStream } from "./stream";
 import { Town3D, type Shot } from "./Town3D";
 import { agentColors, clock, setPlaces } from "./util";
@@ -35,6 +36,7 @@ export function Game() {
   const [focusReq, setFocusReq] = useState<{ id: string; n: number }>();
   const [strip, setStrip] = useState<Strip | "">(() => (localGet("psyche.strip") as Strip | "") ?? "feed");
   const [menu, setMenu] = useState(false);
+  const [nested, setNested] = useState(false);
   const [toasts, setToasts] = useState<{ id: string; text: string; kind: string; town?: string; agent?: string; at: number }[]>([]);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -114,13 +116,14 @@ export function Game() {
       else if (e.key === "d" || e.key === "D") setDirector((d) => !d);
       else if ((e.key === "m" || e.key === "M") && view.towns) setMode((m) => (m === "town" ? "coast" : "town"));
       else if (e.key === "Escape") {
+        if (nested) return;
         if (menu) setMenu(false);
         else setMind(undefined);
       }
     };
     window.addEventListener("keydown", on);
     return () => window.removeEventListener("keydown", on);
-  }, [view, act, menu]);
+  }, [view, act, menu, nested]);
 
   const names = useMemo(() => Object.fromEntries((view?.agents ?? []).map((a) => [a.id, a.name])), [view?.agents]);
   const order = useMemo(() => (view?.agents ?? []).map((a) => a.id), [view?.agents]);
@@ -150,7 +153,7 @@ export function Game() {
     <div className={`game${night ? " g-night" : ""}`}>
       <style>{colors}</style>
       <div className="g-stage">
-        {mode === "coast" && view.towns ? (
+        {nested ? null : mode === "coast" && view.towns ? (
           <Coast3D game seed={view.seed} current={view.town} onVisit={(t) => { setMode("town"); void act(() => api.town(t)); }} />
         ) : village ? (
           <Town3D
@@ -203,6 +206,11 @@ export function Game() {
           {view.towns && (
             <button className={`g-btn ${mode === "coast" ? "on" : ""}`} onClick={() => setMode(mode === "town" ? "coast" : "town")} title="The whole coast (M)">
               {mode === "coast" ? "Back to town" : "Whole coast"}
+            </button>
+          )}
+          {view.engines && view.engines.length > 0 && (
+            <button className={`g-btn ${nested ? "on" : ""}`} onClick={() => setNested(!nested)} title="Engines the towns have built, and the worlds running inside them">
+              ⊚ Worlds inside{view.engines.some((e) => e.depth > 0) ? ` · ${Math.max(...view.engines.map((e) => e.depth))} deep` : ""}
             </button>
           )}
           <button className={`g-btn ${director ? "on" : ""}`} aria-pressed={director} onClick={() => setDirector(!director)} title="The director cuts to whatever matters most (D)">
@@ -260,6 +268,17 @@ export function Game() {
         </aside>
       )}
 
+      {nested && (
+        <Nested
+          engines={view.engines ?? []}
+          onClose={() => setNested(false)}
+          onMind={(id, t) => {
+            setNested(false);
+            if (t !== view.town) goTo(id, t);
+            setMind({ id });
+          }}
+        />
+      )}
       {menu && <Menu view={view} busy={busy} act={act} onClose={() => setMenu(false)} />}
       {away && <Away away={away} onClose={dismissAway} />}
     </div>

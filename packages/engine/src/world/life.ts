@@ -118,7 +118,7 @@ export async function lifeTurn(world: WorldState, faculties: Faculties, sink: Si
     const kids = hh.members.filter((m) => isChild(world, m)).length;
     // Food enough: what the household has, and its share of the common store.
     const share = (v.store.food / Math.max(1, world.order.length)) * hh.members.length;
-    if (kids >= 4 || hh.food + share < hh.members.length * 1.2 || world.order.length >= POP_CAP) continue;
+    if (kids >= 4 || hh.food + share < hh.members.length * 1.2 || world.order.length >= (v.popCap ?? POP_CAP)) continue;
     if (hh.members.some((m) => ageOf(world, m) < 1.5)) continue;
     if (nextRandom(world) < 0.15) await birth(world, [id, l.partner], faculties, sink);
   }
@@ -127,7 +127,7 @@ export async function lifeTurn(world: WorldState, faculties: Faculties, sink: Si
     const a = world.agents[id]!;
     if (a.role === "child" && ageOf(world, id) >= CHILDHOOD) comeOfAge(world, id, sink);
   }
-  if (v.season === "spring" && world.order.length < POP_CAP - 5) await newcomers(world, faculties, sink);
+  if (v.season === "spring" && world.order.length < (v.popCap ?? POP_CAP) - 5) await newcomers(world, faculties, sink);
 }
 
 const householdOf = (v: VillageState, id: AgentId): Household | undefined => Object.values(v.households).find((h) => h.members.includes(id));
@@ -201,7 +201,7 @@ async function birth(world: WorldState, parents: AgentId[], faculties: Faculties
       name: first,
       pronouns,
       identity: {
-        summary: `${first} ${surname}, born in Hollow Bay in year ${year}, child of ${p1!.name} and ${p2!.name}. Has never known anywhere else.`,
+        summary: `${first} ${surname}, born in ${world.name} in year ${year}, child of ${p1!.name} and ${p2!.name}. Has never known anywhere else.`,
         voice: "A child's way of talking: short, direct, full of questions. Grows plainer with age.",
       },
       traits,
@@ -211,7 +211,7 @@ async function birth(world: WorldState, parents: AgentId[], faculties: Faculties
         { id: `g_${id}_grow`, text: "Grow up and be useful", tags: ["help", "work", "family"], priority: 0.6, progress: 0.05, invested: 0.05, rate: 0 },
         { id: `g_${id}_fed`, text: "Not go hungry", tags: ["food", "hunger", "winter", "store"], priority: 0.7, progress: 0.4, invested: 0.05, rate: 0 },
       ],
-      self: { selfEsteem: 0.55, selfEfficacy: 0.45, control: 0.5, lifeStory: `I was born in Hollow Bay. My parents are ${p1!.name} and ${p2!.name}.` },
+      self: { selfEsteem: 0.55, selfEfficacy: 0.45, control: 0.5, lifeStory: `I was born in ${world.name}. My parents are ${p1!.name} and ${p2!.name}.` },
       others: { visitor: other("visitor", "the visitor", 0.5, 0.5, 0) },
       episodes: [],
       beliefs: [],
@@ -249,7 +249,7 @@ async function birth(world: WorldState, parents: AgentId[], faculties: Faculties
     record(world, sink, p, tr);
     refs.push({ agent: p, trace: tr.id });
   }
-  feed(world, sink, { kind: "event", place: hh.home, agents: [...parents, id], title: `${first} is born to ${p1!.name} and ${p2!.name}`, text: `Generation ${v.life[id]!.generation} of Hollow Bay. ${world.order.length} people in the village now.`, refs });
+  feed(world, sink, { kind: "event", place: hh.home, agents: [...parents, id], title: `${first} is born to ${p1!.name} and ${p2!.name}`, text: `Generation ${v.life[id]!.generation} of ${world.name}. ${world.order.length} people in the village now.`, refs });
 }
 
 function childRoutine(home: string): RoutineEntry[] {
@@ -532,7 +532,7 @@ export function settleNorms(world: WorldState, sink: Sink): void {
   if (!n.established && n.rounds.length >= 2 && n.sanctions >= 30) {
     n.established = world.tick;
     n.strength = clamp(n.sanctions / 80);
-    feed(world, sink, { kind: "insight", agents: [], title: "A norm takes hold in Hollow Bay", text: `“${n.text}.” Holding back has been seen and held against people ${n.sanctions} times. From now on it costs more, and most people believe in it.` });
+    feed(world, sink, { kind: "insight", agents: [], title: `A norm takes hold in ${world.name}`, text: `“${n.text}.” Holding back has been seen and held against people ${n.sanctions} times. From now on it costs more, and most people believe in it.` });
   }
   if (!n.established) return;
   for (const id of world.order) {

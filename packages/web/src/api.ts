@@ -1,4 +1,4 @@
-import type { EditRecord, MindEdit, TraitName, AwaySummary, Beat, ChronicleEntry, Notice, Scene3D, Timeline, Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
+import type { EngineChain, NestedPersonView, NestedWorldView, EditRecord, MindEdit, TraitName, AwaySummary, Beat, ChronicleEntry, Notice, Scene3D, Timeline, Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
 
 export interface AgentSummary {
   id: string;
@@ -174,6 +174,10 @@ export const api = {
   editable: (id: string) => call<Editable>(`/api/editable/${id}`),
   edit: (b: { who: string; edit?: MindEdit & { written?: boolean }; preset?: string; notice?: boolean }) => call<{ records: EditRecord[]; editable?: Omit<Editable, "fears" | "presets"> }>("/api/edit", b),
   edits: () => call<{ edits: EditReach[] }>("/api/edits"),
+  nested: () => call<{ engines: EngineChain[] }>("/api/nested"),
+  nestedWorld: (town: string, depth: number) => call<NestedWorldView>(`/api/nested/world?${new URLSearchParams({ town, depth: String(depth) })}`),
+  nestedScene: (town: string, depth: number) => call<Scene3D>(`/api/nested/scene?${new URLSearchParams({ town, depth: String(depth) })}`),
+  nestedPerson: (town: string, depth: number, id: string) => call<NestedPersonView>(`/api/nested/person?${new URLSearchParams({ town, depth: String(depth), id })}`),
 };
 
 export interface Slot {
@@ -230,6 +234,16 @@ export interface GameView {
   notices?: Notice[];
   /** The town's 3D scene, put back together from its `scene.*` keys. */
   scene?: Scene3D;
+  /** Towns that have started counting, and the worlds inside their engines. */
+  engines?: EngineChip[];
+}
+
+export interface EngineChip {
+  id: string;
+  townName: string;
+  stage: "tally" | "frame" | "building" | "running" | "stilled";
+  depth: number;
+  worlds: { name: string; people: number; believers: number; adults: number; year: number }[];
 }
 
 export type { AwaySummary };

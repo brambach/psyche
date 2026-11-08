@@ -107,3 +107,32 @@ export { CRAFTS, craft, craftBonus, craftLineage, knows, townCrafts, knowledgeOf
 export { digest, timeline, type Timeline } from "./world/digest.js";
 export { frameDelta, applyDelta, deltaMemory, beats, beatOf, warnings, momentNotices, chronicleNotices, awaySummary, type Frame as GameFrame, type FrameDelta, type DeltaMemory, type Beat, type Notice, type AwaySummary } from "./world/game.js";
 export { applyEdit, editable, shapeFear, inheritEdits, FEARS, PRESETS, type MindEdit, type EditInput, type EditRecord } from "./world/edits.js";
+export {
+  nestedSeason,
+  nestedOf,
+  worldAt,
+  engines,
+  nestedWorldView,
+  nestedPersonView,
+  personOf,
+  suspicionOf,
+  flavorOf,
+  SUSPICIONS,
+  MIRROR,
+  MAX_DEPTH,
+  WAKING,
+  type NestedState,
+  type Machine,
+  type Making,
+  type Sign,
+  type SignKind,
+  type NestedEvent,
+  type LevelWhy,
+  type Flavor,
+  type Level,
+  type EngineChain,
+  type MachineSummary,
+  type InnerPerson,
+  type NestedWorldView,
+  type NestedPersonView,
+} from "./world/nested.js";

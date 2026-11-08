@@ -144,6 +144,25 @@ Open **Watch in 3D** in the village or region scenario. The town is laid out on 
 
 `packages/web/src/replay.ts` draws a recorded century the same way from a timeline alone, for a standalone page.
 
+## Worlds inside the world: engines, and the minds in them
+
+Somewhere in a region, a curious, careful person who keeps the tide tables starts cutting a notch for every tide, and sees that the count can tell the next tide before it comes (`packages/engine/src/world/nested.ts`). The count is taught like any craft and dies with its last keeper if nobody learned it. Years later it becomes a bead frame that can follow a rule; in spring the keeper asks the town for timber and stone to make it an engine, and the town votes (openness, liking for the asker, and how full the store is). Built from what the piles can spare after houses, the engine turns, and a small world wakes inside it.
+
+- **The same engine, one level of detail down.** The world inside is a village on the aggregate tier: real minds that remember, pair up, die, elect leaders, teach crafts and tell their children stories, a season at a time on rules. It runs faster than the world holding it (four of its seasons to one outside), and each level is smaller (12, 9, then 7 people wake; 40, 28, 20 at most). It can build an engine of its own, down to three worlds deep.
+- **Made in the maker's image.** Each person who wakes is modelled on someone the maker knew (the maker first, then the people they are closest to, the dead included), with tempers pulled toward the maker's own. Each wakes remembering a past that belongs to someone outside: the memory behind their model's strongest core belief, and the belief comes with it.
+- **They notice.** Every sign has a real cause one level up, and the Why says so, each link marked with the world it happened in: a *false past* (a town that isn't in their world, because it is the maker's memory), *the repeat* (every winter loses the same share of days to gales, because the aggregate tier runs on rules), *a boat from nowhere* (the village rules send newcomers; there is no other shore), *a lost season* (a bead slipped: a gale outside, hungry keepers, a lone keeper), and *the keeper's hand* (a keeper who tended it grieving or glad, and the season inside followed). The first boat is a wonder; by the fifth, boats just come.
+- **They read it by temperament.** The anxious and the hard come to dread an indifferent maker, the warm to trust a watchful one, the curious and steady to suspect the world runs on rules, like beads on a frame. Each reading is a core belief whose origin is the sign, so the engine's own story-passing carries it: told at the fire, handed down at bedtime, each copy pointing back to the teller's, back to whoever saw the sign. Worlds made by curious makers fill with curious people, and more of them guess the truth.
+- **Word goes up.** The keepers read the beads. When the people inside start saying someone made them, a keeper may come to believe "Maybe we are inside someone's engine too" (or, if steadier, "If we can make a world, someone may have made ours"). That is a core belief in a real mind, with the reading as its origin, so it shows in their mind drawer under What weighs on them, traces in the ledger, and passes to their children.
+
+In the game, **⊚ Worlds inside** appears in the header once any town starts counting. It opens a lens on each world in 3D (a frame of beads around anything inside an engine) with a breadcrumb from the real town down (W0, W1, W2, W3; keys + and −). Beside it: how many suspect and how, what they think made them against what did, every sign with its cross-level Why, who each person was modelled on and whose past they carry, and each core belief traced to where it started. Click a link in W0 to open that person's mind in the game. Engines show in the chronicle and the notices, and the director cuts to them.
+
+```bash
+npm run nested -- 34 11 out/nested   # 34 years on the mock (a few seconds), every level printed; writes a save
+PSYCHE_DATA=$PWD/out/nested npm run dev
+```
+
+At most two real towns count at once, so a region keeps at most two chains of worlds (about 2 to 4 MB in the save). Nothing here calls a model: worlds inside run on the cheap faculties the region gives aggregated towns, the free offline mock on the server.
+
 ## Founders (F0): one mind builds a house
 
 **Founders** is the first step toward an open-world sandbox where Psyche minds build their own town. One mind (any of the Kettle Island five) lands on **Tern Holm**, an empty voxel islet, with a storm due at dusk the next day. Nothing is scripted: the mind decides whether to start building, look around or wait; designs a house; fells pines, quarries stone and cuts reeds; and sets every block over sim hours. Open `http://localhost:5173/#/founders`, or run it in the terminal:

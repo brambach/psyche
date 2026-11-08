@@ -36,6 +36,11 @@ import {
   awaySummary,
   editable,
   shapeFear,
+  engines,
+  nestedWorldView,
+  nestedPersonView,
+  nestedOf,
+  worldAt,
   FEARS,
   PRESETS,
   type MindEdit,
@@ -642,12 +647,52 @@ function gameFrame(): GameFrame {
     feed: session.feed.slice(-40).reverse().map((f) => ({ id: f.id, tick: f.tick, kind: f.kind, title: f.title, text: f.text, agents: f.agents, refs: f.refs?.slice(0, 1), line: f.lines?.[0] })),
     beats: beats(session.feed.slice(-200), w.tick),
     notices,
+    engines: region ? engineChips() : undefined,
   };
   if (w.village) {
     const scene = townScene(w, session.feed.slice(-120), session.feed.filter((f) => f.kind === "event" || f.kind === "insight").slice(-12));
     for (const [k, v] of Object.entries(scene)) frame[`scene.${k}`] = v;
   }
   return frame;
+}
+
+// ------------------------------------------------------------------ worlds inside the world (nested.ts)
+
+/** Every town that has started counting, and how deep its chain of worlds goes. */
+function engineChips() {
+  if (!region) return [];
+  return engines(region.region.towns.map((t) => ({ id: t.id, world: region!.world(t.id) })), region.region.nested).map((c) => ({
+    id: c.town,
+    townName: c.townName,
+    stage: c.levels[0]!.machine!.stage,
+    depth: c.levels.length - 1,
+    worlds: c.levels.slice(1).map((l) => ({ name: l.name, people: l.people, believers: l.believers, adults: l.adults, year: l.year })),
+  }));
+}
+
+function nestedRoute(p: string, url: URL, res: ServerResponse) {
+  if (!region) return send(res, 404, { error: "Engines are built in a region of towns." });
+  const store = region.region.nested;
+  if (p === "/api/nested") return send(res, 200, { engines: engines(region.region.towns.map((t) => ({ id: t.id, world: region!.world(t.id) })), store) });
+  const t = url.searchParams.get("town") ?? "";
+  if (!region.region.towns.some((x) => x.id === t)) return send(res, 404, { error: "No such town." });
+  const top = region.world(t);
+  const depth = Math.max(0, Math.min(4, Number(url.searchParams.get("depth")) || 0));
+  if (p === "/api/nested/world") {
+    const v = nestedWorldView(top, t, store, depth);
+    return v ? send(res, 200, v) : send(res, 404, { error: "No world that deep." });
+  }
+  if (p === "/api/nested/scene") {
+    const w = worldAt(top, store, depth);
+    if (!w?.village) return send(res, 404, { error: "No world that deep." });
+    const f = depth === 0 ? session.feed : nestedOf(w).feed;
+    return send(res, 200, townScene(w, f.slice(-120), f.filter((x) => x.kind === "event" || x.kind === "insight").slice(-12)));
+  }
+  if (p === "/api/nested/person") {
+    const v = nestedPersonView(top, store, depth, url.searchParams.get("id") ?? "");
+    return v ? send(res, 200, v) : send(res, 404, { error: "Nobody by that id there." });
+  }
+  return send(res, 404, { error: `No route ${p}` });
 }
 
 function sse(res: ServerResponse, event: string, data: unknown) {
@@ -870,6 +915,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       const v = foundersTrace(ftrace[1]!);
       return v ? send(res, 200, v) : send(res, 404, { error: "That moment is gone (it was rewound)." });
     }
+    if (p.startsWith("/api/nested")) return nestedRoute(p, url, res);
     if (p === "/api/world") return send(res, 200, view());
     if (p === "/api/cost") return send(res, 200, costView());
     const cons = /^\/api\/concerns\/(\w+)$/.exec(p);
