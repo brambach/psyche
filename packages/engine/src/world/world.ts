@@ -71,6 +71,8 @@ export interface WorldEventRecord {
   topics: string[];
 }
 
+import type { EditRecord } from "./edits.js";
+
 export interface WorldState {
   /** Shown in the feed and the header. */
   name: string;
@@ -86,6 +88,8 @@ export interface WorldState {
   events: WorldEventRecord[];
   /** Present when this world is a village with food, houses and a common store. */
   village?: VillageState;
+  /** What the player changed in people's minds, oldest first. */
+  edits?: EditRecord[];
 }
 
 export interface FeedLine {

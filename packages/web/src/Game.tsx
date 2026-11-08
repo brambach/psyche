@@ -5,9 +5,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isNight } from "@psyche/engine";
-import { api, type GameView, type Slot } from "./api";
+import { api, type EditReach, type GameView, type Slot } from "./api";
 import { AgentPanel } from "./AgentPanel";
 import { Coast3D } from "./Coast3D";
+import { MindEditor } from "./MindEditor";
 import { useGameStream } from "./stream";
 import { Town3D, type Shot } from "./Town3D";
 import { agentColors, clock, setPlaces } from "./util";
@@ -23,11 +24,11 @@ export const GAME_SPEEDS = [
 const usd = (x: number) => (x < 0.01 && x > 0 ? "<$0.01" : `$${x < 1 ? x.toFixed(2) : x.toFixed(x < 10 ? 2 : 0)}`);
 const SEASON_ICON: Record<string, string> = { spring: "🌱", summer: "☀️", autumn: "🍂", winter: "❄️" };
 
-type Strip = "feed" | "chronicle" | "notices";
+type Strip = "feed" | "chronicle" | "notices" | "changes";
 
 export function Game() {
   const { view, connected, away, dismissAway } = useGameStream();
-  const [mind, setMind] = useState<{ id: string; trace?: string }>();
+  const [mind, setMind] = useState<{ id: string; trace?: string; edit?: boolean }>();
   const [mode, setMode] = useState<"town" | "coast">("town");
   const [director, setDirector] = useState(() => localGet("psyche.director") !== "0");
   const [shot, setShot] = useState<Shot>();
@@ -244,10 +245,18 @@ export function Game() {
       {mind && (
         <aside className="g-mind" aria-label={`Inside ${names[mind.id] ?? mind.id}'s head`}>
           <div className="g-mind-bar">
+            <div className="g-seg" role="tablist">
+              <button role="tab" aria-selected={!mind.edit} className={!mind.edit ? "on" : ""} onClick={() => setMind({ id: mind.id, trace: mind.trace })}>Their mind</button>
+              <button role="tab" aria-selected={!!mind.edit} className={mind.edit ? "on" : ""} onClick={() => setMind({ id: mind.id, edit: true })}>Change them</button>
+            </div>
             <button className="g-btn" onClick={() => goTo(mind.id)}>Find in town</button>
             <button className="g-btn" onClick={() => setMind(undefined)} aria-label="Close">✕</button>
           </div>
-          <AgentPanel key={mind.id} id={mind.id} tick={mindTick} names={names} trace={mind.trace} onTrace={(t) => setMind({ id: mind.id, trace: t })} onOpen={(id, t) => setMind({ id, trace: t })} />
+          {mind.edit ? (
+            <MindEditor key={mind.id} id={mind.id} names={names} />
+          ) : (
+            <AgentPanel key={mind.id} id={mind.id} tick={mindTick} names={names} trace={mind.trace} onTrace={(t) => setMind({ id: mind.id, trace: t })} onOpen={(id, t) => setMind({ id, trace: t })} />
+          )}
         </aside>
       )}
 
@@ -341,7 +350,7 @@ function TownCard({ view, onGo }: { view: GameView; onGo: (town: string) => void
 }
 
 function BottomStrip({ view, strip, setStrip, names, onGo, onMind }: { view: GameView; strip: Strip | ""; setStrip: (s: Strip | "") => void; names: Record<string, string>; onGo: (agent?: string, town?: string) => void; onMind: (id: string, trace?: string) => void }) {
-  const tabs: [Strip, string][] = [["feed", "What's happening"], ...(view.chronicle ? ([["chronicle", "Chronicle"]] as [Strip, string][]) : []), ["notices", `Notices${view.notices?.length ? ` (${view.notices.length})` : ""}`]];
+  const tabs: [Strip, string][] = [["feed", "What's happening"], ...(view.chronicle ? ([["chronicle", "Chronicle"]] as [Strip, string][]) : []), ["notices", `Notices${view.notices?.length ? ` (${view.notices.length})` : ""}`], ["changes", "Your changes"]];
   return (
     <section className={`g-strip ${strip ? "" : "shut"}`}>
       <div className="g-strip-tabs" role="tablist">
@@ -393,7 +402,34 @@ function BottomStrip({ view, strip, setStrip, names, onGo, onMind }: { view: Gam
           {!view.notices?.length && <li className="g-quiet">Nothing to report yet. Notices tell you when a leader is chosen, a craft is down to its last keeper, or a town is about to split.</li>}
         </ol>
       )}
+      {strip === "changes" && <Changes tick={Math.floor(view.tick / 60)} onMind={onMind} />}
     </section>
+  );
+}
+
+/** What you have changed in people here, and how many of their choices each change has bent since. */
+function Changes({ tick, onMind }: { tick: number; onMind: (id: string, trace?: string) => void }) {
+  const [edits, setEdits] = useState<EditReach[]>();
+  useEffect(() => {
+    let live = true;
+    api.edits().then((r) => live && setEdits(r.edits), () => undefined);
+    return () => {
+      live = false;
+    };
+  }, [tick]);
+  return (
+    <ol className="g-feed">
+      {(edits ?? []).map((r) => (
+        <li key={r.id} className="g-change">
+          <button className="g-feed-go" onClick={() => r.recent[0]?.agent && onMind(r.recent[0].agent, r.recent[0].trace)} disabled={!r.recent[0]}>
+            <time>{clock(r.tick).replace(/ · .*/, "")}</time>
+            <span>{r.label}</span>
+            <q>{r.decisions ? `Bent ${r.decisions} choice${r.decisions === 1 ? "" : "s"} since${r.minds ? `, reaching ${r.minds} other${r.minds === 1 ? "" : "s"}` : ""}` : "Nothing traced to it yet"}</q>
+          </button>
+        </li>
+      ))}
+      {edits && !edits.length && <li className="g-quiet">You haven't changed anyone yet. Open someone's mind and pick "Change them": make them braver, give them a fear, make them forget, whisper a thought. Then watch what the town does with it.</li>}
+    </ol>
   );
 }
 

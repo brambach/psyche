@@ -21,6 +21,7 @@ import { gaussian, nextId, nextRandom } from "../rng.js";
 import type { Trace } from "../trace.js";
 import { TRAIT_NAMES, type AgentId, type Episode, type MindState, type Schema, type Tick } from "../types.js";
 import { baseMind } from "./cast.js";
+import { inheritEdits } from "./edits.js";
 import { craftBonus, learn, CRAFTS } from "./knowledge.js";
 import { createSettlers, FIRST_NAMES, other, routineFor, uniqueId } from "./people.js";
 import type { RoutineEntry } from "./places.js";
@@ -223,6 +224,7 @@ async function birth(world: WorldState, parents: AgentId[], faculties: Faculties
     p1!.ablations,
   );
   mind.tick = world.tick;
+  inheritEdits(mind, [p1!, p2!]);
   mind.lastSleep = world.tick;
   // Children start out seeing people the way their parents do: grudges included.
   for (const o of world.order) {

@@ -34,6 +34,12 @@ import {
   momentNotices,
   chronicleNotices,
   awaySummary,
+  editable,
+  shapeFear,
+  FEARS,
+  PRESETS,
+  type MindEdit,
+  type EditRecord,
   type GameFrame,
   type Notice,
   type RegionState,
@@ -505,9 +511,11 @@ function view() {
 // The causal ledger is rebuilt from the session when someone asks and the island has moved on.
 let ledgerCache: { session: WorldSession; traces: number; ledger: Ledger } | undefined;
 function ledger(): Ledger {
-  if (ledgerCache?.session !== session || ledgerCache.traces !== session.traces.length) {
+  // Counted from the start (old traces fall away once there are enough) plus edits, which add no traces.
+  const stamp = session.traceBase + session.traces.length + (session.world.edits?.length ?? 0) * 1e9;
+  if (ledgerCache?.session !== session || ledgerCache.traces !== stamp) {
     const w = session.world;
-    ledgerCache = { session, traces: session.traces.length, ledger: buildLedger({ minds: w.minds, traces: session.traces, rumors: w.rumors, events: w.events, village: w.village }) };
+    ledgerCache = { session, traces: stamp, ledger: buildLedger({ minds: w.minds, traces: session.traces, rumors: w.rumors, events: w.events, village: w.village, edits: w.edits }) };
   }
   return ledgerCache.ledger;
 }
@@ -708,6 +716,20 @@ function saveSlot(name: string) {
   writeJson(slotFile(name), { ...snapshot(), name, savedAt: Date.now(), summary });
 }
 
+/** Every change the player has made in this town, and how far each has reached since. */
+function editsView() {
+  const L = ledger();
+  return {
+    edits: (session.world.edits ?? [])
+      .slice()
+      .reverse()
+      .map((r) => {
+        const inf = influence(L, nodeId.world(r.id));
+        return { ...r, decisions: inf?.decisions.length ?? 0, direct: inf?.direct ?? 0, minds: inf?.minds.length ?? 0, recent: inf?.decisions.slice(0, 5).map((d) => ({ id: d.node.id, label: d.node.label, tick: d.node.tick, agent: d.node.agent, trace: d.node.trace })) ?? [] };
+      }),
+  };
+}
+
 function costView() {
   const days = (session.world.tick - WORLD_START) / 1440;
   const snap = governor.snapshot();
@@ -855,6 +877,12 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       const v = concernsView(cons[1]!);
       return v ? send(res, 200, v) : send(res, 404, { error: "No such islander" });
     }
+    if (p === "/api/edits") return send(res, 200, editsView());
+    const ed = /^\/api\/editable\/(\w+)$/.exec(p);
+    if (ed) {
+      const v = editable(session.world, ed[1]!);
+      return v ? send(res, 200, { ...v, fears: FEARS, presets: PRESETS }) : send(res, 404, { error: "No such person here." });
+    }
     if (p === "/api/why") {
       const v = whyView(url.searchParams.get("node"), url.searchParams.get("agent"), url.searchParams.get("trace"));
       return v ? send(res, 200, v) : send(res, 404, { error: "Nothing in the ledger for that yet." });
@@ -963,6 +991,39 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       const name = slotName((await body<{ name?: string }>(req)).name);
       if (name && existsSync(slotFile(name))) unlinkSync(slotFile(name));
       return send(res, 200, { slots: listSlots() });
+    }
+    if (p === "/api/edit") {
+      // Change someone's mind (or everyone's), as recorded inputs; a preset is several at once.
+      if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
+      const b = await body<{ who?: string; edit?: MindEdit & { written?: boolean }; preset?: string; notice?: boolean }>(req);
+      const who = b.who === "*" ? "*" : b.who && session.world.minds[b.who] ? b.who : undefined;
+      if (!who) return send(res, 404, { error: "No such person here." });
+      let edits: MindEdit[];
+      if (b.preset) {
+        const pr = PRESETS.find((x) => x.id === b.preset);
+        if (!pr) return send(res, 404, { error: "No such preset." });
+        edits = pr.edits;
+      } else if (b.edit) {
+        const e = b.edit;
+        // A core belief written in their own words: work out what sets it off.
+        if (e.kind === "fear" && (e.written || !e.triggers?.length)) {
+          if (!e.text?.trim()) return send(res, 400, { error: "Write the belief." });
+          const shaped = shapeFear(e.text);
+          edits = [{ kind: "fear", ...shaped, strength: e.strength ?? 0.6, heritable: e.heritable }];
+        } else edits = [e];
+      } else return send(res, 400, { error: "Send an edit or a preset." });
+      const records = await exclusive(async () => {
+        const out: EditRecord[] = [];
+        for (const edit of edits) {
+          await session.apply({ type: "edit", edit: { who, edit, notice: b.notice } });
+          const r = session.world.edits?.at(-1);
+          if (r) out.push(r);
+        }
+        collectNotices();
+        return out;
+      });
+      save(true);
+      return send(res, 200, { records, editable: who === "*" ? undefined : editable(session.world, who) });
     }
     if (p === "/api/input") {
       if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });

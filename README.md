@@ -49,6 +49,21 @@ On the mock, five islanders come to about $0.07 per sim day, almost all of it So
 - **Cost.** The chip in the corner shows today's spend against the cap and what an hour costs at the current speed, measured only over time when speech was on the model. On the mock it shows what 1x would cost on Claude.
 - **The mind drawer.** Click anyone, or "mind" beside any line, and their head opens on the right: the brain scan, what weighs on them, **Why?**, What if not. The lab (`#/lab`) keeps every analysis view.
 
+## Changing minds (G2): alter someone and watch what follows
+
+Open anyone's mind in the game and pick **Change them**. You can:
+
+- set any of their six traits, and lock one so nightly drift can't move it
+- give them a core belief from a library ("There will never be enough food", "People are good at heart") or in your own words
+- take a core belief away
+- change how much they like and trust someone
+- make them forget a memory, or implant one that never happened (they believe they lived it)
+- whisper a thought they take for their own
+
+A whole-personality preset (Generous, Suspicious, Anxious, Bold, Curious, Loner) does several of these at once. Every change can apply to one person or to everyone in town. With **They notice**, they feel that something shifted. With **Children inherit**, locked traits and core beliefs pass to children born after.
+
+Each change is a recorded input (`{ type: "edit" }`), so a world with edits replays exactly. Each one leaves provenance on what it made, and the causal ledger has a node for it. So when you ask Why about a later choice, the trail can end at you: "You made Ula harder (agreeableness 0.15) → Ula chose: Hold back." The **Your changes** tab lists every change and how many choices it has bent since, in whose heads. See `packages/engine/src/world/edits.ts`.
+
 ## Why: the causal ledger
 
 The brain scan shows one moment. The ledger (`packages/engine/src/ledger.ts`) joins every moment into one graph of what caused what, across time and across people: the event a memory came from, the beliefs and trust it moved, what was in mind at each choice, who told whom, which belief rewrote which memory, and the formative night behind a core belief. Nothing in it causes behaviour; it is built from the traces after the fact.

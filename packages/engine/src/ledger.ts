@@ -10,6 +10,7 @@
 
 import type { Rumor, WorldEventRecord, WorldTrace } from "./world/world.js";
 import type { VillageState } from "./world/village.js";
+import type { EditRecord } from "./world/edits.js";
 import type { Trace, WorkspaceEntry } from "./trace.js";
 import { EMOTION_NAMES, NEGATIVE_EMOTIONS, type AgentId, type EmotionName, type MindState, type Tick } from "./types.js";
 
@@ -29,7 +30,9 @@ export type NodeKind =
   | "act"
   | "sleep"
   | "outside"
-  | "norm";
+  | "norm"
+  /** Something the player changed in someone's mind. */
+  | "edit";
 
 export interface LedgerNode {
   id: string;
@@ -63,7 +66,9 @@ export type Mechanism =
   | "installed by"
   | "deepened by"
   | "sanctioned"
-  | "expected";
+  | "expected"
+  | "you changed"
+  | "handed down";
 
 export interface LedgerEdge {
   from: string;
@@ -90,6 +95,8 @@ export interface LedgerInput {
   events?: WorldEventRecord[];
   /** A village's norms and pledges, when there is one. */
   village?: VillageState;
+  /** What the player changed in people's minds. */
+  edits?: EditRecord[];
 }
 
 /** Emotions weaker than this are not given their own node. */
@@ -172,6 +179,14 @@ export function buildLedger(input: LedgerInput): Ledger {
     }
   };
 
+  // The player's edits: each a node, and the traits each one set, per person, for the decisions they tilt.
+  const traitEdits = new Map<AgentId, { trait: string; tick: Tick; node: string }[]>();
+  for (const r of input.edits ?? []) {
+    const N = node({ id: nodeId.world(r.id), kind: "edit", tick: r.tick, label: r.label });
+    if (r.edit.kind !== "trait") continue;
+    for (const a of r.who) (traitEdits.get(a) ?? traitEdits.set(a, []).get(a)!).push({ trait: r.edit.trait, tick: r.tick, node: N });
+  }
+
   for (const { agent: a, trace: t } of input.traces) {
     if (t.kind === "sleep") {
       node({ id: nodeId.item(a, t.id), kind: "sleep", agent: a, tick: t.tick, label: t.headline.answer, trace: t.id });
@@ -246,6 +261,13 @@ export function buildLedger(input: LedgerInput): Ledger {
       const opt = t.decision.options.find((o) => o.id === t.decision!.choice);
       const D = node({ id: nodeId.decision(a, t.id), kind: "decision", agent: a, tick: p.tick, label: `${nameOf(a)} chose: ${opt?.label ?? t.decision.choice}`, trace: t.id });
       const because = new Map(t.decision.because.map((b) => [b.ref, b.weight]));
+      // A trait the player set shows up as a term in the choice ("agreeableness today"); the latest edit of it gets the credit.
+      const latest = new Map<string, string>();
+      for (const te of traitEdits.get(a) ?? []) if (te.tick <= p.tick) latest.set(te.trait, te.node);
+      for (const [trait, N] of latest) {
+        const v = opt?.terms.find((x) => x.name === `${trait} today`)?.value ?? 0;
+        if (Math.abs(v) >= 0.01) edge({ from: N, to: D, mechanism: "you changed", weight: Math.min(1, Math.abs(v) * 3), tick: p.tick });
+      }
       for (const w of t.workspace) {
         const src = sourceOf(a, t, w);
         if (!src) continue;
@@ -325,6 +347,23 @@ export function buildLedger(input: LedgerInput): Ledger {
         const ep = episodeNode(a, d.episode);
         if (ep) edge({ from: ep, to: S, mechanism: "deepened by", weight: 0.5, tick: d.tick });
       }
+    }
+  }
+
+  // What the player put into minds: core beliefs (and the children who inherited them), thoughts, memories, goals, feelings.
+  if (input.edits?.length) {
+    const by = new Map(input.edits.map((r) => [r.id, r]));
+    const link = (a: AgentId, edit: string | undefined, to: string | undefined, tick: Tick) => {
+      const r = edit ? by.get(edit) : undefined;
+      if (!r || !to) return;
+      edge({ from: nodeId.world(r.id), to, mechanism: r.who.includes(a) ? "you changed" : "handed down", weight: 1, tick: Math.max(r.tick, tick === -Infinity ? r.tick : tick) });
+    };
+    for (const [a, mind] of Object.entries(minds)) {
+      for (const s of mind.schemas) if (s.edit) link(a, s.edit, schemaNode(a, s.id), -Infinity);
+      for (const b of mind.beliefs) if (b.edit) link(a, b.edit, beliefNode(a, b.id), b.formed);
+      for (const e of mind.episodes) if (e.edit) link(a, e.edit, episodeNode(a, e.id), e.tick);
+      for (const g of mind.goals) if (g.edit) link(a, g.edit, node({ id: nodeId.item(a, g.id), kind: "goal", agent: a, tick: -Infinity, label: `Goal: ${g.text}` }), -Infinity);
+      for (const o of Object.values(mind.others)) if (o.edit) link(a, o.edit, relationNode(a, o.id), -Infinity);
     }
   }
 

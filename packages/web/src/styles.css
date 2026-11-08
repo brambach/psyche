@@ -650,3 +650,34 @@ a.btn { color: inherit; text-decoration: none; display: inline-block; }
   .g-feed-go span { max-width: none; }
   .g-lag { top: auto; bottom: 280px; }
 }
+
+/* ------------------------------------------------------------------ G2: changing minds */
+.g-mind-bar .g-seg { margin-right: auto; display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.g-mind-bar .g-seg button { border: 0; background: var(--surface); color: var(--ink); padding: 6px 12px; font: 600 13px var(--display); }
+.g-mind-bar .g-seg button.on { background: var(--accent); color: var(--bg); }
+.editor { display: grid; gap: 12px; padding-top: 4px; }
+.editor .pane { margin: 0; }
+.editor h3 { margin: 0 0 8px; }
+.ed-opts { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; }
+.ed-opts label, .ed-row label, .ed-lock { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.ed-done { margin: 0; padding: 8px 12px; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 8px 8px 0; font-size: 14px; }
+.ed-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.ed-trait { display: grid; grid-template-columns: 82px 1fr 40px auto auto; align-items: center; gap: 8px; margin: 4px 0; }
+.ed-trait input[type="range"] { width: 100%; accent-color: var(--accent); }
+.ed-label { font: 600 13px var(--display); }
+.ed-lock { font-size: 12.5px; color: var(--muted); }
+.ed-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.ed-row input:not([type]), .ed-row input[type="text"] { flex: 1 1 260px; min-width: 0; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: 14px var(--body); }
+.ed-row select { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: 14px var(--body); max-width: 100%; }
+.ed-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ed-list li { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; font-size: 14px; }
+.ed-list li > span:only-child { grid-column: 1 / -1; }
+.ed-list .neg { color: var(--neg, #b0413e); }
+.ed-list .pos { color: var(--accent); }
+.kind.k-edit { background: var(--accent); color: var(--bg); }
+.why-node.k-edit { border-left-color: var(--accent); }
+.g-feed li.g-change q { color: #ffd479; }
+@media (max-width: 720px) {
+  .ed-trait { grid-template-columns: 70px 1fr 36px; }
+  .ed-trait .ed-lock, .ed-trait .btn { grid-column: span 1; }
+}
