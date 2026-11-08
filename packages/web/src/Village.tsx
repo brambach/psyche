@@ -133,6 +133,7 @@ const MECH: Record<string, string> = {
   "passed on": "through another head",
   "generalized from": "drawn from one memory",
   expected: "what the village expects",
+  "in their own words": "what they wrote",
 };
 
 /** Says vs was: the reasons in mind at the moment of choosing, against the causes the ledger finds. */

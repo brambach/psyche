@@ -72,8 +72,12 @@ import {
   type FounderInput,
   type MindState,
   type WorldInput,
+  readPerson,
+  sanitizeReading,
+  personaLife,
+  SAMPLE_PERSONA,
 } from "@psyche/engine";
-import { createFaculties, createMockFaculties } from "@psyche/faculties";
+import { createClaudeReader, createFaculties, createMockFaculties } from "@psyche/faculties";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const DATA_DIR = resolve(process.env.PSYCHE_DATA ?? "data");
@@ -91,6 +95,8 @@ const FREE_ABOVE = 16;
 const MAX_SPEED = 400;
 
 const { kind, faculties, governor } = createFaculties();
+/** Reads a person from their writing: Claude when it's connected and under the cap, else the free offline reader. */
+const personaReader = createClaudeReader({ governor });
 
 type Scenario = "island" | "village" | "region";
 const SEEDS: Record<Scenario, number> = { island: 7, village: 11, region: 11 };
@@ -716,12 +722,21 @@ function saveSlot(name: string) {
   writeJson(slotFile(name), { ...snapshot(), name, savedAt: Date.now(), summary });
 }
 
+/** People in this town who came from their own writing. */
+function personasView() {
+  return Object.values(session.world.personas ?? {}).map((o) => {
+    if (session.world.minds[o.id]) governor.core.add(o.id);
+    return { id: o.id, name: o.reading.name, alive: !!session.world.minds[o.id] && !session.world.village?.life[o.id]?.died, arrived: o.arrived, method: o.reading.method };
+  });
+}
+
 /** Every change the player has made in this town, and how far each has reached since. */
 function editsView() {
   const L = ledger();
   return {
+    // Pieces of minds read from someone's own writing are theirs, not the player's: they show under that person.
     edits: (session.world.edits ?? [])
-      .slice()
+      .filter((r) => r.source !== "writing")
       .reverse()
       .map((r) => {
         const inf = influence(L, nodeId.world(r.id));
@@ -806,10 +821,12 @@ function traceView(agent: AgentId, traceId: string) {
   const upto = frame?.index ?? session.frames.length - 1;
   const trail = session.frames
     .slice(0, upto + 1)
-    .filter((f) => f.state)
+    // Someone who arrived or was born after the session began has no state in the frames before.
+    .filter((f) => f.state?.minds[agent])
     .slice(-40)
     .map((f) => ({ v: f.state!.minds[agent]!.affect.mood.valence, a: f.state!.minds[agent]!.affect.mood.arousal }));
-  return { trace: session.traces[pos]!.trace, state, trail: [{ v: session.initial.minds[agent]!.affect.mood.valence, a: session.initial.minds[agent]!.affect.mood.arousal }, ...trail] };
+  const start = session.initial.minds[agent];
+  return { trace: session.traces[pos]!.trace, state, trail: [...(start ? [{ v: start.affect.mood.valence, a: start.affect.mood.arousal }] : []), ...trail] };
 }
 
 async function body<T>(req: IncomingMessage): Promise<T> {
@@ -878,6 +895,13 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       return v ? send(res, 200, v) : send(res, 404, { error: "No such islander" });
     }
     if (p === "/api/edits") return send(res, 200, editsView());
+    if (p === "/api/persona/sample") return send(res, 200, SAMPLE_PERSONA);
+    if (p === "/api/personas") return send(res, 200, { personas: personasView() });
+    const pl = /^\/api\/persona\/(\w+)$/.exec(p);
+    if (pl) {
+      const v = personaLife(session.world, ledger(), session.feed, pl[1]!);
+      return v ? send(res, 200, v) : send(res, 404, { error: "Nobody here came from their writing by that name." });
+    }
     const ed = /^\/api\/editable\/(\w+)$/.exec(p);
     if (ed) {
       const v = editable(session.world, ed[1]!);
@@ -1024,6 +1048,31 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       });
       save(true);
       return send(res, 200, { records, editable: who === "*" ? undefined : editable(session.world, who) });
+    }
+    if (p === "/api/persona/read") {
+      // Read a person from their writing. Nothing changes in the world until they arrive.
+      const b = await body<{ text?: string; name?: string; pronouns?: "she" | "he" | "they"; author?: string }>(req);
+      if (!b.text?.trim()) return send(res, 400, { error: "Paste some of their writing first." });
+      if (!b.name?.trim()) return send(res, 400, { error: "Give them a name." });
+      if (b.text.length > 400_000) return send(res, 413, { error: "That's a lot of writing. Paste up to about 60,000 words." });
+      const reading = await readPerson({ text: b.text, name: b.name, pronouns: b.pronouns, author: b.author }, personaReader);
+      return send(res, 200, { reading });
+    }
+    if (p === "/api/persona/arrive") {
+      if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
+      if (!session.world.village) return send(res, 400, { error: "Only a village or a town can take in a newcomer." });
+      const b = await body<{ reading?: unknown }>(req);
+      if (!b.reading) return send(res, 400, { error: "Read someone first." });
+      const persona = sanitizeReading(b.reading);
+      const id = await exclusive(async () => {
+        await session.apply({ type: "arrive", persona });
+        collectNotices();
+        return session.world.order.at(-1)!;
+      });
+      // Whoever came from writing is a named character: their moments that matter go to the model.
+      governor.core.add(id);
+      save(true);
+      return send(res, 200, { id });
     }
     if (p === "/api/input") {
       if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });

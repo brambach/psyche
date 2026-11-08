@@ -114,7 +114,7 @@ export interface TraceView {
   trail: { v: number; a: number }[];
 }
 
-async function call<T>(path: string, body?: unknown): Promise<T> {
+export async function call<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, body === undefined ? undefined : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);

@@ -64,6 +64,21 @@ A whole-personality preset (Generous, Suspicious, Anxious, Bold, Curious, Loner)
 
 Each change is a recorded input (`{ type: "edit" }`), so a world with edits replays exactly. Each one leaves provenance on what it made, and the causal ledger has a node for it. So when you ask Why about a later choice, the trail can end at you: "You made Ula harder (agreeableness 0.15) → Ula chose: Hold back." The **Your changes** tab lists every change and how many choices it has bent since, in whose heads. See `packages/engine/src/world/edits.ts`.
 
+## Someone real: a mind read from their own writing
+
+Pick **＋ Someone real** in the game header and paste a person's own writing: chat messages, notes to self, a journal. A chat export ("Name: message" lines, with or without timestamps) works too; only their own lines are read. Psyche reads a mind from it (`packages/engine/src/persona/`):
+
+- **Temperament**: the six traits, from how they write (anxiety and sadness words, "I" and "we", plans and lists, hedges, thanks, swearing; after Pennebaker & King 1999 and Yarkoni 2010) and from anything they say about themselves outright ("I'm kind of an introvert").
+- **Formative memories**: past-tense moments with feeling in them, in their words, and how they will remember them in the village (an apartment becomes rooms, a truck a cart).
+- **Core beliefs**: generalizations they state ("you can't count on anyone when it actually matters"), tied to the memory most likely behind them, and the lesson a strong memory taught where they don't say it. Each gets the world topics that set it off, so it comes up at the pledge, an ask for help, a trade.
+- **Values** (Schwartz), which become goals in the village; **people** in their life, who stay behind as memories; attachment, how they see themselves, a trade, and **how they talk**, which the speech faculty uses.
+
+Every piece shows the passages it came from, checked word for word against the writing. You can drag a trait or leave a memory or belief out. Then a boat brings them to the town you're watching, alone, a stranger to everyone, and the engine runs them like anyone else. Arrival is a recorded input (`{ type: "arrive" }`), so the world replays exactly.
+
+Each piece of the mind keeps its provenance (an edit record with `source: "writing"` and the quote), so **Why?** on a choice they make years later can end at a sentence they wrote: "Juniper chose: Hold back ← core belief “People mean well but you can't count on anyone” ← installed by the night her dad left ← Juniper wrote: “When I was 12 my dad left...”". The **Their writing** tab in their mind drawer shows who they were when they came and who they are now: how many of their choices here trace back to the writing, which beliefs held or faded, how their memories have been retold, who they've grown close to, and the life they've lived.
+
+The reading runs on a free offline reader (word patterns) by default. With Claude connected it is one Sonnet call per import (`packages/faculties/src/persona.ts`, a few cents, metered and capped like every other call; `PSYCHE_MODEL_PERSONA` overrides the model). The writing itself is not saved; the reading and the short quotes it cites are kept with the world. **Try a made-up sample person** loads Juniper Vale, an invented person for testing.
+
 ## Why: the causal ledger
 
 The brain scan shows one moment. The ledger (`packages/engine/src/ledger.ts`) joins every moment into one graph of what caused what, across time and across people: the event a memory came from, the beliefs and trust it moved, what was in mind at each choice, who told whom, which belief rewrote which memory, and the formative night behind a core belief. Nothing in it causes behaviour; it is built from the traces after the fact.
