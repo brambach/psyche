@@ -6,6 +6,11 @@ export const PARAMS = {
   memory: {
     /** Base-level decay for gist, with time in hours. ACT-R default d = 0.5 (Anderson & Schooler 1991). */
     gistDecay: 0.5,
+    /**
+     * Episodes kept before sleep lets the faintest ordinary ones go. Memories that installed or
+     * deepened a core belief, or that a belief rests on, are never dropped. Tuned for long runs.
+     */
+    capacity: 160,
     /** Verbatim details decay faster than gist (Reyna & Brainerd 1995). Tuned. */
     detailDecay: 0.9,
     /** Retrieval threshold on total activation (ACT-R tau). Tuned. */

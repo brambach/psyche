@@ -145,6 +145,11 @@ export interface SpeakRequest {
   content: { id: string; text: string }[];
   style: StyleVector;
   stance: string[];
+  /**
+   * How much this line matters, 0 to 1, set by the engine. Low-salience lines (greetings, small
+   * talk) can be rendered from templates instead of a model call.
+   */
+  salience?: number;
 }
 export interface SpeakResponse {
   utterance: string;
@@ -208,6 +213,8 @@ export interface ArchitectResponse {
 
 /** The cached identity prefix shared by every call for an agent. */
 export interface StableIdentity {
+  /** The agent's id, for routing (who is in focus). Not sent to the model. */
+  id?: string;
   name: string;
   summary: string;
   voice: string;

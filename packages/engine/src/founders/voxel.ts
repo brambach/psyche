@@ -21,12 +21,16 @@ export const MATERIALS = [
   "hearth",
   "table",
   "chest",
+  "canvas",
+  "barley",
+  "sprout",
+  "snow",
 ] as const;
 export type Material = (typeof MATERIALS)[number];
 export const M = Object.fromEntries(MATERIALS.map((m, i) => [m, i])) as Record<Material, number>;
 
 /** Blocks you can walk through. */
-const OPEN = new Set([M.air, M.water, M.reeds, M.door]);
+const OPEN = new Set([M.air, M.water, M.reeds, M.door, M.barley, M.sprout]);
 export const isOpen = (b: number) => OPEN.has(b);
 
 export interface Tree {

@@ -1,11 +1,11 @@
 // Run Founders (F0) in the terminal: one mind, one islet, one storm. Prints the feed, the design
 // and a top-down map of the house. Usage: npm run founders -- [builder] [seed] [--early]
 import { BUILDERS, clockText, createFounder, describe, dryness, FounderSession, get, M, MATERIALS, progress, type BuilderId } from "@psyche/engine";
-import { createFaculties } from "@psyche/faculties";
+import { createFaculties, meterLine } from "@psyche/faculties";
 
 const who = (BUILDERS.find((b) => process.argv.includes(b)) ?? "mara") as BuilderId;
 const seed = Number(process.argv.slice(2).find((a) => /^\d+$/.test(a)) ?? 3);
-const { kind, faculties } = createFaculties();
+const { kind, faculties, governor } = createFaculties();
 const s = new FounderSession(createFounder(seed, who), faculties);
 const start = Date.now();
 for (let h = 0; h < 60; h++) {
@@ -51,3 +51,4 @@ for (let z = p.z0 - 2; z < p.z0 + p.d + 2; z++) {
 }
 console.log(`\n${st.builder.name}: ${st.builder.activity}; mood ${st.mind.affect.mood.valence.toFixed(2)}, stress ${st.mind.affect.stress.toFixed(2)}`);
 console.log(`${s.log.length} faculty calls (${kind}: ${[...new Set(s.log.map((c) => c.faculty))].join(", ")}), ${s.traces.length} traces, ${Date.now() - start}ms`);
+console.log(`cost: ${meterLine(governor.snapshot(), 2.5)}`);

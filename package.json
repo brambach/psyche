@@ -11,6 +11,11 @@
     "stats": "tsx --conditions=source scripts/stats.ts",
     "island": "tsx --conditions=source scripts/island.ts",
     "founders": "tsx --conditions=source scripts/founders.ts",
+    "why": "tsx --conditions=source scripts/why.ts",
+    "village": "tsx --conditions=source scripts/village.ts",
+    "generations": "tsx --conditions=source scripts/generations.ts",
+    "region": "tsx --conditions=source scripts/region.ts",
+    "century": "tsx --conditions=source scripts/century.ts",
     "dev": "concurrently -n server,web \"npm run dev -w @psyche/server\" \"npm run dev -w @psyche/web\"",
     "start": "npm run build -w @psyche/web && npm run start -w @psyche/server"
   },

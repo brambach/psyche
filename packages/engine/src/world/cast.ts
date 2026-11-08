@@ -27,7 +27,7 @@ function other(id: AgentId, name: string, benevolence: number, liking: number, b
 
 const visitor = (): OtherModel => other("visitor", "the visitor", 0.5, 0.5, 0, 0);
 
-function baseMind(m: Omit<MindState, "tick" | "rng" | "idCounter" | "traitSpread" | "affect" | "expressions" | "lastSleep" | "ablations"> & { mood?: number; stress?: number }, seed: number, ablations: Partial<Ablations>): MindState {
+export function baseMind(m: Omit<MindState, "tick" | "rng" | "idCounter" | "traitSpread" | "affect" | "expressions" | "lastSleep" | "ablations"> & { mood?: number; stress?: number }, seed: number, ablations: Partial<Ablations>): MindState {
   const emotions = Object.fromEntries(EMOTION_NAMES.map((k) => [k, 0])) as MindState["affect"]["emotions"];
   const { mood = 0.05, stress = 0.2, ...rest } = m;
   return {
@@ -156,7 +156,7 @@ function theo(seed: number, ablations: Partial<Ablations>): CastMember {
         { id: "bel_theo_corran", about: "corran", topics: ["buyer", "money", "reputation"], proposition: "Corran will say anything to get a better price", confidence: 0.6, valence: -0.5, source: { kind: "inferred" }, formed: -14 * DAY, evidence: ["ep_hull_rumor"], retrievals: [-14 * DAY] },
       ],
       habits: [{ id: "hab_theo_tavern", cue: "tavern", action: "social", strength: 0.5 }],
-      schemas: [{ id: "sch_theo_late", text: "I always show up too late", triggers: ["help", "dock"], blameBias: 0, threatBias: 0.15, strength: 0.35 }],
+      schemas: [{ id: "sch_theo_late", text: "I always show up too late", triggers: ["help", "dock"], blameBias: 0, threatBias: 0.15, strength: 0.35, origin: ["ep_dock"] }],
       mood: 0.08,
     },
     seed,
@@ -383,7 +383,7 @@ function corran(seed: number, ablations: Partial<Ablations>): CastMember {
         { id: "bel_cor_mara", about: "mara", topics: ["reputation", "market"], proposition: "Mara thinks she's better than everyone", confidence: 0.65, valence: -0.5, source: { kind: "inferred" }, formed: -60 * DAY, evidence: ["ep_market_row"], retrievals: [-60 * DAY, -7 * DAY] },
       ],
       habits: [],
-      schemas: [{ id: "sch_cor_looked_down", text: "People look down on me", triggers: ["reputation", "respect", "market"], blameBias: 0.3, threatBias: 0.1, strength: 0.5 }],
+      schemas: [{ id: "sch_cor_looked_down", text: "People look down on me", triggers: ["reputation", "respect", "market"], blameBias: 0.3, threatBias: 0.1, strength: 0.5, origin: ["ep_market_row"] }],
       mood: -0.02,
       stress: 0.25,
     },

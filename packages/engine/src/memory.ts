@@ -13,6 +13,15 @@ export function hoursBetween(from: Tick, to: Tick): number {
   return Math.max((to - from) / 60, 0.1);
 }
 
+/** Uses kept per item: the first (encoding) and the most recent. Old uses add almost nothing to B. */
+const USES_KEPT = 24;
+
+/** Record a use of a memory, belief or detail, keeping the list short over a long life. */
+export function use(uses: Tick[], now: Tick): void {
+  uses.push(now);
+  if (uses.length > USES_KEPT) uses.splice(1, uses.length - USES_KEPT);
+}
+
 /** ACT-R base-level learning: B = ln(sum over uses of age^-d). */
 export function baseLevel(uses: Tick[], now: Tick, decay: number): number {
   let sum = 0;
@@ -128,7 +137,7 @@ export async function reconsolidate(
 ): Promise<ReconsolidationTrace | undefined> {
   touchEpisode(mind, ep, now);
   if (!mind.ablations.reconsolidation) {
-    if (detail) for (const slot of ep.details) slot.rehearsals.push(now);
+    if (detail) for (const slot of ep.details) use(slot.rehearsals, now);
     return undefined;
   }
   const before = render(ep);
@@ -170,7 +179,7 @@ export async function reconsolidate(
         changes.push({ key: slot.key, from: slot.value, to: winner.value, cause: "misinformation", source: winner.source });
         slot.value = winner.value;
         slot.source = winner.source;
-        winner.belief.retrievals.push(now);
+        use(winner.belief.retrievals, now);
       }
     } else if (original < M.detailThreshold) {
       const beliefs = mind.beliefs
@@ -186,7 +195,7 @@ export async function reconsolidate(
         slot.source = source;
       }
     }
-    slot.rehearsals.push(now);
+    use(slot.rehearsals, now);
   }
 
   const valenceFrom = ep.valence;
@@ -201,8 +210,8 @@ export async function reconsolidate(
 
 /** Retrieving or replaying an episode also rehearses beliefs that rest on it (e.g. what someone told me then). */
 export function touchEpisode(mind: MindState, ep: Episode, now: Tick): void {
-  ep.retrievals.push(now);
-  for (const b of mind.beliefs) if (b.evidence.includes(ep.id)) b.retrievals.push(now);
+  use(ep.retrievals, now);
+  for (const b of mind.beliefs) if (b.evidence.includes(ep.id)) use(b.retrievals, now);
 }
 
 export function clamp(x: number, lo = 0, hi = 1): number {

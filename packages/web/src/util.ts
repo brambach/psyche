@@ -1,4 +1,19 @@
-import { dayOf, hourOf } from "@psyche/engine";
+import { dayOf, hourOf, PLACES, type Place } from "@psyche/engine";
+
+/** The current world's places. Kettle Island's are fixed; a village makes its own. */
+let places: Record<string, Place> = PLACES;
+export function setPlaces(p: Record<string, Place> | undefined): void {
+  if (p) places = p;
+}
+export const placeName = (id: string) => places[id]?.name ?? id;
+
+const KETTLE = new Set(["mara", "theo", "jun", "corran", "wren", "visitor"]);
+/** A colour per generated person, spread around the wheel by a hash of the id, for light and dark. */
+export function agentColors(ids: string[]): string {
+  const hue = (id: string) => [...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 360;
+  const rules = (l: number) => ids.filter((id) => !KETTLE.has(id)).map((id) => `--a-${id}: hsl(${hue(id)} 55% ${l}%);`).join(" ");
+  return `:root { ${rules(38)} } @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { ${rules(66)} } } :root[data-theme="dark"] { ${rules(66)} }`;
+}
 
 export function clock(t: number): string {
   const h = hourOf(t);

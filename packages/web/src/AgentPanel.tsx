@@ -1,18 +1,31 @@
-import { useEffect, useState } from "react";
-import { PLACES } from "@psyche/engine";
-import { api, type AgentView, type TraceView } from "./api";
+import { useEffect, useRef, useState } from "react";
+import { api, type AgentView, type ConcernView, type TraceView } from "./api";
+import { Lineage, type LineageQuery } from "./Lineage";
 import { Scan } from "./Scan";
-import { clock } from "./util";
+import { Account } from "./Village";
+import { WhatIfNot } from "./Generations";
+import { clock, placeName } from "./util";
 
 /** One islander: who they are, how they read everyone else, and every moment of theirs you can open up. */
-export function AgentPanel({ id, tick, names, trace, onTrace }: { id: string; tick: number; names: Record<string, string>; trace?: string; onTrace: (t?: string) => void }) {
+export function AgentPanel({ id, tick, names, trace, onTrace, onOpen }: { id: string; tick: number; names: Record<string, string>; trace?: string; onTrace: (t?: string) => void; onOpen: (agent: string, trace?: string) => void }) {
   const [view, setView] = useState<AgentView>();
   const [scan, setScan] = useState<TraceView>();
   const [error, setError] = useState<string>();
+  const [worries, setWorries] = useState<ConcernView[]>([]);
+  const [lineage, setLineage] = useState<LineageQuery>();
+  const [account, setAccount] = useState(false);
+  const [whatIf, setWhatIf] = useState<string>();
+  const lineageRef = useRef<HTMLDivElement>(null);
+
+  const trace_ = (q: LineageQuery) => {
+    setLineage(q);
+    requestAnimationFrame(() => lineageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
 
   useEffect(() => {
     let live = true;
     api.agent(id).then((v) => live && setView(v), (e) => live && setError(String(e)));
+    api.concerns(id).then((v) => live && setWorries(v.concerns), () => undefined);
     return () => {
       live = false;
     };
@@ -40,7 +53,7 @@ export function AgentPanel({ id, tick, names, trace, onTrace }: { id: string; ti
         <span className="swatch big" style={{ background: `var(--a-${id})` }}>{m.name[0]}</span>
         <div>
           <h2>{m.name} <span className="small">{view.agent.role}</span></h2>
-          <p className="small">{view.agent.activity}{view.agent.activity !== "asleep" ? ` at ${PLACES[view.agent.place].name}` : ""}</p>
+          <p className="small">{view.agent.activity}{view.agent.activity !== "asleep" ? ` at ${placeName(view.agent.place)}` : ""}</p>
         </div>
       </header>
       <p className="bio">{m.identity.summary}</p>
@@ -86,6 +99,31 @@ export function AgentPanel({ id, tick, names, trace, onTrace }: { id: string; ti
         </div>
       </div>
 
+      <div className="pane" style={{ marginTop: 14 }}>
+        <h3>What weighs on {m.name}, and where it came from</h3>
+        {worries.length === 0 ? (
+          <p className="small">Nothing dark yet. Fears and grudges show up here once something stirs them.</p>
+        ) : (
+          <ul className="concerns">
+            {worries.map((c) => (
+              <li key={c.id}>
+                <span className={`kind k-${c.kind === "emotion" ? "emotion" : c.kind}`}>{c.kind === "schema" ? "core belief" : c.kind === "emotion" ? "feeling" : "belief"}</span>
+                <span>{c.label}</span>
+                <span className="small">{c.direct > 0 ? `in mind for ${c.direct} choice${c.direct === 1 ? "" : "s"}` : "not acted on yet"}{c.minds.length ? `, reached ${c.minds.map((x) => names[x] ?? x).join(", ")}` : ""}</span>
+                <button className="btn" onClick={() => trace_({ node: c.id })}>Trace it</button>
+                {c.kind !== "emotion" && (
+                  <button className={`btn ${whatIf === c.id ? "on" : ""}`} onClick={() => setWhatIf(whatIf === c.id ? undefined : c.id)} title="Run the next days twice, with and without it, on the offline mock">What if not?</button>
+                )}
+                {whatIf === c.id && <WhatIfNot edit={{ agent: id, kind: c.kind as "schema" | "belief", id: c.id.slice(id.length + 1) }} names={names} />}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div ref={lineageRef}>
+        {lineage && <Lineage query={lineage} focus={id} names={names} onOpen={(a, t) => (a === id ? onTrace(t) : onOpen(a, t))} onClose={() => setLineage(undefined)} />}
+      </div>
+
       <div className="agent-body">
         <nav className="moments" aria-label={`${m.name}'s moments`}>
           <h3>Moments</h3>
@@ -102,6 +140,13 @@ export function AgentPanel({ id, tick, names, trace, onTrace }: { id: string; ti
           ))}
         </nav>
         <section className="scan-wrap">
+          {scan && scan.trace.kind === "perceive" && (
+            <div className="scan-tools">
+              <button className="btn" onClick={() => trace_({ agent: id, trace: scan.trace.id })}>Why? Trace this moment back</button>
+              {scan.trace.decision && <button className={`btn ${account ? "on" : ""}`} onClick={() => setAccount(!account)}>What {m.name} would say vs what drove it</button>}
+            </div>
+          )}
+          {account && scan?.trace.decision && <Account key={scan.trace.id} agent={id} trace={scan.trace.id} names={names} onOpen={(a, t) => (a === id ? onTrace(t) : onOpen(a, t))} />}
           {scan ? <Scan trace={scan.trace} state={scan.state} trail={scan.trail} /> : <p className="empty">Pick a moment to see why {m.name} did what {m.pronouns.subject} did.</p>}
         </section>
       </div>

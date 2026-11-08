@@ -158,7 +158,7 @@ export function createMara(seed = 1, ablations: Partial<Ablations> = {}): MindSt
       { id: "hab_storm", cue: "storm", action: "avoid", strength: 0.3 },
     ],
     schemas: [
-      { id: "sch_letdown", text: "People let me down when it matters", triggers: ["help", "rely", "dock"], blameBias: 0.25, threatBias: 0.1, strength: 0.4 },
+      { id: "sch_letdown", text: "People let me down when it matters", triggers: ["help", "rely", "dock"], blameBias: 0.25, threatBias: 0.1, strength: 0.4, origin: ["ep_dock"] },
     ],
     expressions: [],
     lastSleep: 0,

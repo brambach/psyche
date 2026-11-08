@@ -90,6 +90,10 @@ export interface Trace {
   action?: { kind: "speech" | "act" | "none"; text: string; option?: string; content?: string[] };
   biases: BiasFlag[];
   llmCalls: string[];
+  /** The episode this moment was encoded as. */
+  encoded?: string;
+  /** State this moment changed: trust shifts and beliefs formed or strengthened (refs are `other:<id>` or belief ids). */
+  changes?: Contribution[];
   /** Plain-language question and answer for the Story view. Generated from this trace, not by the model. */
   headline: { question: string; answer: string };
   notes: string[];

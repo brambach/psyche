@@ -2,17 +2,12 @@
 
 import type { AgentId } from "../types.js";
 
-export type PlaceId =
-  | "sea"
-  | "harbour"
-  | "fishshed"
-  | "boatyard"
-  | "tavern"
-  | "cliffs"
-  | "home_mara"
-  | "home_theo"
-  | "home_jun"
-  | "home_corran";
+/**
+ * A place id. Kettle Island's are fixed (below); a village makes its own. A few ids carry meaning
+ * the engine relies on in every world: "sea" (out on the water), "harbour", "tavern" (where people
+ * gather in the evening) and "cliffs" (somewhere to walk off a bad mood).
+ */
+export type PlaceId = string;
 
 export interface Place {
   id: PlaceId;
@@ -26,7 +21,7 @@ export interface Place {
   topics: string[];
 }
 
-export const PLACES: Record<PlaceId, Place> = {
+export const PLACES: Record<string, Place> = {
   sea: { id: "sea", name: "the fishing grounds", x: 13, y: 12, social: false, outdoors: true, topics: ["sea", "catch"] },
   harbour: { id: "harbour", name: "the harbour", x: 31, y: 37, social: true, outdoors: true, topics: ["boat", "harbour"] },
   fishshed: { id: "fishshed", name: "Vell's fish shed", x: 40, y: 47, social: true, outdoors: false, topics: ["catch", "buyer"] },

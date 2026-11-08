@@ -195,6 +195,10 @@ export interface Schema {
   /** Added to threat appraisal when triggered. */
   threatBias: number;
   strength: number;
+  /** The formative episodes that installed this core belief, when known. */
+  origin?: string[];
+  /** Later episodes that deepened it in sleep, with when. */
+  deepenedBy?: { episode: string; tick: Tick }[];
 }
 
 // ---------------------------------------------------------------- inner life

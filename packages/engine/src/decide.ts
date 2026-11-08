@@ -93,6 +93,10 @@ export function scoreOption(mind: MindState, p: Percept, opt: OptionSpec, ws: Wo
   add("attachment avoidance", mind.attachment.avoidance * (opt.avoidant * 0.25 - opt.disclosure * 0.2));
   if (other) add(`trust in ${other.name}`, P * (other.trust.benevolence - 0.5) * 1.2, `other:${other.id}`);
 
+  // Core beliefs work out of sight (Beck): a triggered one tilts how much it seems wise to give.
+  for (const sc of mind.schemas) {
+    if (sc.triggers.some((t) => p.topics.includes(t))) add(`core belief: ${sc.text}`, -P * (sc.blameBias + sc.threatBias) * sc.strength * 0.8, sc.id);
+  }
   // Feelings and memories only count if they made it into awareness.
   const anger = inWorkspace(ws, "feeling:anger");
   if (anger) add("anger", af.emotions.anger * (opt.assertive * 0.7 - P * 0.8), anger.ref);

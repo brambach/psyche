@@ -12,11 +12,107 @@ The design proposal behind it lives at https://claude.ai/artifact/7iL2xRmmVXMeDJ
 npm install
 npm run dev        # server on :8787, the island on http://localhost:5173
 npm run island -- 3 7 --storm   # three days of island life in the terminal (seed 7, with a storm)
+npm run village -- 8 11         # eight days of Hollow Bay, the village, in the terminal
+npm run generations -- 10       # ten years of Hollow Bay on the mock: lives, norms, inherited fears
+npm run region -- 22            # a region of towns: splits, trade, laws, and the crossing told differently
 npm test           # engine and world tests
 npm run demo       # the original single-mind demo (M0)
 ```
 
-With no Anthropic credentials, speech runs on an offline mock so everything works out of the box. Set `ANTHROPIC_API_KEY` (or `PSYCHE_FACULTIES=claude`) to use Claude. Every faculty defaults to `claude-opus-5-5`; choose a model per faculty with `PSYCHE_MODEL_PERCEIVE`, `PSYCHE_MODEL_SPEAK`, `PSYCHE_MODEL_RECONSTRUCT`, `PSYCHE_MODEL_DELIBERATE` and `PSYCHE_MODEL_DREAM`. Set `PSYCHE_AUTOPLAY=0` to start paused.
+With no Anthropic credentials, speech runs on an offline mock so everything works out of the box. Set `ANTHROPIC_API_KEY` (or `PSYCHE_FACULTIES=claude`) to use Claude. Set `PSYCHE_AUTOPLAY=0` to start paused, and `PSYCHE_SCENARIO=village` to start in Hollow Bay (or switch worlds from the menu in the header).
+
+### Cost
+
+Every model call goes through a budget governor (`packages/faculties/src/governor.ts`):
+
+- **Tiers.** Speech, perception, memory reconstruction and dreams run on `claude-haiku-5-5`; deliberation and the Architect on `claude-sonnet-5-5`. Override any faculty with `PSYCHE_MODEL_PERCEIVE`, `PSYCHE_MODEL_SPEAK`, `PSYCHE_MODEL_RECONSTRUCT`, `PSYCHE_MODEL_DELIBERATE`, `PSYCHE_MODEL_DREAM` or `PSYCHE_MODEL_ARCHITECT`.
+- **Templates for small moments.** The engine scores how much each line matters. Greetings and small talk come from templates; replies that tell a memory, answer you, or follow deliberation go to the model. Whoever you are looking inside always speaks with the model.
+- **A daily cap**, default $10 (`PSYCHE_DAILY_CAP`), shared by every run on the machine and kept in `~/.psyche/usage.json` (every call is logged beside it in `usage.log`). At 80% of the cap Sonnet calls drop to Haiku, at 90% only the most salient lines use the model, and at 100% everything falls back to the mock until the next UTC day. The world keeps running throughout.
+- **A live meter.** The `$` chip in the island header opens a breakdown by faculty and model. `npm run island` and `npm run why` print it too. On the mock, the meter shows what the same run would have cost on Claude.
+
+- **Two tiers of attention (L0 and L1).** In the village, the Kettle five and whoever you are watching are L0: Sonnet deliberation and model speech for anything that matters. The settlers are L1: Haiku only, and only their more salient lines go to the model. Set the named characters with `governor.core`.
+
+On the mock, five islanders come to about $0.07 per sim day, almost all of it Sonnet deliberation. Hollow Bay's fifteen come to about $0.09 to $0.11 per sim day.
+
+## Why: the causal ledger
+
+The brain scan shows one moment. The ledger (`packages/engine/src/ledger.ts`) joins every moment into one graph of what caused what, across time and across people: the event a memory came from, the beliefs and trust it moved, what was in mind at each choice, who told whom, which belief rewrote which memory, and the formative night behind a core belief. Nothing in it causes behaviour; it is built from the traces after the fact.
+
+In the island UI, open anyone's head. **What weighs on them** lists their core beliefs, darkest beliefs and strongest recent fear or anger; **Trace it** walks each one back to where it started and forward to the choices it has shaped since. Above any moment's brain scan, **Why?** does the same for that choice. Click anything with a moment behind it to open that brain scan, including in other people's heads.
+
+```bash
+npm run why -- mara 3 7 --storm   # what weighs on Mara after three days, and where each thing came from
+```
+
+## Hollow Bay (C1): the village
+
+The Kettle five and ten generated settlers land on an empty shore at the end of summer (`packages/engine/src/world/village.ts`, `people.ts`). Same minds, same engine; the world now pushes back:
+
+- **Settlers are rolled from the seed**: name, temperament, trade, household, and one formative memory from before the crossing (a hungry winter when the mill families hid grain, a neighbour who fed them, a brother who sold the family boat, a house that burned with nobody coming to help). That memory installs a core belief, and the belief remembers where it came from.
+- **Food and seasons.** Fishers, farmers and foragers feed their own households; food spoils in tents. Woodcutters, the quarrier, the thatcher and the builders cut and build for everyone and catch nothing. A season is four days; winter yields little and gales keep the boats in.
+- **Houses designed by the Architect.** When a builder is free, the next household's head decides between something sturdy and something quick, and the Architect designs it from what is in their mind. The blueprint is checked and priced (the same building language as Founders), then built as timber, stone and reeds arrive. Households in tents have bad nights when it rains.
+- **The common store.** On the second evening Wren asks the fire for a common store to feed the people whose work feeds nobody directly, and again each time the season turns. Every adult chooses: a full share, a little, or hold back. Everyone hears the answers. Holding back is a norm violation that moves trust and becomes a story; taking from the store after holding back is worse, and the keeper sees it.
+- **Overhearing and the fire.** Bystanders catch some of the gossip told near them, and the rumor's lineage marks the hop as overheard. Each evening someone tells a story at the fire to everyone there.
+
+Two new analysis views, built on the ledger:
+
+- **Same event, different memories** (Divergence): everyone who lived through something, side by side, with every change each memory has been through. The crossing is the first: fifteen people, one night, fifteen accounts.
+- **What they would say vs what drove it** (Says vs was): for any decision, the reasons that were in mind against the causes the ledger finds out of sight: a core belief from years before tilting the appraisal, trust colouring blame, a memory rewritten by gossip, a feeling left over from earlier, a belief whose source is forgotten. Open it from any moment's brain scan, or from any pledge in **The village** tab.
+
+The village is not on a voxel grid yet: houses are real blueprints with real bills of materials, but construction is tracked as progress rather than blocks. Merging it with Founders' voxel world is the remaining C1 item.
+
+## Generations (C2): fears outlive the people who felt them
+
+Hollow Bay now runs for decades (`packages/engine/src/world/life.ts`). A year is sixteen days.
+
+- **Lives.** People age, pair up, have children and die (of age, of fever, of hunger in a hard winter). Newcomers arrive in spring. A child starts with a blend of the parents' temperaments and nothing else: no past, no core beliefs.
+- **Inheritance through stories.** At bedtime a parent tells the children the story that matters most to them, often the memory that formed one of their core beliefs. A dark story carries the wary belief it fed ("I can only count on myself"), a hopeful one the trusting belief. The child remembers it in the teller's voice with the source kept, so the ledger can follow it back hop by hop, through the dead, to the first-hand memory it began as.
+- **Norms.** When people see someone hold back from the common store and hold it against them, round after round, "everyone puts into the common store" becomes something the village expects (Bicchieri). From then on it weighs on every pledge, and the ledger shows it as "what the village expects".
+- **Let years pass.** In the village, the header has a "Let years pass" menu (1 to 25 years). Years run on the offline mock (L2 for everyone, free), then the session is rebased so memory stays bounded. You cannot rewind to before it. `npm run generations -- 10` does the same headless and prints births, deaths, norms and the inherited beliefs.
+
+Two new analysis views:
+
+- **Fears across generations** (the atlas): every core belief in the village, who holds it by generation, and for each person who never lived it, the chain of tellers back to the first-hand memory.
+- **What if not?** (counterfactual): pick a core belief or a dark belief, from the atlas or from "What weighs on" in anyone's panel. The next days run twice from this moment on the mock, with the same luck, once without it. It reports the choices that changed, how far each choice's lead over the next option moved, mood, feelings that ended up different, and whether the belief came back on its own.
+
+Core beliefs now also weigh directly on how much it seems wise to give whenever their triggers come up, not only through the appraisal, so what-if-not tests show a real effect.
+
+## Settlements and culture (C3): towns that tell it differently
+
+Pick **A region of towns** in the header (or `PSYCHE_SCENARIO=region`). It starts as Hollow Bay (`packages/engine/src/world/region.ts`, `civic.ts`).
+
+- **Leaders and laws.** Each spring the adults name the three people they would most willingly follow, by liking and trust; the most named leads and asks for the pledge. When the store norm has taken hold and a quarter still hold back, the leader writes a law and puts it to a vote. Under a law, a household that pledged less is made to put in a quarter. It costs them autonomy, and the resentment lands on the leader.
+- **The founding story.** On the first night of each summer, everyone comes to the fire and the eldest who carries the crossing tells it. Everyone who wasn't there keeps that telling and drops their older one. What gets passed on is the memory as the teller holds it now, drift included.
+- **Towns split.** In spring, once a town reaches 26 people, the adult who least belongs leaves with their household and the households closest to them, and they found a new town. The leavers share one memory of leaving, and that becomes the new town's founding story. The stories they grew up on go with them as remembered copies, so lineage still resolves.
+- **Trade, quarrels and peace.** A town with food to spare sends someone to trade for timber, and they tell a story at the other town's fire. A careless or grasping trader keeps some back. If it's noticed, the town comes to believe "folk from there will cheat you", and once most adults believe it, trade stops. A leader who likes peace may send a gift, which softens the belief.
+- **Two new views.** **Towns and chronicle** shows each town's population over time, its leader and laws, how the towns regard each other, and a chronicle by year. **How each town tells it** shows each town's versions of the crossing, the chain of tellers back to the person who lived it, and where two towns' versions part.
+
+`npm run region -- 22` runs it headless. In 22 years (seed 11) Hollow Bay splits three times into four towns of about 120 people. Each town comes to tell the crossing from a different founder's memory: Hollow Bay's version comes from Wren, Saltmarsh's from Corran, Greyhaven's from Eamon. It takes about 4 minutes on the mock.
+
+## Civilization (C4): a century, and why it went the way it did
+
+A region can now grow to thousands, because only the town you're looking at has to run hour by hour (`aggregate.ts`, `knowledge.ts`, `digest.ts`).
+
+- **The aggregate tier.** A town nobody is watching runs a season at a time on rules. Its people are kept, trimmed to what matters: core beliefs and the memories that formed them, the founding story as each tells it, what they believe of other towns, the people they're closest to. Food, births, deaths, pairing, leaders, pledges and laws, bedtime stories and the founding night all still happen to them, and stories still keep who told whom, so a fear picked up there traces back the same way. Pick a town in the header and it comes back to the hourly loop with the same people; the one you left drops to rules. The server keeps one town live by default (`PSYCHE_LIVE_TOWNS` raises it).
+- **Knowledge.** Crafts live in people: smoking fish, the tide tables, resting the fields, herb lore, drystone walling, keel boats, reading the weather. Each does one plain thing (food keeps longer, fewer die of fevers). People mostly teach their own children. A trader can show someone in another town, and now and then a curious, careful person works one out. When the last person who knew a craft dies untaught, the town loses it and the chronicle says who that was.
+- **Why.** Every founding, quarrel, lost craft and hungry season in the chronicle carries its causes, recorded when it happened. A migration goes back to the one who belonged least, the person they liked least and the memory behind it, and the wary core belief they carry, followed to the grandparent's memory it came from. A quarrel goes back to the short loads, the traders' temperaments, and who believes it hardest. Open **Why?** under any of them.
+- **Retold stories drift.** Each founding night may level the story (drop a detail) or sharpen it (make one bigger), after Allport and Postman (1947). Over a century most towns' versions shrink to their core: "The crossing to Hollow Bay was rough."
+- **Time-lapse.** A tab with the region's population year by year and each town as a small chart on the same scale. Play it, or pick a year to read what happened then and why, and write up any decade as a digest.
+
+`npm run century -- 100` runs a century headless: the first two years live, the rest on rules, writing `digest.md` (a decade at a time), `timeline.json` and a save the server can open (`PSYCHE_DATA=out/century npm run dev`). With seed 11 it reaches about 1,800 people in 16 towns, in about 35 seconds, with no model calls.
+
+## Watching it in 3D
+
+Open **Watch in 3D** in the village or region scenario. The town is laid out on a block grid (`world/town3d.ts`): shore and jetty, fire circle, store, rows of home plots, quarry, pinewood and barley field. The land is built in the browser from the seed, and `/api/town3d` says only what changes. The 3D view reads the simulation and decides nothing.
+
+- Houses go up block by block in build order as builders work, with the rest of the design shown as a faint outline. Tents come down when a house is finished.
+- People walk between places. Fishers row out in boats, and people carry logs, stone or barley home. Woodcutters stand at the next pines to fall, and felled pines leave stumps.
+- Seasons show in the barley and the snow. Smoke rises from the fire and the chimneys, and rain falls in bad weather.
+- Speech bubbles show what people are saying, so you can watch gossip spread. Thought bubbles mark big moments.
+- Click anyone to open their mind or follow them. The moments listed under the view jump to the person each one happened to.
+- In a region, **The whole coast** shows every town small, with trade boats and founding boats. Click a town's name to fly down to it. It comes to life in full, and the town you left carries on by rules.
+
+`packages/web/src/replay.ts` draws a recorded century the same way from a timeline alone, for a standalone page.
 
 ## Founders (F0): one mind builds a house
 
@@ -137,4 +233,4 @@ On the island, the same seed always gives the same island, replay from the log i
 
 ## Not here yet
 
-Says-vs-was (confabulation) and the counterfactual button are still to come. Overhearing, more than two people in one conversation, and a bigger cast are the next steps for the island. The mock faculties write plain language and extract little from free text; real perception and speech need Claude. Several parameters are engineering choices that M3's validation suite should calibrate.
+There is no writing yet, so nothing outlives its authors except through being told. Inside a town there is no barter yet, only the common store, and roles are picked at coming of age from aptitude and what the town lacks. Rewind is off in a region (towns change each other, so one town's log can't replay it), and a region is saved as it stands rather than replayed. Conversations are still two people (group moments are the fire and the village meeting). The village is not yet on Founders' voxel grid. The mock faculties write plain language and extract little from free text; real perception and speech need Claude. Several parameters are engineering choices that M3's validation suite should calibrate.

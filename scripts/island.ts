@@ -1,11 +1,11 @@
 // Run Kettle Island in the terminal and print the feed. Usage: npm run island -- [days] [seed]
 import { createWorld, WorldSession, PLACES } from "@psyche/engine";
-import { createFaculties } from "@psyche/faculties";
+import { breakdown, createFaculties, meterLine } from "@psyche/faculties";
 import { clockText } from "./clock.js";
 
 const days = Number(process.argv[2] ?? 2);
 const seed = Number(process.argv[3] ?? 7);
-const { kind, faculties } = createFaculties();
+const { kind, faculties, governor } = createFaculties();
 const s = new WorldSession(createWorld(seed), faculties);
 const storm = process.argv.includes("--storm");
 const start = Date.now();
@@ -29,6 +29,7 @@ for (const id of s.world.order) {
   console.log(id.padEnd(7), s.world.order.filter((o) => o !== id).map((o) => `${o}:${(m.others[o]?.liking ?? 0).toFixed(2)}`).join("  "));
 }
 console.log(`\n${s.feed.filter((f) => f.kind === "talk").length} conversations, ${s.log.length} faculty calls (${kind}), ${s.traces.length} traces, ${Date.now() - start}ms`);
+console.log(`cost: ${meterLine(governor.snapshot(), days)}\n${breakdown(governor.snapshot())}`);
 console.log(`snapshot size ~${Math.round(JSON.stringify(s.world).length / 1024)}KB`);
 console.log(`\n--- memories that changed ---`);
 import { render, renderOriginal } from "@psyche/engine";
