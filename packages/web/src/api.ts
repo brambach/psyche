@@ -1,4 +1,4 @@
-import type { AwaySummary, Beat, ChronicleEntry, Notice, Scene3D, Timeline, Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
+import type { Butterfly, EditRecord, MindEdit, TraitName, AwaySummary, Beat, ChronicleEntry, Notice, Scene3D, Timeline, Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
 
 export interface AgentSummary {
   id: string;
@@ -121,6 +121,33 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
   return data as T;
 }
 
+export type { Butterfly, EditRecord, MindEdit };
+
+/** Someone's mind as the editor shows it, with the library of core beliefs and presets. */
+export interface Editable {
+  id: string;
+  name: string;
+  traits: Record<TraitName, number>;
+  locks: { trait: TraitName; heritable: boolean }[];
+  schemas: { text: string; strength: number; edited: boolean; heritable: boolean }[];
+  goals: { text: string; priority: number; edited: boolean }[];
+  others: { id: string; name: string; liking: number; trust: number; edited: boolean }[];
+  memories: { id: string; gist: string; valence: number; implanted: boolean }[];
+  edits: EditRecord[];
+  fears: { text: string; triggers: string[]; threat: number; blame: number; hint: string }[];
+  presets: { id: string; label: string; hint: string }[];
+}
+
+/** Every change made in this town, and how far it has reached. */
+export interface EditReach extends EditRecord {
+  /** Whether it can still be run both ways. */
+  ripple: boolean;
+  decisions: number;
+  direct: number;
+  minds: number;
+  recent: { id: string; label: string; tick: number; agent?: string; trace?: string }[];
+}
+
 export const api = {
   world: () => call<WorldView>("/api/world"),
   agent: (id: string) => call<AgentView>(`/api/agent/${id}`),
@@ -146,6 +173,10 @@ export const api = {
   saveSlot: (name: string) => call<{ slots: Slot[] }>("/api/slots/save", { name }),
   loadSlot: (name: string) => call<{ slots: Slot[] }>("/api/slots/load", { name }),
   deleteSlot: (name: string) => call<{ slots: Slot[] }>("/api/slots/delete", { name }),
+  editable: (id: string) => call<Editable>(`/api/editable/${id}`),
+  edit: (b: { who: string; edit?: MindEdit & { written?: boolean }; preset?: string; notice?: boolean }) => call<{ records: EditRecord[]; editable?: Omit<Editable, "fears" | "presets"> }>("/api/edit", b),
+  edits: () => call<{ edits: EditReach[] }>("/api/edits"),
+  butterfly: (edit: string, days: number) => call<Butterfly>("/api/butterfly", { edit, days }),
 };
 
 export interface Slot {

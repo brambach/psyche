@@ -105,5 +105,8 @@ export { rootOf, foundingVersion, type Law, type Election, type Civic } from "./
 export { dematerialize, materialize, aggAdvance, aggSeason, compactMinds, drift, implant, tellFounding } from "./world/aggregate.js";
 export { CRAFTS, craft, craftBonus, craftLineage, knows, townCrafts, knowledgeOf, type Craft, type Know, type Knowledge, type KnowledgeEvent } from "./world/knowledge.js";
 export { digest, timeline, type Timeline } from "./world/digest.js";
+export { luck } from "./world/world.js";
 export { frameDelta, applyDelta, deltaMemory, beats, beatOf, warnings, momentNotices, chronicleNotices, awaySummary, type Frame as GameFrame, type FrameDelta, type DeltaMemory, type Beat, type Notice, type AwaySummary } from "./world/game.js";
 export * as lab from "./lab/index.js";
+export { applyEdit, editable, shapeFear, inheritEdits, FEARS, PRESETS, type MindEdit, type EditInput, type EditRecord } from "./world/edits.js";
+export { butterfly, type Butterfly, type Flip, type TownSide } from "./world/butterfly.js";
