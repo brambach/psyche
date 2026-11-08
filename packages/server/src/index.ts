@@ -1,9 +1,12 @@
-// Hosts the living island. The clock runs on the server: while the world is playing, it advances
-// a few simulated minutes every second, and the web UI polls for what happened.
-// The session is saved as seed + inputs + recorded LLM calls, and restored by exact replay.
+// Hosts the living world. The clock runs on the server: while the world is playing, it advances
+// some simulated minutes every second, and pushes what changed to everyone watching (a server-sent
+// event stream of frame deltas, /api/stream). It keeps running with nobody watching, on the free
+// offline mock, and tells you what happened while you were away.
+// An island or village is saved as seed + inputs + recorded LLM calls, and restored by exact replay;
+// a region is saved as it stands. Named save slots live in data/slots, hourly snapshots in data/snapshots.
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import {
   buildLedger,
@@ -24,6 +27,15 @@ import {
   townScene,
   digest,
   RegionSession,
+  frameDelta,
+  deltaMemory,
+  beats,
+  warnings,
+  momentNotices,
+  chronicleNotices,
+  awaySummary,
+  type GameFrame,
+  type Notice,
   type RegionState,
   type FeedItem,
   type CounterfactualEdit,
@@ -63,6 +75,14 @@ const SAVE = join(DATA_DIR, "island.json");
 const FOUNDERS_SAVE = join(DATA_DIR, "founders.json");
 const WEB_DIST = resolve(process.env.PSYCHE_WEB ?? "packages/web/dist");
 const FEED_SHOWN = 250;
+const SLOTS_DIR = join(DATA_DIR, "slots");
+const SNAP_DIR = join(DATA_DIR, "snapshots");
+/** With nobody watching for this long, the world goes on with the offline mock (nobody is there to read the words). */
+const AWAY_AFTER_MS = Number(process.env.PSYCHE_AWAY_AFTER ?? 120) * 1000;
+/** Above this many sim minutes a real second, speech is on the offline mock: nobody can read it that fast. */
+const FREE_ABOVE = 16;
+/** The fastest the clock goes, in sim minutes a real second (100x). */
+const MAX_SPEED = 400;
 
 const { kind, faculties, governor } = createFaculties();
 
@@ -71,6 +91,10 @@ const SEEDS: Record<Scenario, number> = { island: 7, village: 11, region: 11 };
 
 interface Saved {
   scenario?: Scenario;
+  /** The last tick someone was watching, for "while you were away". */
+  seen?: number;
+  /** Named slots carry when they were saved. */
+  savedAt?: number;
   seed: number;
   /** After a fast-forward the world starts again from where the years left it. */
   base?: WorldState;
@@ -82,7 +106,8 @@ interface Saved {
 }
 
 const envScenario = process.env.PSYCHE_SCENARIO;
-let scenario: Scenario = envScenario === "village" || envScenario === "region" ? envScenario : "island";
+// The game is a civilization: a region of towns unless asked otherwise.
+let scenario: Scenario = envScenario === "village" || envScenario === "island" ? envScenario : "region";
 let seed = SEEDS[scenario];
 let ablations: Partial<Ablations> = {};
 
@@ -94,12 +119,15 @@ function makeWorld() {
   return scenario === "village" ? createVillage(seed, ablations) : createWorld(seed, ablations);
 }
 // A village runs for years: keep fewer snapshots and let the oldest traces go.
-const sessionOpts = (): WorldSessionOptions => (scenario === "island" ? {} : { keepRecent: 24, keepDays: 14, maxTraces: scenario === "region" ? 8_000 : 15_000 });
+// A region runs unattended for years, so it keeps the least: two days of day-start snapshots and the
+// newest 4000 traces (the ledger and the chronicle hold what matters from before).
+const sessionOpts = (): WorldSessionOptions =>
+  scenario === "island" ? {} : scenario === "region" ? { keepRecent: 24, keepDays: 2, maxTraces: 4_000 } : { keepRecent: 24, keepDays: 14, maxTraces: 15_000 };
 /**
  * Towns run live (hour by hour, on Claude) only while watched: by default one at a time, the rest on
  * the aggregate tier, on rules. PSYCHE_LIVE_TOWNS raises it.
  */
-const regionOpts = () => ({ session: sessionOpts(), live: Number(process.env.PSYCHE_LIVE_TOWNS) || 1, cheap: createMockFaculties() });
+const regionOpts = () => ({ session: sessionOpts(), live: Number(process.env.PSYCHE_LIVE_TOWNS) || 1, cheap: createMockFaculties(), maxTowns: Number(process.env.PSYCHE_MAX_TOWNS) || 16 });
 /** In a region, the towns; `session` is the one being watched. */
 let region: RegionSession | undefined;
 let town = "hollow";
@@ -121,9 +149,11 @@ let fastForward: { from: number; to: number; started: number } | undefined;
 /** True once the session no longer starts from the seed (it was rebased after years passed). */
 let base = false;
 let running = process.env.PSYCHE_AUTOPLAY !== "0";
-/** Simulated minutes per real second. */
-let speed = 10;
+/** Simulated minutes per real second: 4 is 1x (a sim day in about four real minutes), 400 is 100x. */
+let speed = 4;
 let lastSaved = 0;
+/** The last tick someone was watching. */
+let seen = 0;
 
 // Founders (F0): one builder on an empty islet. Its clock only runs while someone is watching.
 interface FoundersSaved {
@@ -148,23 +178,44 @@ function exclusive<T>(fn: () => Promise<T>): Promise<T> {
   return next;
 }
 
+/** The world as it stands, in the form a save file keeps. */
+function snapshot(): Saved {
+  if (region) {
+    const towns = Object.entries(region.towns);
+    return { scenario, seed, ablations, seen, inputs: [], log: [], region: { state: region.region, worlds: region.worlds(), feeds: Object.fromEntries(towns.map(([id, s]) => [id, s.feed.slice(-FEED_SHOWN)])) } };
+  }
+  return { scenario, seed, ablations, seen, base: base ? session.initial : undefined, inputs: session.inputs, log: session.log };
+}
+
+/** Write a file whole or not at all, so a crash mid-write never leaves half a world. */
+function writeJson(file: string, data: unknown) {
+  mkdirSync(resolve(file, ".."), { recursive: true });
+  writeFileSync(`${file}.tmp`, JSON.stringify(data));
+  renameSync(`${file}.tmp`, file);
+}
+
+let lastSnapshot = Date.now();
 function save(force = false) {
   if (!force && Date.now() - lastSaved < (region ? 60_000 : 10_000)) return;
   lastSaved = Date.now();
-  mkdirSync(DATA_DIR, { recursive: true });
-  if (region) {
-    const towns = Object.entries(region.towns);
-    const saved: Saved = { scenario, seed, ablations, inputs: [], log: [], region: { state: region.region, worlds: region.worlds(), feeds: Object.fromEntries(towns.map(([id, s]) => [id, s.feed.slice(-FEED_SHOWN)])) } };
-    writeFileSync(SAVE, JSON.stringify(saved));
-    return;
+  const saved = snapshot();
+  writeJson(SAVE, saved);
+  // An hourly copy, the last day of them kept, so a long unattended run can be wound back.
+  if (Date.now() - lastSnapshot >= 3_600_000) {
+    lastSnapshot = Date.now();
+    writeJson(join(SNAP_DIR, `auto-${new Date().toISOString().replace(/[:.]/g, "-")}.json`), saved);
+    const old = readdirSync(SNAP_DIR).filter((f) => f.startsWith("auto-")).sort();
+    for (const f of old.slice(0, Math.max(0, old.length - 24))) unlinkSync(join(SNAP_DIR, f));
   }
-  const saved: Saved = { scenario, seed, ablations, base: base ? session.initial : undefined, inputs: session.inputs, log: session.log };
-  writeFileSync(SAVE, JSON.stringify(saved));
 }
 
 async function restore() {
   if (!existsSync(SAVE)) return;
-  const saved = JSON.parse(readFileSync(SAVE, "utf8")) as Saved;
+  await restoreFrom(JSON.parse(readFileSync(SAVE, "utf8")) as Saved);
+}
+
+async function restoreFrom(saved: Saved) {
+  resetGame();
   scenario = saved.scenario ?? "island";
   seed = saved.seed;
   ablations = saved.ablations;
@@ -177,12 +228,14 @@ async function restore() {
     }
     town = Object.keys(region.towns)[0] ?? "hollow";
     session = region.focus(town);
+    seen = saved.seen ?? region.region.tick;
     console.log(`Restored a region of ${region.region.towns.length} towns.`);
     return;
   }
   base = !!saved.base;
   const r = await WorldSession.replay(saved.base ?? world, saved.inputs, saved.log, faculties, sessionOpts());
   session = r.session;
+  seen = saved.seen ?? session.world.tick;
   console.log(`Restored ${saved.inputs.length} inputs${r.divergedAt !== undefined ? ` (diverged at call ${r.divergedAt})` : ""}.`);
 }
 
@@ -308,7 +361,9 @@ async function passYears(years: number) {
           governor.quiet = false;
         }
         if (session.frames.length > 4 * yearDays) region ? region.rebase() : session.rebase();
+        collectNotices();
       });
+      broadcast();
     }
     await exclusive(async () => {
       region ? region.rebase() : session.rebase();
@@ -320,18 +375,70 @@ async function passYears(years: number) {
   }
 }
 
+/**
+ * Why speech is on the free mock right now, if it is: nobody has watched for a while, or the clock is
+ * running faster than anyone could read. The minds underneath run the same either way.
+ */
+function freeReason(): "away" | "fast" | undefined {
+  if (kind === "mock") return undefined;
+  if (viewers.size === 0 && Date.now() - lastViewer > AWAY_AFTER_MS) return "away";
+  if (speed > FREE_ABOVE) return "fast";
+  return undefined;
+}
+
+/** Sim minutes actually covered in the last real second (the clock may fall behind at 100x in a big town). */
+let pace = 0;
+/**
+ * What watched play costs: dollars and sim days counted only while speech was on the model (not while
+ * away or above 4x), so the price per hour shown is the price of watching, not diluted by free time.
+ */
+let paid = { usd: 0, days: 0 };
+
 async function tickClock() {
+  const started = Date.now();
   if (running && !fastForward) {
     await exclusive(async () => {
-      const w = session.world;
-      // Nights pass in one stride: everyone is asleep, and sleep itself is one step per mind.
-      const minutes = isNight(w.tick) ? Math.round(((7 * 60 - (w.tick % 1440)) + 1440) % 1440) || 1440 : speed;
-      if (region) await region.advance(minutes);
-      else await session.apply({ type: "advance", minutes });
+      const free = !!freeReason();
+      governor.quiet = free;
+      const usd0 = governor.snapshot().sessionUsd;
+      try {
+        // Advance in strides of up to an hour until this second's minutes are done, or the second is.
+        let left = speed;
+        let covered = 0;
+        while (left > 0 && Date.now() - started < 850) {
+          const w = session.world;
+          // Nights pass in one stride: everyone is asleep, and sleep itself is one step per mind.
+          const night = isNight(w.tick);
+          const minutes = night ? Math.round(((7 * 60 - (w.tick % 1440)) + 1440) % 1440) || 1440 : Math.min(left, 60);
+          if (region) await region.advance(minutes, { snapshot: speed <= FREE_ABOVE });
+          else await session.apply({ type: "advance", minutes }, { snapshot: speed <= FREE_ABOVE });
+          covered += minutes;
+          if (night) break;
+          left -= minutes;
+        }
+        pace = covered;
+        if (!free) {
+          paid.usd += governor.snapshot().sessionUsd - usd0;
+          paid.days += covered / 1440;
+        }
+        // A world that runs for days piles up inputs, recorded calls and frames; keep them bounded the
+        // way years passing does (you can't rewind past a rebase, as with years passing).
+        if (session.frames.length > (speed > FREE_ABOVE ? 400 : 2000)) {
+          if (region) region.rebase();
+          else {
+            session.rebase();
+            base = true;
+          }
+        }
+      } finally {
+        governor.quiet = false;
+      }
       save();
+      collectNotices();
     }).catch((e) => console.error(e));
+    broadcast();
   }
-  setTimeout(() => void tickClock(), 1000);
+  setTimeout(() => void tickClock(), Math.max(50, 1000 - (Date.now() - started)));
 }
 
 function summary(m: MindState) {
@@ -403,6 +510,202 @@ function ledger(): Ledger {
     ledgerCache = { session, traces: session.traces.length, ledger: buildLedger({ minds: w.minds, traces: session.traces, rumors: w.rumors, events: w.events, village: w.village }) };
   }
   return ledgerCache.ledger;
+}
+
+// ------------------------------------------------------------------ the live game (G1)
+
+/** Everyone watching: the open event streams. */
+const viewers = new Set<ServerResponse>();
+/** When the last viewer left (or now, while someone is watching). */
+let lastViewer = Date.now();
+/** What the stream last sent, so each tick sends only what changed. */
+let memory = deltaMemory();
+let notices: Notice[] = [];
+let noticeIds = new Set<string>();
+/** How far the notices have read the chronicle and the watched town's feed. */
+let noticedChronicle = 0;
+let noticedFeed = 0;
+
+/** A new or loaded world starts with nothing noticed and a fresh stream. */
+function resetGame() {
+  paid = { usd: 0, days: 0 };
+  notices = [];
+  noticeIds = new Set();
+  noticedChronicle = Number.MAX_SAFE_INTEGER;
+  noticedFeed = Number.MAX_SAFE_INTEGER;
+  memory = deltaMemory();
+}
+
+/** Collect what a player should be told: chronicle entries, big moments in the watched town, warnings. */
+function collectNotices() {
+  const w = session.world;
+  if (noticedChronicle === Number.MAX_SAFE_INTEGER) noticedChronicle = w.tick;
+  if (noticedFeed === Number.MAX_SAFE_INTEGER) noticedFeed = w.tick;
+  const history = region ? chronicleNotices(region.region.chronicle, noticedChronicle) : [];
+  // In a region the chronicle already tells a town's history; moments add the rest of what the watched
+  // town lives through, without telling the same thing twice (a leader's death is both).
+  const told = (n: Notice) => [...history, ...notices].some((h) => h.kind === "chronicle" && h.agent === n.agent && Math.abs(h.tick - n.tick) <= 1440);
+  const moments = momentNotices(session.feed.slice(-200), noticedFeed, region ? town : undefined).filter((n) => !n.agent || !told(n));
+  const fresh = [...history, ...moments, ...warnings(w, region ? town : undefined, region)];
+  noticedChronicle = region?.region.tick ?? w.tick;
+  noticedFeed = w.tick;
+  for (const n of fresh) {
+    if (noticeIds.has(n.id)) continue;
+    noticeIds.add(n.id);
+    notices.push(n);
+  }
+  if (notices.length > 40) notices = notices.slice(-40);
+}
+
+/** Sim days a real hour at the current speed: waking hours at `speed` minutes a second, each night in one second. */
+function simDaysPerHour() {
+  const waking = 16 * 60;
+  return 3600 / (waking / Math.max(1, Math.min(speed, pace || speed)) + 1);
+}
+
+function townCard(w: WorldState) {
+  const v = w.village;
+  if (!v) return undefined;
+  const vv = villageView(w)!;
+  const adults = vv.people.filter((p) => p.alive && p.age >= 12).length;
+  const homes = vv.households.filter((h) => h.members.length);
+  return {
+    people: w.order.length,
+    adults,
+    children: w.order.length - adults,
+    households: homes.length,
+    houses: homes.filter((h) => h.shelter === "house").length,
+    tents: homes.filter((h) => h.shelter !== "house").length,
+    building: vv.structures.filter((x) => !x.done).map((x) => ({ name: x.name, progress: x.progress })),
+    store: Math.round(vv.store.food),
+    leader: vv.leader,
+    leaderName: vv.leader ? (w.agents[vv.leader]?.name ?? vv.people.find((p) => p.id === vv.leader)?.name) : undefined,
+    laws: vv.laws.filter((l) => l.passed).length,
+    norms: vv.norms.filter((n) => n.established !== undefined).map((n) => n.text),
+    year: vv.year,
+    season: vv.season,
+    weather: vv.weather,
+  };
+}
+
+/** Everything on a player's screen, as one frame. Keyed lists go down the wire item by item. */
+function gameFrame(): GameFrame {
+  const w = session.world;
+  const rv = region && regionView(region);
+  const cost = costView();
+  const free = freeReason();
+  const perSimDay = paid.days > 0.05 ? paid.usd / paid.days : undefined;
+  const perHour = perSimDay !== undefined ? perSimDay * simDaysPerHour() : undefined;
+  const frame: GameFrame = {
+    scenario,
+    name: w.name,
+    seed,
+    faculties: kind,
+    running,
+    speed,
+    pace,
+    free,
+    tick: w.tick,
+    town: region ? town : undefined,
+    fastForward: fastForward && { ...fastForward, at: w.tick },
+    viewers: viewers.size,
+    cost: {
+      sessionUsd: cost.sessionUsd,
+      todayUsd: cost.todayUsd,
+      capUsd: cost.capUsd,
+      level: cost.level,
+      estimated: cost.estimated,
+      perSimDay,
+      // What an hour of this costs at this speed: nothing while speech is on the mock.
+      perHour: free ? 0 : perHour,
+      perHourAt1x: perSimDay !== undefined ? perSimDay * (3600 / (16 * 60 / 4 + 1)) : undefined,
+    },
+    card: townCard(w),
+    places: w.places,
+    towns: rv?.towns.map((t) => ({ id: t.id, name: t.name, people: t.people, children: t.children, leaderName: t.leaderName, tier: t.tier, crafts: t.crafts, lost: t.lost, laws: t.laws, store: t.store, founded: t.founded, from: t.from })),
+    year: rv?.year ?? villageView(w)?.year,
+    chronicle: rv?.chronicle.slice(-30).reverse(),
+    agents: w.order.map((id) => {
+      const a = w.agents[id]!;
+      const m = w.minds[id]!;
+      const top = Object.entries(m.affect.emotions).sort((x, y) => y[1] - x[1])[0]!;
+      return { id, name: a.name, role: a.role, activity: a.activity, place: a.place, mood: Number(m.affect.mood.valence.toFixed(2)), emotion: top[1] > 0.12 ? top[0] : undefined };
+    }),
+    feed: session.feed.slice(-40).reverse().map((f) => ({ id: f.id, tick: f.tick, kind: f.kind, title: f.title, text: f.text, agents: f.agents, refs: f.refs?.slice(0, 1), line: f.lines?.[0] })),
+    beats: beats(session.feed.slice(-200), w.tick),
+    notices,
+  };
+  if (w.village) {
+    const scene = townScene(w, session.feed.slice(-120), session.feed.filter((f) => f.kind === "event" || f.kind === "insight").slice(-12));
+    for (const [k, v] of Object.entries(scene)) frame[`scene.${k}`] = v;
+  }
+  return frame;
+}
+
+function sse(res: ServerResponse, event: string, data: unknown) {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+/** Send everyone what changed since the last frame. */
+function broadcast() {
+  if (!viewers.size) return;
+  seen = session.world.tick;
+  lastViewer = Date.now();
+  const d = frameDelta(memory, gameFrame());
+  if (d) for (const res of viewers) sse(res, "delta", d);
+}
+
+/** A new viewer: the whole frame, and what happened while nobody was watching. */
+function openStream(req: IncomingMessage, res: ServerResponse) {
+  res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache, no-transform", connection: "keep-alive", "x-accel-buffering": "no" });
+  res.write("retry: 2000\n\n");
+  const wasEmpty = viewers.size === 0;
+  const since = seen;
+  // Everyone shares one delta stream, so a newcomer gets the full frame that stream is now based on.
+  memory = deltaMemory();
+  const frame = gameFrame();
+  frameDelta(memory, frame);
+  for (const v of viewers) sse(v, "full", frame);
+  sse(res, "full", frame);
+  viewers.add(res);
+  if (wasEmpty && region && region.region.tick - since >= 1440) sse(res, "away", awaySummary(region, since));
+  seen = session.world.tick;
+  lastViewer = Date.now();
+  const beat = setInterval(() => res.write(": still here\n\n"), 15_000);
+  req.on("close", () => {
+    clearInterval(beat);
+    viewers.delete(res);
+    lastViewer = Date.now();
+  });
+}
+
+// ------------------------------------------------------------------ save slots
+
+const slotName = (n: unknown) => (typeof n === "string" ? n.trim().replace(/[^\w \-]/g, "").replace(/\s+/g, " ").slice(0, 40) : "");
+const slotFile = (name: string) => join(SLOTS_DIR, `${name.toLowerCase().replace(/ /g, "_")}.json`);
+
+function listSlots() {
+  if (!existsSync(SLOTS_DIR)) return [];
+  return readdirSync(SLOTS_DIR)
+    .filter((f) => f.endsWith(".json"))
+    .map((f) => {
+      const file = join(SLOTS_DIR, f);
+      try {
+        const head = JSON.parse(readFileSync(file, "utf8")) as Saved & { name?: string; summary?: { world: string; tick: number; year?: number; towns: number; people: number } };
+        return { name: head.name ?? f.replace(/\.json$/, ""), savedAt: head.savedAt ?? statSync(file).mtimeMs, scenario: head.scenario ?? "island", ...head.summary };
+      } catch {
+        return undefined;
+      }
+    })
+    .filter((x) => !!x)
+    .sort((a, b) => b!.savedAt - a!.savedAt);
+}
+
+function saveSlot(name: string) {
+  const w = session.world;
+  const rv = region && regionView(region);
+  const summary = { world: w.name, tick: w.tick, year: rv?.year ?? villageView(w)?.year, towns: rv?.towns.length ?? 1, people: rv ? rv.towns.reduce((n, t) => n + t.people, 0) : w.order.length };
+  writeJson(slotFile(name), { ...snapshot(), name, savedAt: Date.now(), summary });
 }
 
 function costView() {
@@ -515,6 +818,8 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     return;
   }
   if (req.method === "GET") {
+    if (p === "/api/stream") return openStream(req, res);
+    if (p === "/api/slots") return send(res, 200, { slots: listSlots() });
     if (p === "/api/divergence") return send(res, 200, { events: divergence(session.world) });
     if (p === "/api/myths") return region ? send(res, 200, compareMyths(region)) : send(res, 404, { error: "Only a region has more than one town." });
     if (p === "/api/atlas") return send(res, 200, { beliefs: atlas(session.world) });
@@ -619,6 +924,8 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       await exclusive(async () => {
         town = b.town!;
         session = region!.focus(town);
+        // The town you arrive in has its own feed; notice what happens from now on.
+        noticedFeed = session.world.tick;
       });
       return send(res, 200, view());
     }
@@ -632,8 +939,30 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     if (p === "/api/control") {
       const b = await body<{ running?: boolean; speed?: number }>(req);
       if (b.running !== undefined) running = b.running;
-      if (b.speed !== undefined) speed = Math.max(1, Math.min(120, Math.round(b.speed)));
+      if (b.speed !== undefined) speed = Math.max(1, Math.min(MAX_SPEED, Math.round(b.speed)));
       return send(res, 200, view());
+    }
+    if (p === "/api/slots/save") {
+      const name = slotName((await body<{ name?: string }>(req)).name);
+      if (!name) return send(res, 400, { error: "Give the save a name." });
+      await exclusive(async () => saveSlot(name));
+      return send(res, 200, { slots: listSlots() });
+    }
+    if (p === "/api/slots/load") {
+      const name = slotName((await body<{ name?: string }>(req)).name);
+      if (!name || !existsSync(slotFile(name))) return send(res, 404, { error: "No save by that name." });
+      if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
+      await exclusive(async () => {
+        await restoreFrom(JSON.parse(readFileSync(slotFile(name), "utf8")) as Saved);
+        governor.resetSession();
+      });
+      save(true);
+      return send(res, 200, { slots: listSlots() });
+    }
+    if (p === "/api/slots/delete") {
+      const name = slotName((await body<{ name?: string }>(req)).name);
+      if (name && existsSync(slotFile(name))) unlinkSync(slotFile(name));
+      return send(res, 200, { slots: listSlots() });
     }
     if (p === "/api/input") {
       if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
@@ -661,6 +990,8 @@ async function route(req: IncomingMessage, res: ServerResponse) {
         } else seed = b.seed ?? seed;
         ablations = b.ablations ?? ablations;
         start();
+        resetGame();
+        seen = session.world.tick;
         base = false;
         governor.resetSession();
       });
@@ -676,7 +1007,8 @@ async function route(req: IncomingMessage, res: ServerResponse) {
 
 await restore();
 await restoreFounders();
-createServer((req, res) => void route(req, res)).listen(PORT, () => {
+// Anything a player does shows on every screen at once.
+createServer((req, res) => void route(req, res).finally(() => req.method === "POST" && broadcast())).listen(PORT, () => {
   console.log(`Psyche (${session.world.name}) on http://localhost:${PORT} (faculties: ${kind}, ${running ? "playing" : "paused"})`);
   console.log(kind === "claude" ? `Daily cap $${governor.capUsd} (PSYCHE_DAILY_CAP). Spend so far today: $${governor.todayUsd().toFixed(4)}.` : "Offline mock: the cost meter shows what the same run would cost on Claude.");
 });

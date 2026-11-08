@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { compile, fellingOrder, MATERIALS, terrainOf, TOWN, type Placement, type Scene3D, type TownTerrain, type Tree } from "@psyche/engine";
+import { compile, fellingOrder, MATERIALS, terrainOf, TOWN, type Beat, type Placement, type Scene3D, type TownTerrain, type Tree } from "@psyche/engine";
 import { api } from "./api";
 import { Coast3D } from "./Coast3D";
 import { buildMesh, COLOR } from "./founders/Voxel";
@@ -105,11 +105,40 @@ function compose(land: TownTerrain, wood: Tree[], scene: Scene3D, plans: Map<str
   return { grid: { version: 0, w, d, h, cells }, ghost, chimneys };
 }
 
-export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
+/** What the director is showing, for the caption under it. */
+export interface Shot {
+  kind: "close" | "wide" | "idle";
+  title: string;
+  text?: string;
+  agent?: string;
+  name?: string;
+}
+
+/** How long a shot holds before the director looks for the next one, in real milliseconds. */
+const HOLD = { close: 9000, wide: 7000, idle: 12000 };
+/** After you touch the camera, the director waits this long before taking it back. */
+const HANDS_OFF = 20000;
+
+export function Town3D(props: {
+  onOpen: (id: string) => void;
+  /** The scene pushed by the game's stream; without it, the view polls for its own. */
+  scene?: Scene3D;
+  pushed?: boolean;
+  /** Full-screen game mode: no HUD, moments row or help line of its own. */
+  game?: boolean;
+  director?: boolean;
+  beats?: Beat[];
+  onShot?: (s: Shot | undefined) => void;
+  /** Fly to someone (a notice or a feed line was clicked). */
+  focusReq?: { id: string; n: number };
+  onSelect?: (id: string | undefined) => void;
+}) {
+  const { onOpen, game } = props;
   const [focus, setFocus] = useState<{ id: string; n: number }>();
   const host = useRef<HTMLDivElement>(null);
   const labels = useRef<HTMLDivElement>(null);
-  const [scene, setScene] = useState<Scene3D>();
+  const [polled, setScene] = useState<Scene3D>();
+  const scene = props.pushed ? props.scene : polled;
   const [error, setError] = useState<string>();
   const [selected, setSelected] = useState<string>();
   const [follow, setFollow] = useState(false);
@@ -135,14 +164,20 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
     hovered?: string;
     selected?: string;
     follow?: string;
+    /** A camera move in progress: from where, to where, how far along (0 to 1). */
+    fly?: { fromPos: THREE.Vector3; fromTarget: THREE.Vector3; toPos: THREE.Vector3; toTarget: THREE.Vector3; t: number; dur: number };
+    /** When someone last moved the camera by hand. */
+    touched: number;
+    flyTo: (target: THREE.Vector3, dist: number, opts?: { azimuth?: number; elevation?: number; dur?: number }) => void;
   }>();
   const plans = useRef(new Map<string, Placement[]>());
   const seed = scene?.seed;
   const land = useMemo(() => (seed === undefined ? undefined : terrainOf(seed)), [seed]);
   const wood = useMemo(() => (land ? fellingOrder(land) : []), [land]);
 
-  // Poll the scene once a second.
+  // Poll the scene once a second, unless the game's stream is pushing it.
   useEffect(() => {
+    if (props.pushed) return;
     let live = true;
     const get = () =>
       api
@@ -155,7 +190,8 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
       live = false;
       clearInterval(t);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.pushed]);
 
   // The renderer, built once.
   useEffect(() => {
@@ -217,7 +253,23 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
     hover.hidden = true;
     labels.current!.appendChild(hover);
 
-    const state = { camera, controls, scene: sc, land: landMesh, sea: seaMesh, ghost, hearth, sun, hemi, marker, smoke, rain, sources: [] as [number, number, number][], bubbles: new Map<string, HTMLSpanElement>(), figures: new Map<string, Figure>(), ground: [] as number[], places: [] as { el: HTMLSpanElement; x: number; z: number; home: boolean }[], hover, hovered: undefined as string | undefined, selected: undefined as string | undefined, follow: undefined as string | undefined };
+    const state = {
+      camera, controls, scene: sc, land: landMesh, sea: seaMesh, ghost, hearth, sun, hemi, marker, smoke, rain,
+      sources: [] as [number, number, number][], bubbles: new Map<string, HTMLSpanElement>(), figures: new Map<string, Figure>(), ground: [] as number[],
+      places: [] as { el: HTMLSpanElement; x: number; z: number; home: boolean }[], hover, hovered: undefined as string | undefined,
+      selected: undefined as string | undefined, follow: undefined as string | undefined,
+      fly: undefined as { fromPos: THREE.Vector3; fromTarget: THREE.Vector3; toPos: THREE.Vector3; toTarget: THREE.Vector3; t: number; dur: number } | undefined,
+      touched: -1e9,
+      /** Glide the camera to look at `target` from `dist` away, keeping the current bearing unless told otherwise. */
+      flyTo: (target: THREE.Vector3, dist: number, opts: { azimuth?: number; elevation?: number; dur?: number } = {}) => {
+        const cur = camera.position.clone().sub(controls.target);
+        const az = opts.azimuth ?? Math.atan2(cur.x, cur.z);
+        const el = opts.elevation ?? Math.max(0.35, Math.min(1.1, Math.asin(cur.y / Math.max(1e-6, cur.length()))));
+        const toPos = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).multiplyScalar(dist).add(target);
+        const far = camera.position.distanceTo(toPos);
+        state.fly = { fromPos: camera.position.clone(), fromTarget: controls.target.clone(), toPos, toTarget: target.clone(), t: 0, dur: opts.dur ?? Math.min(2.6, Math.max(0.9, far / 90)) };
+      },
+    };
     three.current = state;
     // A handle for screenshots and debugging: lets a script point the camera.
     (window as unknown as { __town3d?: unknown }).__town3d = state;
@@ -248,12 +300,25 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
       state.hovered = pick(ev);
       renderer.domElement.style.cursor = state.hovered ? "pointer" : "";
     };
-    const onDown = (ev: PointerEvent) => (down = { x: ev.clientX, y: ev.clientY });
+    const onDown = (ev: PointerEvent) => {
+      down = { x: ev.clientX, y: ev.clientY };
+      // Taking the camera: the director steps back, and any glide in progress stops where it is.
+      state.touched = performance.now();
+      state.fly = undefined;
+      controls.autoRotate = false;
+    };
+    const onWheel = () => {
+      state.touched = performance.now();
+      state.fly = undefined;
+      controls.autoRotate = false;
+    };
+    renderer.domElement.addEventListener("wheel", onWheel, { passive: true });
     const onUp = (ev: PointerEvent) => {
       if (Math.hypot(ev.clientX - down.x, ev.clientY - down.y) > 5) return;
       const id = pick(ev);
       state.selected = id;
       setSelected(id);
+      if (!id) setFollow(false);
     };
     renderer.domElement.addEventListener("pointermove", onMove);
     renderer.domElement.addEventListener("pointerdown", onDown);
@@ -299,8 +364,19 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
         f.group.rotation.z = f.p.asleep && !walking ? Math.PI / 2 : 0;
         f.group.visible = !(f.p.indoors && !walking);
       }
+      // A glide in progress: ease out, along the way from where the camera was to where it is going.
+      if (state.fly) {
+        const fl = state.fly;
+        fl.t = Math.min(1, fl.t + dt / fl.dur);
+        const e = 1 - Math.pow(1 - fl.t, 3);
+        controls.target.lerpVectors(fl.fromTarget, fl.toTarget, e);
+        camera.position.lerpVectors(fl.fromPos, fl.toPos, e);
+        // Rise a little on long glides, so the camera does not skim through the houses.
+        camera.position.y += Math.sin(e * Math.PI) * Math.min(30, fl.fromPos.distanceTo(fl.toPos) * 0.15);
+        if (fl.t >= 1) state.fly = undefined;
+      }
       // The follow-cam keeps its angle and distance and slides along with the person.
-      const fol = state.follow ? state.figures.get(state.follow) : undefined;
+      const fol = state.follow && !state.fly ? state.figures.get(state.follow) : undefined;
       if (fol) {
         const want = new THREE.Vector3(fol.group.position.x, fol.group.position.y + 1, fol.group.position.z);
         const shift = want.sub(controls.target).multiplyScalar(1 - Math.pow(0.03, dt));
@@ -385,11 +461,14 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      renderer.domElement.removeEventListener("wheel", onWheel);
       controls.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     };
   }, []);
+
+  useEffect(() => props.onSelect?.(selected), [selected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (three.current) {
@@ -398,7 +477,10 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
     }
   }, [selected, follow]);
 
-  // A moment picked from the list: select that person and follow them there.
+  // A moment picked from the list (or a notice clicked in the game): select that person and glide to them.
+  useEffect(() => {
+    if (props.focusReq) setFocus(props.focusReq);
+  }, [props.focusReq]);
   useEffect(() => {
     if (!focus) return;
     setSelected(focus.id);
@@ -406,15 +488,103 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
     const t = three.current;
     const f = t?.figures.get(focus.id);
     if (t && f) {
-      // Drop in close, from the side the camera is already on.
-      const dir = t.camera.position.clone().sub(t.controls.target).normalize().multiplyScalar(34);
-      t.controls.target.set(f.group.position.x, f.group.position.y + 1, f.group.position.z);
-      t.camera.position.copy(t.controls.target).add(dir);
+      // Someone asked to see this: the director leaves the camera with them for a while.
+      t.touched = performance.now();
+      t.controls.autoRotate = false;
+      t.flyTo(new THREE.Vector3(f.group.position.x, f.group.position.y + 1, f.group.position.z), 30);
     }
   }, [focus]);
 
+  // The director: when nobody has touched the camera for a while, cut to the best moment not yet shown,
+  // hold on it, then move on. With nothing worth a cut, follow someone at work, or take in the town.
+  const beatsRef = useRef<Beat[]>([]);
+  beatsRef.current = props.beats ?? [];
+  const sceneRef = useRef<Scene3D>();
+  sceneRef.current = scene;
+  const onShotRef = useRef(props.onShot);
+  onShotRef.current = props.onShot;
   useEffect(() => {
-  }, [selected]);
+    if (!props.director) {
+      onShotRef.current?.(undefined);
+      if (three.current) three.current.controls.autoRotate = false;
+      return;
+    }
+    const shown = new Set<string>();
+    let shot: { until: number; score: number; started: number } | undefined;
+    let n = 0;
+    let handsOff = false;
+    const cut = () => {
+      const t = three.current;
+      const sc = sceneRef.current;
+      if (!t || !sc || !t.ground.length) return;
+      const now = performance.now();
+      if (now - t.touched < HANDS_OFF) {
+        if (!handsOff) onShotRef.current?.(undefined);
+        handsOff = true;
+        shot = undefined;
+        return;
+      }
+      handsOff = false;
+      const visible = (id: string) => {
+        const f = t.figures.get(id);
+        return !!f && f.group.visible;
+      };
+      const cands = beatsRef.current.filter((b) => !shown.has(b.id) && (b.agent ? visible(b.agent) : true));
+      const best = cands[0];
+      // Hold the current shot, unless something much bigger has just happened.
+      if (shot && now < shot.until && !(best && best.score >= shot.score + 0.25 && now - shot.started > 3000)) return;
+      const ground = (x: number, z: number) => (t.ground[Math.round(x) + Math.round(z) * TOWN.w] ?? TOWN.sea) + 1;
+      const centre = sc.places.find((p) => p.id === "tavern") ?? sc.places[0];
+      n++;
+      const az = (n * 2.39996) % (Math.PI * 2);
+      if (best) {
+        shown.add(best.id);
+        if (best.agent) {
+          const f = t.figures.get(best.agent)!;
+          t.selected = best.agent;
+          setSelected(best.agent);
+          setFollow(true);
+          t.controls.autoRotate = false;
+          // High enough to see over the pines and the roofs, close enough to read the bubbles.
+          const inWoods = f.p.place === "woods";
+          t.flyTo(new THREE.Vector3(f.group.position.x, f.group.position.y + 1, f.group.position.z), (inWoods ? 34 : 26) + (n % 3) * 5, { azimuth: az, elevation: inWoods ? 0.95 : 0.6 + (n % 2) * 0.15 });
+          shot = { until: now + HOLD.close, score: best.score, started: now };
+          onShotRef.current?.({ kind: "close", title: best.title, text: best.text, agent: best.agent, name: f.p.name });
+          return;
+        }
+        const pl = (best.place && sc.places.find((p) => p.id === best.place)) || centre;
+        setFollow(false);
+        if (pl) t.flyTo(new THREE.Vector3(pl.x, ground(pl.x, pl.z), pl.z), best.wide ? 120 : 48, { azimuth: az, elevation: best.wide ? 0.7 : 0.55 });
+        t.controls.autoRotate = true;
+        t.controls.autoRotateSpeed = 0.35;
+        shot = { until: now + HOLD.wide, score: best.score, started: now };
+        onShotRef.current?.({ kind: "wide", title: best.title, text: best.text });
+        return;
+      }
+      // Nothing new: someone at work, or the town from above.
+      const working = sc.people.filter((p) => (p.working || p.building) && visible(p.id));
+      const pick = working.length && n % 3 !== 0 ? working[n % working.length] : undefined;
+      if (pick) {
+        const f = t.figures.get(pick.id)!;
+        t.selected = pick.id;
+        setSelected(pick.id);
+        setFollow(true);
+        t.controls.autoRotate = false;
+        t.flyTo(new THREE.Vector3(f.group.position.x, f.group.position.y + 1, f.group.position.z), f.p.place === "woods" ? 36 : 30, { azimuth: az, elevation: f.p.place === "woods" ? 0.95 : 0.65 });
+        onShotRef.current?.({ kind: "idle", title: `${pick.name}, ${pick.activity}`, agent: pick.id, name: pick.name });
+      } else {
+        setFollow(false);
+        setSelected(undefined);
+        if (centre) t.flyTo(new THREE.Vector3(centre.x, ground(centre.x, centre.z), centre.z), 130, { azimuth: az, elevation: 0.75 });
+        t.controls.autoRotate = true;
+        t.controls.autoRotateSpeed = 0.3;
+        onShotRef.current?.({ kind: "idle", title: `${sc.season[0]!.toUpperCase()}${sc.season.slice(1)} in the town`, text: `Day ${sc.day + 1}` });
+      }
+      shot = { until: now + HOLD.idle, score: 0, started: now };
+    };
+    const iv = setInterval(cut, 500);
+    return () => clearInterval(iv);
+  }, [props.director]);
 
   // New land when the town changes.
   useEffect(() => {
@@ -498,6 +668,7 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
         const el = document.createElement("span");
         el.className = `t3-label${pl.id.startsWith("home_") ? " t3-home" : ""}`;
         el.textContent = pl.name;
+        el.hidden = true;
         labels.current!.appendChild(el);
         return { el, x: pl.x, z: pl.z, home: pl.id.startsWith("home_") };
       });
@@ -509,6 +680,8 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
       let el = t.bubbles.get(b.id);
       if (!el) {
         el = document.createElement("span");
+        // Hidden until the render loop has placed it over someone's head.
+        el.hidden = true;
         labels.current!.appendChild(el);
         t.bubbles.set(b.id, el);
       }
@@ -541,10 +714,10 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
   const building = scene?.structures.filter((s) => !s.done) ?? [];
   const built = scene?.structures.filter((s) => s.done).length ?? 0;
   return (
-    <div className="town3d">
+    <div className={`town3d${game ? " t3-game" : ""}`}>
       <div ref={host} className="t3-stage" role="img" aria-label="The town in 3D. Drag to turn, scroll to zoom, click a person.">
         <div ref={labels} className="t3-labels" aria-hidden="true" />
-        {scene && (
+        {scene && !game && (
           <div className="t3-hud">
             <b>{hhmm(scene.hour)}</b> · day {scene.day + 1} · {scene.season}
             {scene.weather !== "fair" ? ` · ${scene.weather}` : ""}
@@ -571,7 +744,7 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
         )}
         {error && <div className="t3-hud t3-error">{error}</div>}
       </div>
-      {!!scene?.moments.length && (
+      {!game && !!scene?.moments.length && (
         <div className="t3-moments">
           <span>Jump to</span>
           {scene.moments.map((m) => (
@@ -581,7 +754,7 @@ export function Town3D({ onOpen }: { onOpen: (id: string) => void }) {
           ))}
         </div>
       )}
-      <p className="t3-help">Drag to turn, right-drag to pan, scroll to zoom. Click anyone to see who they are. Faint blocks are the parts of a house still to be built.</p>
+      {!game && <p className="t3-help">Drag to turn, right-drag to pan, scroll to zoom. Click anyone to see who they are. Faint blocks are the parts of a house still to be built.</p>}
     </div>
   );
 }

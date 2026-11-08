@@ -4,13 +4,15 @@ A world of artificial minds whose psychology is real machinery you can open up, 
 
 **Kettle Island** is a live simulation of five people on a small fishing island. Each one runs on the mind engine: real memory that fades and gets rewritten, moods, trust, goals, sleep. Nobody is scripted. You watch them go about their days, bump into each other, gossip and hold grudges, and you can open any of their heads at any moment to see why they did what they did.
 
-The design proposal behind it lives at https://claude.ai/artifact/7iL2xRmmVXMeDJYnBxDP7G.
+**Psyche Live** is the game built on top of it: a civilization of these minds that runs nonstop in 3D, which you watch, steer and (from G2) reach into. The plan for the game is at https://claude.ai/artifact/GiHxNDat1aGpxQC1UpqEek.
+
+The design proposal behind the engine lives at https://claude.ai/artifact/7iL2xRmmVXMeDJYnBxDP7G.
 
 ## Run it
 
 ```bash
 npm install
-npm run dev        # server on :8787, the island on http://localhost:5173
+npm run dev        # server on :8787; the game on http://localhost:5173, the lab on http://localhost:5173/#/lab
 npm run island -- 3 7 --storm   # three days of island life in the terminal (seed 7, with a storm)
 npm run village -- 8 11         # eight days of Hollow Bay, the village, in the terminal
 npm run generations -- 10       # ten years of Hollow Bay on the mock: lives, norms, inherited fears
@@ -33,6 +35,19 @@ Every model call goes through a budget governor (`packages/faculties/src/governo
 - **Two tiers of attention (L0 and L1).** In the village, the Kettle five and whoever you are watching are L0: Sonnet deliberation and model speech for anything that matters. The settlers are L1: Haiku only, and only their more salient lines go to the model. Set the named characters with `governor.core`.
 
 On the mock, five islanders come to about $0.07 per sim day, almost all of it Sonnet deliberation. Hollow Bay's fifteen come to about $0.09 to $0.11 per sim day.
+
+## Psyche Live (G1): a world that keeps running
+
+`npm run dev` and open http://localhost:5173. The server starts a region of towns (Hollow Bay first; `PSYCHE_SCENARIO=village` or `island` for the others) and keeps it running whether or not anyone is watching. The page is the game: the town fills the screen and everything else floats over it.
+
+- **Pushed, not polled.** The browser opens one event stream (`/api/stream`). On connect the server sends the whole frame (the 3D scene, the town, the feed, notices); after that, each tick sends only what changed: lists go item by item, so a person who moved is a few bytes and a person who didn't is nothing (`world/game.ts`: `frameDelta`, `applyDelta`). Everyone watching sees the same world, and anything one viewer does shows on every screen.
+- **Time.** Pause, 1x (a sim day in about four real minutes), 4x, 10x and 100x (keys space and 1 to 4). Above 4x, speech runs on the free offline mock: nobody can read it that fast, and the minds underneath are the same. At 100x a year goes by in about a minute. If a big town can't keep up, the clock runs as fast as the minds can and says so.
+- **The director.** Every recent moment is scored by what kind of moment it is (a death over a birth over a house finished over small talk; `beats`). The director cuts to the best one not yet shown, glides the camera there, holds it for a few seconds with a caption, and moves on. With nothing new it follows someone at work or takes in the town from above. Touch the camera and it's yours; leave it alone for 20 seconds and the director takes it back (key D turns it off).
+- **Notices.** History (from the region's chronicle: foundings, leaders, laws, quarrels, lost crafts), big moments in the town you're watching, and warnings about what is coming: a craft whose last keeper is old ("Only Greta (71) still knows herb lore in Saltmarsh"), a town big enough to split in spring with the person who would lead the leavers (the same test the split itself runs), a thin store going into winter. Click one to fly there, switching towns if need be.
+- **While you were away.** With nobody watching for two minutes, speech goes on the mock (`PSYCHE_AWAY_AFTER` in seconds), so an unattended world costs nothing. When you come back after at least a sim day, you get what changed: years passed, each town's population then and now, new towns, and the dozen most significant chronicle entries.
+- **Saves.** The world saves itself every minute and keeps an hourly copy for the last day (`data/snapshots`). Name a world in the menu (☰) to keep it (`data/slots`); load it later to play it out differently. Loading replaces the running world.
+- **Cost.** The chip in the corner shows today's spend against the cap and what an hour costs at the current speed, measured only over time when speech was on the model. On the mock it shows what 1x would cost on Claude.
+- **The mind drawer.** Click anyone, or "mind" beside any line, and their head opens on the right: the brain scan, what weighs on them, **Why?**, What if not. The lab (`#/lab`) keeps every analysis view.
 
 ## Why: the causal ledger
 
