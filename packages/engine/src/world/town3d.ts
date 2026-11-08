@@ -10,6 +10,7 @@ import { idx, inside, M, type Grid, type Plot, type Tree } from "../founders/vox
 import { hourOf } from "../mind.js";
 import { isChild } from "./life.js";
 import type { FeedItem, WorldState } from "./world.js";
+import { CIVIC_SLOTS, shownBlocks, works } from "./works.js";
 
 export const TOWN = { w: 192, d: 200, h: 26, sea: 4 };
 /** Home plots: five to a row, eight rows below the fire circle, each with room for a tent beside it. */
@@ -101,6 +102,8 @@ export function townTerrain(seed: number): TownTerrain {
     const p = homePlot(k);
     level(p.x0 - 5, p.z0 - 1, p.x0 + p.w, p.z0 + p.d);
   }
+  // And for the civic plots, where the town raises what it builds together.
+  for (const c of CIVIC_SLOTS) level(c.x0 - 1, c.z0 - 1, c.x0 + PLOT, c.z0 + PLOT);
   const f = SPOTS.fields!;
   level(f.x - 12, f.z - 9, f.x + 12, f.z + 9);
 
@@ -211,6 +214,7 @@ export function townTerrain(seed: number): TownTerrain {
     if (Math.abs(x - SPOTS.quarry!.x) < 8 && Math.abs(z - SPOTS.quarry!.z) < 8) return false;
     if (Math.abs(x - SPOTS.graveyard!.x) < 7 && Math.abs(z - SPOTS.graveyard!.z) < 5) return false;
     if (Math.abs(z - hb.z) < 3 && x < t.x) return false;
+    if (CIVIC_SLOTS.some((c) => x > c.x0 - 3 && x < c.x0 + PLOT + 2 && z > c.z0 - 3 && z < c.z0 + PLOT + 2)) return false;
     return true;
   };
   const plant = (x: number, z: number) => {
@@ -259,7 +263,8 @@ export interface Scene3D {
   day: number;
   season: string;
   weather: string;
-  structures: { id: string; household: string; name: string; plot: Plot; blueprint: Blueprint; placed: number; total: number; done: boolean; builders: string[] }[];
+  /** Homes, and the town's civic works (household "town", with `work` set). */
+  structures: { id: string; household: string; name: string; plot: Plot; blueprint: Blueprint; placed: number; total: number; done: boolean; builders: string[]; work?: { kind: string; status: string; condition: number } }[];
   tents: { household: string; x: number; z: number }[];
   people: { id: string; name: string; x: number; z: number; place: string; activity: string; asleep: boolean; indoors: boolean; child: boolean; building: boolean; working: boolean }[];
   places: { id: string; name: string; x: number; z: number }[];
@@ -302,13 +307,20 @@ const STOCK: Blueprint[] = [
   { name: "A stone house", width: 8, depth: 7, wallHeight: 4, walls: "cobble", foundation: "cobble", corners: "same", floor: "cobble", roof: { shape: "hip", material: "plank", overhang: 0 }, door: "south", windows: ["west"], furniture: ["bed", "hearth", "table", "chest"], porch: false },
 ];
 
+/** The plot for civic slot `k`, on the levelled ground. */
+export function civicPlot(k: number, ground?: number[]): Plot {
+  const c = CIVIC_SLOTS[k % CIVIC_SLOTS.length]!;
+  const y = ground ? ground[c.x0 + 6 + (c.z0 + 6) * TOWN.w]! + 1 : 0;
+  return { x0: c.x0, z0: c.z0, w: PLOT, d: PLOT, y };
+}
+
 /** Everything that changes in the town's picture, at this moment. */
 export function townScene(world: WorldState, feed: FeedItem[] = [], big: FeedItem[] = []): Scene3D {
   const v = world.village!;
   const land = terrainOf(world.seed);
   const ground = land.ground;
   const wood = fellingOrder(land);
-  const timber = v.structures.reduce((n, s) => n + s.have.timber, 0);
+  const timber = v.structures.reduce((n, s) => n + s.have.timber, 0) + works(world).reduce((n, x) => n + x.have.timber, 0);
   const felled = Math.min(Math.floor(wood.length * 0.7), Math.floor(timber / LOGS_PER_TREE));
   const homes = homeOrder(world);
   const plotOf = (home: string) => homePlot(Math.max(0, homes.indexOf(home)), ground);
@@ -316,7 +328,7 @@ export function townScene(world: WorldState, feed: FeedItem[] = [], big: FeedIte
   const night = hour >= 22 || hour < 6;
 
   const live = new Set(homes);
-  const structures = v.structures
+  const structures: Scene3D["structures"] = v.structures
     .filter((s) => live.has(v.households[s.household]?.home ?? ""))
     .map((s) => {
       const hh = v.households[s.household]!;
@@ -333,6 +345,16 @@ export function townScene(world: WorldState, feed: FeedItem[] = [], big: FeedIte
     structures.push({ id: `stock_${hh.id}`, household: hh.id, name: blueprint.name, plot, blueprint, placed: total, total, done: true, builders: [] });
   }
   const housed = new Set(structures.filter((s) => s.done).map((s) => s.household));
+  // The town's works: going up, standing, worn, or a stump of a ruin. The newest on a plot wins.
+  const civic = new Map<number, (typeof structures)[number]>();
+  for (const wk of works(world)) {
+    if (!wk.blueprint || wk.status === "proposed" || wk.status === "rejected") continue;
+    const plot = civicPlot(wk.slot, ground);
+    const total = compile(wk.blueprint, plot).length;
+    civic.set(wk.slot, { id: wk.id, household: "town", name: wk.name, plot, blueprint: wk.blueprint, placed: shownBlocks(wk, total), total, done: wk.status !== "building", builders: wk.builders, work: { kind: wk.kind, status: wk.status, condition: Number(wk.condition.toFixed(2)) } });
+  }
+  structures.push(...civic.values());
+  const siteWork = works(world).find((x) => x.status === "building") ?? works(world).find((x) => x.status === "done" && x.mending);
   const tents = Object.values(v.households)
     .filter((h) => h.members.length && !housed.has(h.id) && h.shelter === "tent")
     .map((h) => {
@@ -371,7 +393,15 @@ export function townScene(world: WorldState, feed: FeedItem[] = [], big: FeedIte
       asleep = night;
     } else {
       const s = SPOTS[place] ?? { x: (world.places[place]?.x ?? 50) * 1.8, z: (world.places[place]?.y ?? 30) * 1.8, r: 3 };
-      if (place === "sea") {
+      if (place === "works" && siteWork) {
+        // Round the walls of the work going up, a new spot every sim-hour.
+        const p = civicPlot(siteWork.slot);
+        const h = hash(id + Math.floor(world.tick / 60));
+        const side = Math.floor(h * 4), along = 1 + ((h * 97) % 1) * (PLOT - 2);
+        x = side === 0 ? p.x0 + along : side === 1 ? p.x0 + PLOT : side === 2 ? p.x0 + along : p.x0 - 1;
+        z = side === 0 ? p.z0 - 1 : side === 1 ? p.z0 + along : side === 2 ? p.z0 + PLOT : p.z0 + along;
+        building = /build|mend/.test(a.activity);
+      } else if (place === "sea") {
         // Out in the bay, each in their own boat.
         x = 4 + r1 * 12;
         z = 38 + r2 * 40;
@@ -389,7 +419,7 @@ export function townScene(world: WorldState, feed: FeedItem[] = [], big: FeedIte
         z = s.z + Math.sin(ang) * rad;
       }
     }
-    return { id, name: world.minds[id]!.name, x: Number(x.toFixed(2)), z: Number(z.toFixed(2)), place, activity: a.activity, asleep, indoors, child: isChild(world, id), building, working: building || (["woods", "quarry", "fields", "reeds", "sea"].includes(place) && !/passed the time|talk|sitting|rest/.test(a.activity)) };
+    return { id, name: world.minds[id]!.name, x: Number(x.toFixed(2)), z: Number(z.toFixed(2)), place, activity: a.activity, asleep, indoors, child: isChild(world, id), building, working: building || (["woods", "quarry", "fields", "reeds", "sea", "works"].includes(place) && !/passed the time|talk|sitting|rest/.test(a.activity)) };
   });
 
   const places = Object.entries(SPOTS)
@@ -401,6 +431,11 @@ export function townScene(world: WorldState, feed: FeedItem[] = [], big: FeedIte
     const hh = byHome.get(home);
     const name = world.places[home]!.name;
     places.push({ id: home, name: hh && housed.has(hh.id) ? name.replace(/\btents?$/, "house") : name, x: p.x0 + PLOT / 2, z: p.z0 + PLOT + 2 });
+  }
+  for (const st of civic.values()) {
+    const wk = st.work!;
+    const label = wk.status === "ruin" ? `ruins of ${st.name}` : wk.status === "building" ? `${st.name} (going up)` : wk.condition < 0.55 ? `${st.name} (worn)` : st.name;
+    places.push({ id: st.id, name: label, x: st.plot.x0 + PLOT / 2, z: st.plot.z0 + PLOT + 2 });
   }
   const alive = new Set(world.order);
   const bubbles: Scene3D["bubbles"] = [];

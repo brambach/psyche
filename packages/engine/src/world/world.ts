@@ -3,6 +3,7 @@
 // routines, bump into each other, and talk. Most steps need no language model at all: the engine
 // decides who talks to whom and about what, and the Speak faculty only puts it into words.
 
+import { intentOf } from "./intentions.js";
 import { baseLevel, clamp, reconsolidate, render, use } from "../memory.js";
 import { dayOf, hourOf, identityOf, perceiveText, runPercept, wait } from "../mind.js";
 import { PARAMS } from "../params.js";
@@ -12,6 +13,7 @@ import type { ReconsolidationTrace, Trace } from "../trace.js";
 import type { Ablations, AgentId, Belief, Episode, MindState, Pronouns, Tick } from "../types.js";
 import { CAST_ORDER, createCast, WORLD_START } from "./cast.js";
 import { PLACES, type Place, type PlaceId, type RoutineEntry, type Want } from "./places.js";
+import { voiceStep, type VoiceState } from "./voice.js";
 import { injectVillage, overhear, villageStep, villageWorkplace, type VillageEvent, type VillageState } from "./village.js";
 
 const STEP = 10;
@@ -61,6 +63,8 @@ export interface Rumor {
   slotKey?: string;
   first: string;
   hops: RumorHop[];
+  /** Words you spoke into the world: the guise you spoke them in. */
+  guise?: string;
 }
 
 export interface WorldEventRecord {
@@ -88,6 +92,8 @@ export interface WorldState {
   events: WorldEventRecord[];
   /** Present when this world is a village with food, houses and a common store. */
   village?: VillageState;
+  /** Present once you have spoken into this world (voice.ts). */
+  voice?: VoiceState;
   /** What the player changed in people's minds, oldest first. */
   edits?: EditRecord[];
   /** Chance is keyed by what it decides (see luck()), so twin runs share their luck. */
@@ -241,6 +247,7 @@ export async function advance(world: WorldState, minutes: number, faculties: Fac
     if (slept.length > 0) morning(world, sink, slept);
     updatePositions(world, sink);
     if (world.village) await villageStep(world, dt, faculties, sink);
+    if (world.voice) await voiceStep(world, faculties, sink);
     if (isNight(world.tick)) continue;
     await encounters(world, faculties, sink);
   }
@@ -279,7 +286,8 @@ function scheduled(world: WorldState, a: AgentState): { place: PlaceId; activity
     if (!a.evening || a.evening.day !== day) {
       const m = world.minds[a.id]!;
       // Going out: extraverts and the lonely go; stress and avoidance keep people in.
-      const p = clamp(0.15 + 0.45 * m.traits.extraversion + 0.5 * (1 - m.needs.relatedness) - 0.3 * m.affect.stress - 0.2 * m.attachment.avoidance);
+      const it = intentOf(world, a.id)?.kind;
+      const p = clamp(0.15 + 0.45 * m.traits.extraversion + 0.5 * (1 - m.needs.relatedness) - 0.3 * m.affect.stress - 0.2 * m.attachment.avoidance + (it === "keep" ? -0.35 : it === "court" ? 0.2 : 0));
       a.evening = { day, out: luck(world, "evening", a.id) < p };
     }
     if (a.evening.out) return entry.evening;

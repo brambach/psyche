@@ -6,6 +6,7 @@
 // cold-weather crafts, Henrich 2004, is the classic case). Each craft does one plain thing to the
 // town's economy or health, so losing one shows.
 
+import { intentOf } from "./intentions.js";
 import { nextRandom } from "../rng.js";
 import type { AgentId, Tick } from "../types.js";
 import { ageOf, isChild } from "./life.js";
@@ -164,10 +165,13 @@ export function knowledgeTurn(world: WorldState, sink: Sink): void {
     const mine = K.known[t] ?? [];
     if (!mine.length) continue;
     const m = world.minds[t]!;
-    if (luck(world, "teach", t) > 0.15 + 0.3 * (m.traits.agreeableness + m.traits.extraversion) / 2) continue;
+    // Someone who means to teach this season takes a pupil; others may, as temperament has it.
+    const meant = intentOf(world, t);
+    const roll = luck(world, "teach", t);
+    if (meant?.kind !== "teach" && roll > 0.15 + 0.3 * (m.traits.agreeableness + m.traits.extraversion) / 2) continue;
     const kin = world.order.filter((x) => v.life[x]?.parents.includes(t) && ageOf(world, x) >= 9);
     const home = Object.values(v.households).find((h) => h.members.includes(t))?.members.filter((x) => x !== t && ageOf(world, x) >= 9) ?? [];
-    for (const k of mine) {
+    for (const k of meant?.kind === "teach" ? [...mine].sort((a, b) => Number(b.craft === meant.target) - Number(a.craft === meant.target)) : mine) {
       const pool = [kin, home, adults.filter((x) => x !== t && (m.others[x]?.liking ?? 0.5) > 0.55)].map((xs) => xs.filter((x) => !knows(world, x, k.craft)));
       const group = pool.find((xs) => xs.length);
       if (!group) continue;

@@ -52,7 +52,7 @@ export {
   type Weather,
   type Resource,
 } from "./world/village.js";
-export { townTerrain, terrainOf, townScene, fellingOrder, LOGS_PER_TREE, homePlot, homeOrder, SPOTS, TOWN, type TownTerrain, type Scene3D } from "./world/town3d.js";
+export { townTerrain, terrainOf, townScene, civicPlot, fellingOrder, LOGS_PER_TREE, homePlot, homeOrder, SPOTS, TOWN, type TownTerrain, type Scene3D } from "./world/town3d.js";
 export { createSettlers, TRADES, type Settler } from "./world/people.js";
 export { MATERIALS, M, get, generateIsland, encodeGrid, census, standY, type Material, type Grid, type Plot, type Terrain, type Tree } from "./founders/voxel.js";
 export { check, compile, bill, describe, siteOf, PACE, SIDES, type Blueprint, type Side, type Furniture, type Placement, type Part, type Bill, type Item } from "./founders/blueprint.js";
@@ -108,5 +108,68 @@ export { digest, timeline, type Timeline } from "./world/digest.js";
 export { luck } from "./world/world.js";
 export { frameDelta, applyDelta, deltaMemory, beats, beatOf, warnings, momentNotices, chronicleNotices, awaySummary, type Frame as GameFrame, type FrameDelta, type DeltaMemory, type Beat, type Notice, type AwaySummary } from "./world/game.js";
 export * as lab from "./lab/index.js";
+export {
+  voiceOf,
+  voiceAct,
+  voiceSummary,
+  voiceBends,
+  lineage as voiceLineage,
+  readWord,
+  renderVersion,
+  versionDistance,
+  faithOf,
+  guiseName,
+  LADDER,
+  type Guise,
+  type VoiceAct,
+  type VoiceState,
+  type VoiceSummary,
+  type WordSummary,
+  type Word,
+  type Carrier,
+  type Bend,
+  type BendKind,
+  type Faith,
+  type Lineage as VoiceLineage,
+  type LineageNode,
+  type VoiceLog,
+} from "./world/voice.js";
 export { applyEdit, editable, shapeFear, inheritEdits, FEARS, PRESETS, type MindEdit, type EditInput, type EditRecord } from "./world/edits.js";
+export { WORKS, WORK_KINDS, CIVIC_SLOTS, works, stands, civicSite, concernFor, worksSeason, worksDay, aggWorks, shownBlocks, type Work, type WorkKind } from "./world/works.js";
+export { intentOf, intentionsSeason, menu as intentMenu, steer, type Intention, type IntentKind } from "./world/intentions.js";
 export { butterfly, type Butterfly, type Flip, type TownSide } from "./world/butterfly.js";
+export {
+  nestedSeason,
+  nestedOf,
+  worldAt,
+  engines,
+  nestedWorldView,
+  nestedPersonView,
+  personOf,
+  suspicionOf,
+  flavorOf,
+  SUSPICIONS,
+  MIRROR,
+  MAX_DEPTH,
+  WAKING,
+  type NestedState,
+  type Machine,
+  type Making,
+  type Sign,
+  type SignKind,
+  type NestedEvent,
+  type LevelWhy,
+  type Flavor,
+  type Level,
+  type EngineChain,
+  type MachineSummary,
+  type InnerPerson,
+  type NestedWorldView,
+  type NestedPersonView,
+} from "./world/nested.js";
+export { readPerson, finishReading, sanitizeReading, mockReader, pronounsOf, VALUE_GOALS } from "./persona/finish.js";
+export { mockRead } from "./persona/mock.js";
+export { parseWriting, quoteFound, worldTopics, shapeBelief, inWorldWords } from "./persona/text.js";
+export { admitPersona, personaMind, personaLife, type PersonaOrigin, type PersonaLife } from "./persona/arrive.js";
+export { SAMPLE_PERSONA, SAMPLE_CHAT } from "./persona/sample.js";
+export { VALUES, PERSONA_TRADES, type RawReading, type PersonaReading, type PersonaReader, type WritingInput, type Quote, type PersonaTrait, type PersonaMemory, type PersonaBelief, type PersonaValue, type PersonaPerson, type ValueName, type PersonaTrade } from "./persona/types.js";

@@ -84,6 +84,52 @@ After any change, **Both ways** runs the town on from that moment twice, once wi
 | Laws (made to force giving) | 3 | none |
 | Leader | someone else | the usual leader |
 
+## Builders (G4): what a town raises together, and what each person means to do
+
+**Civic works.** Once a season, someone may stand up at the fire and ask the town to build something: a granary, a well, a meeting hall, a jetty and boat shed, or a memorial. Who asks, and for what, comes from what is on their mind: a core belief about hunger, a goal, a grief, a lean store, a town of fishers. Every adult then votes through their own mind (each vote is a traced choice). If it passes, the person who asked designs it with the Architect, and builders and volunteers raise it block by block from the town's timber, stone and reeds, over days. You can watch it go up in 3D on its own plot (the jetty by the landing, the rest near the fire). Click a work on the town card to fly the camera to it.
+
+Each work changes life once it stands:
+
+| Work | What it does |
+|---|---|
+| Granary | Households lose half as much food to spoiling |
+| Well | The young and middle-aged die of fevers less often |
+| Hall | Nobody gets as lonely; winter is less of a strain |
+| Jetty | Fishers bring in a quarter more |
+| Memorial | The bereaved carry their grief more easily |
+
+Works wear. Below a point they need mending, and builders go to it. Left unmended for about three years, a work falls to ruin: you see a stump in 3D, the chronicle records it, and it stops doing its job. Towns nobody is watching build and mend on rules, a season at a time. See `packages/engine/src/world/works.ts`.
+
+Personality decides what gets built. A test makes the whole town hard and suspicious, then puts the hall to a vote. The warm town votes 14 to 1 and builds it. The hard town votes it down, 9 against. **Both ways** now compares what each town has built.
+
+**Seasonal intentions.** When a season turns, each adult sits with it and decides what they mean to do with the next one. They choose from a typed menu built from the world and their own mind:
+
+- ask the town for a work
+- put more by in the store
+- give spare hours to the work going up
+- teach a craft
+- court someone
+- make peace with someone they have fallen out with
+- stand against the leader in spring
+- keep to themselves
+
+Each person thinks this through (System 2, citing what is in mind; Sonnet on Claude for the people you watch). The intention then leans on what they do all season: the pledge, the vote, whom they court and teach, whether they go out of an evening. Each lean is a term in a later choice. The ledger shows it as a **meant to** edge from the season's decision to the choice it shaped. Open anyone's mind to see what they mean to do this season and why. The town card counts what the town means to do. See `packages/engine/src/world/intentions.ts`.
+
+## Someone real: a mind read from their own writing
+
+Pick **＋ Someone real** in the game header and paste a person's own writing: chat messages, notes to self, a journal. A chat export ("Name: message" lines, with or without timestamps) works too; only their own lines are read. Psyche reads a mind from it (`packages/engine/src/persona/`):
+
+- **Temperament**: the six traits, from how they write (anxiety and sadness words, "I" and "we", plans and lists, hedges, thanks, swearing; after Pennebaker & King 1999 and Yarkoni 2010) and from anything they say about themselves outright ("I'm kind of an introvert").
+- **Formative memories**: past-tense moments with feeling in them, in their words, and how they will remember them in the village (an apartment becomes rooms, a truck a cart).
+- **Core beliefs**: generalizations they state ("you can't count on anyone when it actually matters"), tied to the memory most likely behind them, and the lesson a strong memory taught where they don't say it. Each gets the world topics that set it off, so it comes up at the pledge, an ask for help, a trade.
+- **Values** (Schwartz), which become goals in the village; **people** in their life, who stay behind as memories; attachment, how they see themselves, a trade, and **how they talk**, which the speech faculty uses.
+
+Every piece shows the passages it came from, checked word for word against the writing. You can drag a trait or leave a memory or belief out. Then a boat brings them to the town you're watching, alone, a stranger to everyone, and the engine runs them like anyone else. Arrival is a recorded input (`{ type: "arrive" }`), so the world replays exactly.
+
+Each piece of the mind keeps its provenance (an edit record with `source: "writing"` and the quote), so **Why?** on a choice they make years later can end at a sentence they wrote: "Juniper chose: Hold back ← core belief “People mean well but you can't count on anyone” ← installed by the night her dad left ← Juniper wrote: “When I was 12 my dad left...”". The **Their writing** tab in their mind drawer shows who they were when they came and who they are now: how many of their choices here trace back to the writing, which beliefs held or faded, how their memories have been retold, who they've grown close to, and the life they've lived.
+
+The reading runs on a free offline reader (word patterns) by default. With Claude connected it is one Sonnet call per import (`packages/faculties/src/persona.ts`, a few cents, metered and capped like every other call; `PSYCHE_MODEL_PERSONA` overrides the model). The writing itself is not saved; the reading and the short quotes it cites are kept with the world. **Try a made-up sample person** loads Juniper Vale, an invented person for testing.
+
 ## Why: the causal ledger
 
 The brain scan shows one moment. The ledger (`packages/engine/src/ledger.ts`) joins every moment into one graph of what caused what, across time and across people: the event a memory came from, the beliefs and trust it moved, what was in mind at each choice, who told whom, which belief rewrote which memory, and the formative night behind a core belief. Nothing in it causes behaviour; it is built from the traces after the fact.
@@ -176,6 +222,25 @@ Open **Watch in 3D** in the village or region scenario. The town is laid out on 
 - In a region, **The whole coast** shows every town small, with trade boats and founding boats. Click a town's name to fly down to it. It comes to life in full, and the town you left carries on by rules.
 
 `packages/web/src/replay.ts` draws a recorded century the same way from a timeline alone, for a standalone page.
+
+## Worlds inside the world: engines, and the minds in them
+
+Somewhere in a region, a curious, careful person who keeps the tide tables starts cutting a notch for every tide, and sees that the count can tell the next tide before it comes (`packages/engine/src/world/nested.ts`). The count is taught like any craft and dies with its last keeper if nobody learned it. Years later it becomes a bead frame that can follow a rule; in spring the keeper asks the town for timber and stone to make it an engine, and the town votes (openness, liking for the asker, and how full the store is). Built from what the piles can spare after houses, the engine turns, and a small world wakes inside it.
+
+- **The same engine, one level of detail down.** The world inside is a village on the aggregate tier: real minds that remember, pair up, die, elect leaders, teach crafts and tell their children stories, a season at a time on rules. It runs faster than the world holding it (four of its seasons to one outside), and each level is smaller (12, 9, then 7 people wake; 40, 28, 20 at most). It can build an engine of its own, down to three worlds deep.
+- **Made in the maker's image.** Each person who wakes is modelled on someone the maker knew (the maker first, then the people they are closest to, the dead included), with tempers pulled toward the maker's own. Each wakes remembering a past that belongs to someone outside: the memory behind their model's strongest core belief, and the belief comes with it.
+- **They notice.** Every sign has a real cause one level up, and the Why says so, each link marked with the world it happened in: a *false past* (a town that isn't in their world, because it is the maker's memory), *the repeat* (every winter loses the same share of days to gales, because the aggregate tier runs on rules), *a boat from nowhere* (the village rules send newcomers; there is no other shore), *a lost season* (a bead slipped: a gale outside, hungry keepers, a lone keeper), and *the keeper's hand* (a keeper who tended it grieving or glad, and the season inside followed). The first boat is a wonder; by the fifth, boats just come.
+- **They read it by temperament.** The anxious and the hard come to dread an indifferent maker, the warm to trust a watchful one, the curious and steady to suspect the world runs on rules, like beads on a frame. Each reading is a core belief whose origin is the sign, so the engine's own story-passing carries it: told at the fire, handed down at bedtime, each copy pointing back to the teller's, back to whoever saw the sign. Worlds made by curious makers fill with curious people, and more of them guess the truth.
+- **Word goes up.** The keepers read the beads. When the people inside start saying someone made them, a keeper may come to believe "Maybe we are inside someone's engine too" (or, if steadier, "If we can make a world, someone may have made ours"). That is a core belief in a real mind, with the reading as its origin, so it shows in their mind drawer under What weighs on them, traces in the ledger, and passes to their children.
+
+In the game, **⊚ Worlds inside** appears in the header once any town starts counting. It opens a lens on each world in 3D (a frame of beads around anything inside an engine) with a breadcrumb from the real town down (W0, W1, W2, W3; keys + and −). Beside it: how many suspect and how, what they think made them against what did, every sign with its cross-level Why, who each person was modelled on and whose past they carry, and each core belief traced to where it started. Click a link in W0 to open that person's mind in the game. Engines show in the chronicle and the notices, and the director cuts to them.
+
+```bash
+npm run nested -- 34 11 out/nested   # 34 years on the mock (a few seconds), every level printed; writes a save
+PSYCHE_DATA=$PWD/out/nested npm run dev
+```
+
+At most two real towns count at once, so a region keeps at most two chains of worlds (about 2 to 4 MB in the save). Nothing here calls a model: worlds inside run on the cheap faculties the region gives aggregated towns, the free offline mock on the server.
 
 ## Founders (F0): one mind builds a house
 

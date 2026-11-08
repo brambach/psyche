@@ -12,6 +12,7 @@
 // way drift and standardize, as in serial reproduction (Bartlett 1932), so towns that tell it from
 // different mouths come to tell it differently.
 
+import { intentOf } from "./intentions.js";
 import { clamp, render } from "../memory.js";
 import { identityOf, runPercept } from "../mind.js";
 import type { Faculties, Percept } from "../ports.js";
@@ -73,7 +74,9 @@ export function elect(world: WorldState, sink: Sink): Election | undefined {
       .map((o) => {
         const r = m.others[o]!;
         // Elders get a little deference; the sitting leader a little more.
-        return { o, s: r.liking * 0.6 + r.trust.benevolence * 0.4 + Math.min(ageOf(world, o), 60) / 600 + (o === c.leader ? 0.05 : 0) };
+        // Someone who stood against the leader asked for names; those who already like them give theirs.
+        const stood = intentOf(world, o)?.kind === "challenge" && r.liking >= 0.5 ? 0.08 : 0;
+        return { o, s: r.liking * 0.6 + r.trust.benevolence * 0.4 + Math.min(ageOf(world, o), 60) / 600 + (o === c.leader ? 0.05 : 0) + stood };
       })
       .sort((a, b) => b.s - a.s || a.o.localeCompare(b.o));
     for (const { o } of ranked.slice(0, 3)) votes[o] = (votes[o] ?? 0) + 1;

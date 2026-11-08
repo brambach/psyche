@@ -30,6 +30,9 @@ function when(t: number | null): string {
   return clock(t);
 }
 
+/** A piece of someone's mind read from their own writing (persona/), not a change the player made. */
+const words = (n: LedgerNode) => n.kind === "edit" && /^\S+(?: wrote: | values |'s writing)/.test(n.label);
+
 export type LineageQuery = { node?: string; agent?: string; trace?: string };
 
 /**
@@ -71,7 +74,7 @@ export function Lineage({ query, focus, names, onOpen, onClose }: { query: Linea
               {view.chain.map((n, i) => (
                 <span key={n.id}>
                   {i > 0 && <span className="arrow"> → </span>}
-                  <span className={`kind k-${n.kind}`}>{KIND[n.kind]}</span> {n.label}
+                  <span className={`kind k-${n.kind}${words(n) ? " k-words" : ""}`}>{words(n) ? "their words" : KIND[n.kind]}</span> {n.label}
                 </span>
               ))}
             </p>
@@ -127,7 +130,7 @@ function Branch({ t, focus, names, open }: { t: WhyTree; focus: string; names: R
       {t.via && <span className="via">{t.via.mechanism}</span>}
       <div className={`why-node k-${n.kind}`} style={other ? { borderLeftColor: `var(--a-${n.agent})` } : undefined}>
         <span className="head">
-          <span className={`kind k-${n.kind}`}>{KIND[n.kind]}</span>
+          <span className={`kind k-${n.kind}${t.via?.mechanism === "in their own words" ? " k-words" : ""}`}>{t.via?.mechanism === "in their own words" ? "their words" : KIND[n.kind]}</span>
           {other && <b className="whose" style={{ color: `var(--a-${n.agent})` }}>{names[n.agent!] ?? n.agent}</b>}
           {click ? <button className="linkish" onClick={click}>{n.label}</button> : <span>{n.label}</span>}
         </span>

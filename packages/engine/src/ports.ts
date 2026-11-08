@@ -67,6 +67,8 @@ export interface Percept {
   alreadySaid?: string[];
   /** What the world affords right now. When given, these are the options instead of the social defaults. */
   options?: ActionOption[];
+  /** A choice made at leisure (what to do with a season): the person thinks it through rather than going with the gut. */
+  reflect?: boolean;
 }
 
 /** One thing a mind could do, with the dispositions it expresses (scored by the engine, not the model). */
@@ -89,6 +91,11 @@ export interface ActionOption {
    * victim's cries), worked out by whoever built the percept. Scored as given, refs and all.
    */
   situation?: { name: string; value: number; ref?: string }[];
+  /**
+   * What draws this person to this option in particular, beyond temperament: a fear it answers, a
+   * goal it serves, an intention made earlier. Each becomes a term in the option's score, with its ref.
+   */
+  pull?: { name: string; value: number; ref?: string }[];
 }
 
 // ---------------------------------------------------------------- faculty requests
