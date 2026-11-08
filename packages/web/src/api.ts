@@ -1,5 +1,5 @@
 import type { VoiceSummary, VoiceLineage, Guise } from "@psyche/engine";
-import type { Intention, Butterfly, EngineChain, NestedPersonView, NestedWorldView, EditRecord, MindEdit, TraitName, AwaySummary, Beat, ChronicleEntry, Notice, Scene3D, Timeline, Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
+import type { HeresyView, Faction, Intention, Butterfly, EngineChain, NestedPersonView, NestedWorldView, EditRecord, MindEdit, TraitName, AwaySummary, Beat, ChronicleEntry, Notice, Scene3D, Timeline, Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
 
 export interface AgentSummary {
   id: string;
@@ -172,6 +172,8 @@ export const api = {
   years: (years: number) => call<WorldView>("/api/years", { years }),
   counterfactual: (edit: CounterfactualEdit & { days?: number }) => call<Counterfactual>("/api/counterfactual", edit),
   account: (agent: string, trace: string) => call<SaysVsWas>(`/api/account?${new URLSearchParams({ agent, trace })}`),
+  heresy: () => call<HeresyView>("/api/heresy"),
+  heresyAnswer: (agent: string, text: string) => call<HeresyView>("/api/heresy/answer", { agent, text }),
   slots: () => call<{ slots: Slot[] }>("/api/slots"),
   saveSlot: (name: string) => call<{ slots: Slot[] }>("/api/slots/save", { name }),
   loadSlot: (name: string) => call<{ slots: Slot[] }>("/api/slots/load", { name }),
@@ -247,6 +249,8 @@ export interface GameView {
   voice?: VoiceSummary;
   /** The town's 3D scene, put back together from its `scene.*` keys. */
   scene?: Scene3D;
+  /** The made world at a glance (absent when it is switched off). */
+  heresy?: { factions: Record<Faction, number>; open: { who: string; name: string; tick: number }[]; anomalies: number; leader?: HeresyView["leader"] };
   /** Towns that have started counting, and the worlds inside their engines. */
   engines?: EngineChip[];
 }

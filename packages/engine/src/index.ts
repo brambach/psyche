@@ -107,6 +107,39 @@ export { CRAFTS, craft, craftBonus, craftLineage, knows, townCrafts, knowledgeOf
 export { digest, timeline, type Timeline } from "./world/digest.js";
 export { luck } from "./world/world.js";
 export { frameDelta, applyDelta, deltaMemory, beats, beatOf, warnings, momentNotices, chronicleNotices, awaySummary, type Frame as GameFrame, type FrameDelta, type DeltaMemory, type Beat, type Notice, type AwaySummary } from "./world/game.js";
+export {
+  enableHeresy,
+  heresyStep,
+  heresyView,
+  heresyChain,
+  heresyNotices,
+  heresyOf,
+  orthodoxyOf,
+  silenceOf,
+  heresyText,
+  factionOf,
+  evidenceOf,
+  doubtOf,
+  susceptibility,
+  leaderOf,
+  confide,
+  voiceFromSky,
+  leaveResidue,
+  markUnnatural,
+  ANOMALY_WEIGHT,
+  CORE_TEXT,
+  MADE,
+  UNCANNY,
+  type HeresyState,
+  type HeresyView,
+  type HeresyPerson,
+  type HeresyEvent,
+  type HeresyEventKind,
+  type Anomaly,
+  type AnomalyKind,
+  type Faction,
+  type ChainStep,
+} from "./world/heresy.js";
 export * as lab from "./lab/index.js";
 export {
   voiceOf,

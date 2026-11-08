@@ -26,6 +26,7 @@ import { nestedSeason } from "./nested.js";
 import { WorldSession, type WorldSessionOptions } from "./session.js";
 import { carryWords, quietSpread } from "./voice.js";
 import { createVillage, foundVillage, type Household } from "./village.js";
+import { enableHeresy } from "./heresy.js";
 import { eventPercept, feed, personName, record, thirdPerson, type Sink, type Why, type WorldState } from "./world.js";
 
 export interface Town {
@@ -59,7 +60,7 @@ export interface ChronicleEntry {
   tick: Tick;
   year: number;
   town?: string;
-  kind: "founding" | "leader" | "law" | "death" | "trade" | "quarrel" | "peace" | "hunger" | "craft" | "lost" | "work" | "ruin" | "faith" | "engine";
+  kind: "founding" | "leader" | "law" | "death" | "trade" | "quarrel" | "peace" | "hunger" | "craft" | "lost" | "work" | "ruin" | "faith" | "engine" | "heresy";
   text: string;
   agents?: AgentId[];
   /** What led to it, as far back as the records go: the people, their reasons and the memories behind them. */
@@ -436,6 +437,8 @@ export class RegionSession {
     if (v.civic?.leader && leavers.includes(v.civic.leader)) v.civic.leader = undefined;
     r.towns.push(town);
     r.last.feed[town.id] = 0;
+    // A daughter town can come to doubt the world as its mother did (the leavers carry what they believe).
+    if (w.heresy) enableHeresy(nw);
     this.towns[town.id] = new WorldSession(nw, this.faculties, this.opts.session);
     // The session works on its own copy; everything from here on happens to that one.
     const nwLive = this.towns[town.id]!.world;

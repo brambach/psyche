@@ -12,11 +12,14 @@ import { applyEdit, type EditInput } from "./edits.js";
 import { admitPersona } from "../persona/arrive.js";
 import type { PersonaReading } from "../persona/types.js";
 import { advance, inject, say, type FeedItem, type Sink, type WorldEvent, type WorldState, type WorldTrace } from "./world.js";
+import { leaveResidue, voiceFromSky } from "./heresy.js";
 
 export type WorldInput =
   | { type: "advance"; minutes: number }
   | { type: "inject"; event: WorldEvent }
   | { type: "say"; to: string; text: string }
+  /** A voice from the empty sky (the player answering someone who called out to the watcher). */
+  | { type: "sky"; to: string; text: string }
   /** You, speaking into the world as a stranger, a prophet, a voice from the sky or a dream (voice.ts). */
   | { type: "voice"; act: VoiceAct }
   /** The player changes someone's mind (see edits.ts). */
@@ -87,6 +90,7 @@ export class WorldSession {
     const before = this.world.tick;
     if (input.type === "advance") await advance(this.world, input.minutes, f, sink);
     else if (input.type === "inject") await inject(this.world, input.event, f, sink);
+    else if (input.type === "sky") await voiceFromSky(this.world, input.to, input.text, f, sink);
     else if (input.type === "voice") await voiceAct(this.world, input.act, f, sink);
     else if (input.type === "edit") applyEdit(this.world, input.edit, sink);
     else if (input.type === "arrive") admitPersona(this.world, input.persona, sink);
@@ -133,7 +137,10 @@ export class WorldSession {
     this.log = this.log.slice(0, target ? target.logEnd : 0);
     this.feed = this.feed.slice(0, target ? target.feedEnd : this.baseFeed);
     this.traces = this.traces.slice(0, (target ? target.traceEnd : this.baseTrace) - this.traceBase);
+    const discarded = this.world;
     this.world = structuredClone(target ? target.state! : this.initial);
+    // A timeline wound back can leave a trace in the minds that live it again (déjà vu).
+    if (this.world.heresy) leaveResidue(discarded, this.world);
   }
 
   /**

@@ -252,7 +252,7 @@ export interface AwaySummary {
   total: number;
 }
 
-const WEIGHT: Record<ChronicleEntry["kind"], number> = { faith: 8, founding: 10, lost: 9, engine: 9, quarrel: 8, law: 7, leader: 6, hunger: 6, peace: 5, craft: 5, work: 6, ruin: 5, death: 4, trade: 1 };
+const WEIGHT: Record<ChronicleEntry["kind"], number> = { faith: 8, founding: 10, lost: 9, engine: 9, quarrel: 8, law: 7, leader: 6, hunger: 6, peace: 5, craft: 5, heresy: 5, work: 6, ruin: 5, death: 4, trade: 1 };
 
 /** What changed in a region between two ticks: populations then and now, new towns, and what the chronicle kept. */
 export function awaySummary(rs: RegionSession, from: Tick, to = rs.region.tick): AwaySummary {
