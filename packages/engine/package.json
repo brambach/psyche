@@ -1,0 +1,11 @@
+{
+  "name": "@psyche/engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The deterministic mind engine: memory, affect, appraisal, workspace, decisions, sleep.",
+  "exports": {
+    ".": { "source": "./src/index.ts", "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+  },
+  "scripts": { "build": "tsc -b" }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@psyche/faculties",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "LLM faculties (perceive, deliberate, speak, reconstruct, dream) backed by Claude or an offline mock, with recording and replay.",
+  "exports": {
+    ".": { "source": "./src/index.ts", "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+  },
+  "scripts": { "build": "tsc -b" },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
+    "@psyche/engine": "0.1.0",
+    "zod": "^4.1.0"
+  }
+}
