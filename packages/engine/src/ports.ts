@@ -87,6 +87,11 @@ export interface ActionOption {
   /** Third-person text for a non-speech action. */
   act?: string;
   /**
+   * Forces the situation itself puts on this option (an authority's order, a group's answer, a
+   * victim's cries), worked out by whoever built the percept. Scored as given, refs and all.
+   */
+  situation?: { name: string; value: number; ref?: string }[];
+  /**
    * What draws this person to this option in particular, beyond temperament: a fear it answers, a
    * goal it serves, an intention made earlier. Each becomes a term in the option's score, with its ref.
    */

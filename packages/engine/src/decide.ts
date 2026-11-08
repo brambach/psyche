@@ -133,6 +133,7 @@ export function scoreOption(mind: MindState, p: Percept, opt: OptionSpec, ws: Wo
   for (const h of mind.habits) {
     if (opt.coping && p.topics.includes(h.cue) && h.action === opt.coping) add(`habit: ${h.cue}`, h.strength * 0.4, h.id);
   }
+  for (const f of opt.situation ?? []) add(f.name, f.value, f.ref);
   add("noise", gaussian(mind) * D.noise);
   return { id: opt.id, label: opt.label, description: opt.description, utility: terms.reduce((s, t) => s + t.value, 0), terms };
 }
