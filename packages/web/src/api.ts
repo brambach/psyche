@@ -1,4 +1,4 @@
-import type { EngineChain, NestedPersonView, NestedWorldView, EditRecord, MindEdit, TraitName, AwaySummary, Beat, ChronicleEntry, Notice, Scene3D, Timeline, Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
+import type { Butterfly, EngineChain, NestedPersonView, NestedWorldView, EditRecord, MindEdit, TraitName, AwaySummary, Beat, ChronicleEntry, Notice, Scene3D, Timeline, Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
 
 export interface AgentSummary {
   id: string;
@@ -121,7 +121,7 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
   return data as T;
 }
 
-export type { EditRecord, MindEdit };
+export type { Butterfly, EditRecord, MindEdit };
 
 /** Someone's mind as the editor shows it, with the library of core beliefs and presets. */
 export interface Editable {
@@ -140,6 +140,8 @@ export interface Editable {
 
 /** Every change made in this town, and how far it has reached. */
 export interface EditReach extends EditRecord {
+  /** Whether it can still be run both ways. */
+  ripple: boolean;
   decisions: number;
   direct: number;
   minds: number;
@@ -174,6 +176,7 @@ export const api = {
   editable: (id: string) => call<Editable>(`/api/editable/${id}`),
   edit: (b: { who: string; edit?: MindEdit & { written?: boolean }; preset?: string; notice?: boolean }) => call<{ records: EditRecord[]; editable?: Omit<Editable, "fears" | "presets"> }>("/api/edit", b),
   edits: () => call<{ edits: EditReach[] }>("/api/edits"),
+  butterfly: (edit: string, days: number) => call<Butterfly>("/api/butterfly", { edit, days }),
   nested: () => call<{ engines: EngineChain[] }>("/api/nested"),
   nestedWorld: (town: string, depth: number) => call<NestedWorldView>(`/api/nested/world?${new URLSearchParams({ town, depth: String(depth) })}`),
   nestedScene: (town: string, depth: number) => call<Scene3D>(`/api/nested/scene?${new URLSearchParams({ town, depth: String(depth) })}`),

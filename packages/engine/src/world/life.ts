@@ -25,7 +25,7 @@ import { inheritEdits } from "./edits.js";
 import { craftBonus, learn, CRAFTS } from "./knowledge.js";
 import { createSettlers, FIRST_NAMES, other, routineFor, uniqueId } from "./people.js";
 import type { RoutineEntry } from "./places.js";
-import { eventPercept, feed, personName, record, thirdPerson, type Sink, type WorldState } from "./world.js";
+import { eventPercept, feed, luck, personName, record, thirdPerson, type Sink, type WorldState } from "./world.js";
 import type { Household, VillageState } from "./village.js";
 
 export interface Life {
@@ -90,7 +90,7 @@ export async function lifeTurn(world: WorldState, faculties: Faculties, sink: Si
     // Herb lore, where someone still knows it, saves some from fevers.
     let p = (yearly / 4) * (age < 50 ? 1 - craftBonus(world, "health") : 1);
     if (m.needs.energy < 0.15) p += 0.06;
-    if (nextRandom(world) < p) await die(world, id, age >= 50 ? "old age" : m.needs.energy < 0.15 ? "hunger and cold" : "a fever", faculties, sink);
+    if (luck(world, "death", id) < p) await die(world, id, age >= 50 ? "old age" : m.needs.energy < 0.15 ? "hunger and cold" : "a fever", faculties, sink);
   }
   // Pairing: two unpartnered adults who like each other well enough.
   const single = world.order.filter((id) => !v.life[id]!.partner && ageOf(world, id) >= ADULT && ageOf(world, id) < 46);
@@ -103,7 +103,7 @@ export async function lifeTurn(world: WorldState, faculties: Faculties, sink: Si
       .filter((b) => b !== a && !paired.has(b) && !kin.has(b) && !v.life[b]!.parents.includes(a))
       .map((b) => ({ b, mutual: ((A.others[b]?.liking ?? 0.5) + (world.minds[b]!.others[a]?.liking ?? 0.5)) / 2 }))
       .sort((x, y) => y.mutual - x.mutual)[0];
-    if (best && best.mutual > 0.6 && nextRandom(world) < 0.45) {
+    if (best && best.mutual > 0.6 && luck(world, "pair", a, best.b) < 0.45) {
       paired.add(a).add(best.b);
       await pair(world, a, best.b, faculties, sink);
     }
@@ -120,7 +120,7 @@ export async function lifeTurn(world: WorldState, faculties: Faculties, sink: Si
     const share = (v.store.food / Math.max(1, world.order.length)) * hh.members.length;
     if (kids >= 4 || hh.food + share < hh.members.length * 1.2 || world.order.length >= (v.popCap ?? POP_CAP)) continue;
     if (hh.members.some((m) => ageOf(world, m) < 1.5)) continue;
-    if (nextRandom(world) < 0.15) await birth(world, [id, l.partner], faculties, sink);
+    if (luck(world, "birth", id) < 0.15) await birth(world, [id, l.partner], faculties, sink);
   }
   // Coming of age.
   for (const id of world.order) {
@@ -188,7 +188,7 @@ async function birth(world: WorldState, parents: AgentId[], faculties: Faculties
   const used = new Set([...Object.values(world.minds).map((m) => m.name), ...(v.reserved?.names ?? [])]);
   const free = FIRST_NAMES.filter(([n]) => !used.has(n));
   const pool = free.length ? free : FIRST_NAMES;
-  const [first, pronouns] = pool[Math.floor(nextRandom(world) * pool.length)]!;
+  const [first, pronouns] = pool[Math.floor(luck(world, "name", ...parents) * pool.length)]!;
   const id = uniqueId(first.toLowerCase(), taken);
   const hh = householdOf(v, parents[0]!)!;
   const surname = /^(\S+) (\S+)/.exec(p1!.identity.summary)?.[2]?.replace(/,$/, "") ?? hh.name.replace(/^the /, "");
@@ -329,8 +329,8 @@ export async function die(world: WorldState, id: AgentId, cause: string, faculti
 /** A boat in spring, with two to four strangers who have pasts of their own. */
 async function newcomers(world: WorldState, faculties: Faculties, sink: Sink): Promise<void> {
   const v = world.village!;
-  if (nextRandom(world) > 0.6) return;
-  const n = 2 + Math.floor(nextRandom(world) * 3);
+  if (luck(world, "boat") > 0.6) return;
+  const n = 2 + Math.floor(luck(world, "boat-size") * 3);
   const year = yearOf(world);
   const known = world.order.map((id) => ({ id, name: world.minds[id]!.name, role: world.agents[id]!.role }));
   const taken = new Set([...Object.keys(world.minds), ...Object.keys(v.households), ...(v.reserved?.ids ?? [])]);
@@ -355,7 +355,7 @@ async function newcomers(world: WorldState, faculties: Faculties, sink: Sink): P
     const age = Number(/, (\d+),/.exec(s.mind.identity.summary)?.[1] ?? 30);
     v.life[s.mind.id] = { born: world.tick - age * yearTicks(v), parents: [], generation: 0, arrived: world.tick };
     // Some bring a craft from where they came from.
-    if (nextRandom(world) < 0.2) learn(world, s.mind.id, { craft: CRAFTS[Math.floor(nextRandom(world) * CRAFTS.length)]!.id, tick: world.tick, how: "brought", town: /, from ([^.]+)\./.exec(s.mind.identity.summary)?.[1] });
+    if (luck(world, "brings", s.mind.id) < 0.2) learn(world, s.mind.id, { craft: CRAFTS[Math.floor(luck(world, "brought", s.mind.id) * CRAFTS.length)]!.id, tick: world.tick, how: "brought", town: /, from ([^.]+)\./.exec(s.mind.identity.summary)?.[1] });
   }
   for (const id of world.order) {
     const m = world.minds[id]!;
@@ -420,7 +420,7 @@ export async function bedtime(world: WorldState, faculties: Faculties, sink: Sin
   for (const hh of Object.values(v.households)) {
     const kids = hh.members.filter((m) => { const a = ageOf(world, m); return a >= 3 && a < CHILDHOOD && world.agents[m]!.place === hh.home; });
     const adults = hh.members.filter((m) => !isChild(world, m) && world.agents[m]!.place === hh.home);
-    if (!kids.length || !adults.length || nextRandom(world) > 0.55) continue;
+    if (!kids.length || !adults.length || luck(world, "bedtime", hh.id) > 0.55) continue;
     // Whoever has the most charged story the children haven't heard from them.
     let best: { teller: AgentId; ep: Episode; score: number } | undefined;
     for (const t of adults) {

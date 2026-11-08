@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import type { TraitName } from "@psyche/engine";
 import { api, type Editable, type MindEdit } from "./api";
+import { ButterflyPanel } from "./Butterfly";
 
 const TRAITS: [TraitName, string, string][] = [
   ["openness", "Curious", "Openness: new ideas, new crafts. The curious and careful work crafts out."],
@@ -15,10 +16,11 @@ const TRAITS: [TraitName, string, string][] = [
   ["honesty", "Honest", "Honesty-humility: fair dealing, no cheating on a trade."],
 ];
 
-export function MindEditor({ id, names, onEdited }: { id: string; names: Record<string, string>; onEdited?: () => void }) {
+export function MindEditor({ id, names, onEdited, ripple }: { id: string; names: Record<string, string>; onEdited?: () => void; ripple?: string }) {
   const [ed, setEd] = useState<Editable>();
   const [error, setError] = useState<string>();
   const [done, setDone] = useState<string>();
+  const [last, setLast] = useState<string | undefined>(ripple);
   const [busy, setBusy] = useState(false);
   const [town, setTown] = useState(false);
   const [notice, setNotice] = useState(false);
@@ -71,6 +73,7 @@ export function MindEditor({ id, names, onEdited }: { id: string; names: Record<
       if (r.editable) setEd({ ...ed, ...r.editable });
       else setEd(await api.editable(id));
       setDone(r.records.map((x) => x.label).join(". ") + ".");
+      setLast(r.records[0]?.id);
       onEdited?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -99,6 +102,7 @@ export function MindEditor({ id, names, onEdited }: { id: string; names: Record<
         <label title="Locked traits and core beliefs pass to children born after. (Children already take after their parents' traits.)"><input type="checkbox" checked={heritable} onChange={(e) => setHeritable(e.target.checked)} /> Children inherit</label>
       </div>
       {done && <p className="ed-done">{done} Keep watching: the Why view will say "because you…".</p>}
+      {last && <ButterflyPanel key={last} edit={last} names={names} label={done} />}
 
       <section className="pane">
         <h3>Make {town ? "them all" : name}</h3>
