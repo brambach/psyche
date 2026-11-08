@@ -2,6 +2,7 @@
 // Each faculty is a narrow call. None of them sees the whole mind: they get a packet the engine
 // built, and they must cite the item ids they used so the brain scan's links are real.
 
+import type { Blueprint } from "./founders/blueprint.js";
 import type { AgentId, Tick } from "./types.js";
 
 // ---------------------------------------------------------------- percepts
@@ -64,6 +65,25 @@ export interface Percept {
   eventId?: string;
   /** Memories already told in this conversation, which a reply should not repeat. */
   alreadySaid?: string[];
+  /** What the world affords right now. When given, these are the options instead of the social defaults. */
+  options?: ActionOption[];
+}
+
+/** One thing a mind could do, with the dispositions it expresses (scored by the engine, not the model). */
+export interface ActionOption {
+  id: string;
+  label: string;
+  /** Verb phrase for the Story headline, e.g. "refuse Theo's request". */
+  verb: string;
+  description: string;
+  prosocial: number;
+  assertive: number;
+  avoidant: number;
+  disclosure: number;
+  comply?: boolean;
+  coping?: "problem" | "emotion" | "avoid" | "social";
+  /** Third-person text for a non-speech action. */
+  act?: string;
 }
 
 // ---------------------------------------------------------------- faculty requests
@@ -156,6 +176,36 @@ export interface DreamResponse {
   lifeStory: string;
 }
 
+export interface ArchitectRequest {
+  self: StableIdentity;
+  /** What the building is for, in the mind's own terms. */
+  want: string;
+  site: {
+    /** Largest footprint the plot allows, in blocks. */
+    plot: { w: number; d: number };
+    /** The way the weather comes in. */
+    weatherFrom: "north" | "south" | "east" | "west";
+    /** The way the sea lies from the plot. */
+    seaTo: "north" | "south" | "east" | "west";
+    materials: { name: string; available: number; note: string }[];
+    hoursOfWorkLeft: number;
+    /** Rough build speed, so the design can be sized to the time. */
+    pace: string;
+  };
+  /** What is in mind right now. The design may cite these ids. */
+  workspace: WorkspaceItemView[];
+  stance: string[];
+  temperament: { openness: number; conscientiousness: number; extraversion: number; neuroticism: number };
+  /** Designs this mind has seen before, to copy or remix. */
+  patternBook: { name: string; summary: string }[];
+}
+export interface ArchitectResponse {
+  blueprint: Blueprint;
+  /** One to three sentences in the builder's own voice. */
+  rationale: string;
+  because: { item: string; weight: number }[];
+}
+
 /** The cached identity prefix shared by every call for an agent. */
 export interface StableIdentity {
   name: string;
@@ -169,6 +219,7 @@ export interface Faculties {
   speak(req: SpeakRequest): Promise<SpeakResponse>;
   reconstruct(req: ReconstructRequest): Promise<ReconstructResponse>;
   dream(req: DreamRequest): Promise<DreamResponse>;
+  architect(req: ArchitectRequest): Promise<ArchitectResponse>;
 }
 
 export type FacultyName = keyof Faculties;

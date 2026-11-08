@@ -4,28 +4,14 @@
 
 import { clamp } from "./memory.js";
 import { PARAMS } from "./params.js";
-import type { Faculties, Percept, StableIdentity, StyleVector } from "./ports.js";
+import type { ActionOption, Faculties, Percept, StableIdentity, StyleVector } from "./ports.js";
 import { gaussian, nextRandom } from "./rng.js";
 import type { Contribution, DecisionTrace, OptionTrace, WorkspaceEntry } from "./trace.js";
 import { TRAIT_NAMES, type MindState, type Traits } from "./types.js";
 
 const D = PARAMS.decision;
 
-export interface OptionSpec {
-  id: string;
-  label: string;
-  /** Verb phrase for the Story headline, e.g. "refuse Theo's request". */
-  verb: string;
-  description: string;
-  prosocial: number;
-  assertive: number;
-  avoidant: number;
-  disclosure: number;
-  comply?: boolean;
-  coping?: "problem" | "emotion" | "avoid" | "social";
-  /** Third-person text for a non-speech action. */
-  act?: string;
-}
+export type OptionSpec = ActionOption;
 
 export function nameOf(mind: MindState, id: string): string {
   if (id === "world") return "the world";
@@ -33,6 +19,7 @@ export function nameOf(mind: MindState, id: string): string {
 }
 
 export function generateOptions(mind: MindState, p: Percept): OptionSpec[] {
+  if (p.options?.length) return p.options;
   const who = nameOf(mind, p.actor);
   if (p.kind === "speech" && p.addressedToSelf && p.request) {
     const what = p.request.what;

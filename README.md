@@ -18,6 +18,30 @@ npm run demo       # the original single-mind demo (M0)
 
 With no Anthropic credentials, speech runs on an offline mock so everything works out of the box. Set `ANTHROPIC_API_KEY` (or `PSYCHE_FACULTIES=claude`) to use Claude. Every faculty defaults to `claude-opus-5-5`; choose a model per faculty with `PSYCHE_MODEL_PERCEIVE`, `PSYCHE_MODEL_SPEAK`, `PSYCHE_MODEL_RECONSTRUCT`, `PSYCHE_MODEL_DELIBERATE` and `PSYCHE_MODEL_DREAM`. Set `PSYCHE_AUTOPLAY=0` to start paused.
 
+## Founders (F0): one mind builds a house
+
+**Founders** is the first step toward an open-world sandbox where Psyche minds build their own town. One mind (any of the Kettle Island five) lands on **Tern Holm**, an empty voxel islet, with a storm due at dusk the next day. Nothing is scripted: the mind decides whether to start building, look around or wait; designs a house; fells pines, quarries stone and cuts reeds; and sets every block over sim hours. Open `http://localhost:5173/#/founders`, or run it in the terminal:
+
+```bash
+npm run founders -- jun        # one builder, 60 sim hours, prints the feed, the design and a top-down map
+npm run founders -- mara --early   # bring the storm forward and watch the choice that follows
+```
+
+**The model designs; code builds.** The only new language faculty is the **Architect**. It gets the mind's identity, its temperament, what is in its workspace right now (the memory of the last big storm, the goal, the fear), the site, the materials and the hours left, and returns a blueprint in a small building language: footprint, wall height and material, foundation, corner posts, floor, roof shape and material, door side, windows, furniture, porch. About a dozen fields, not thousands of blocks. The engine validates and repairs it (and reports every change), compiles it into ordered block placements, and prices it in planks, stone, thatch and hours. The body layer does the rest with no model calls.
+
+**Personality shows in the house and in the outcome.** A careful worrier like Mara sizes the job to the time, builds low in stone with the door out of the wind and finishes with hours to spare. An open, sociable builder like Jun wants windows and a porch, over-reaches, and later has to choose: cut the plan down, push on past dark, or give up for the night. The storm then tests whatever got built. Every choice opens in the brain scan, and every design shows what was on the builder's mind when they drew it.
+
+| Piece | Where |
+| --- | --- |
+| Voxel islet, seeded terrain, pines, outcrop, reeds | `packages/engine/src/founders/voxel.ts` |
+| Blueprint language: compile, check and repair, bill of materials | `packages/engine/src/founders/blueprint.ts` |
+| The loop: percepts and choices, the Architect call, gathering and building, the storm | `packages/engine/src/founders/founder.ts` |
+| Event-sourced sessions (rewind and replay block for block) | `packages/engine/src/founders/session.ts` |
+| Architect faculty (Claude and offline mock) | `packages/faculties/src` |
+| 3D view (Three.js) and panels | `packages/web/src/founders` |
+
+The scoping doc for the full vision (F0 to F5) is at https://claude.ai/artifact/LN8aZH3jP7TnMNczpYE4N6.
+
 ## The island
 
 | Who | |

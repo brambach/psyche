@@ -32,3 +32,27 @@ export {
   type Sink,
 } from "./world/world.js";
 export { WorldSession, type WorldInput, type WorldFrame } from "./world/session.js";
+export { MATERIALS, M, get, generateIsland, encodeGrid, census, standY, type Material, type Grid, type Plot, type Terrain, type Tree } from "./founders/voxel.js";
+export { check, compile, bill, describe, siteOf, PACE, SIDES, type Blueprint, type Side, type Furniture, type Placement, type Part, type Bill, type Item } from "./founders/blueprint.js";
+export {
+  createFounder,
+  advanceFounder,
+  injectFounder,
+  supply,
+  progress,
+  remainingHours,
+  hoursUntilStorm,
+  dryness,
+  clockText,
+  BUILDERS,
+  FOUNDERS_START,
+  STORM_AT,
+  type BuilderId,
+  type Builder,
+  type Project,
+  type FounderState,
+  type FounderFeed,
+  type FounderEvent,
+  type FounderSink,
+} from "./founders/founder.js";
+export { FounderSession, type FounderInput, type FounderFrame } from "./founders/session.js";

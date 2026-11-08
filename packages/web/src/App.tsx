@@ -104,6 +104,7 @@ export function App() {
           </select>
           <button className="btn" disabled={busy} onClick={() => send({ type: "advance", minutes: night ? untilMorning : 60 })}>{night ? "Skip to morning" : "+1 hour"}</button>
         </div>
+        <a className="btn" href="#/founders" title="One mind, an empty islet, a storm on the way: watch it design and build a house">Founders</a>
         <div className="menus">
           {(["events", "talk", "rumor", "rewind", "mechanisms"] as const).map((p) => (
             <button key={p} className={`btn ${panel === p ? "on" : ""}`} onClick={() => setPanel(panel === p ? "" : p)} aria-expanded={panel === p}>

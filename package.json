@@ -10,6 +10,7 @@
     "demo": "tsx --conditions=source scripts/demo.ts",
     "stats": "tsx --conditions=source scripts/stats.ts",
     "island": "tsx --conditions=source scripts/island.ts",
+    "founders": "tsx --conditions=source scripts/founders.ts",
     "dev": "concurrently -n server,web \"npm run dev -w @psyche/server\" \"npm run dev -w @psyche/web\"",
     "start": "npm run build -w @psyche/web && npm run start -w @psyche/server"
   },

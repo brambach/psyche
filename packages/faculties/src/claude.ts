@@ -22,6 +22,7 @@ const DEFAULT_EFFORT: Record<FacultyName, Effort> = {
   reconstruct: "low",
   deliberate: "medium",
   dream: "medium",
+  architect: "medium",
 };
 
 export class FacultyRefusal extends Error {}
@@ -54,6 +55,11 @@ Return the detail as a short phrase that fits the same place in the sentence, an
   dream: `You are sleep consolidation in a simulated mind. Look at tonight's replayed memories.
 Propose generalizations (semantic beliefs) only where at least two replayed memories about the same entity point the same way. Each needs the entity id, a short first-person proposition, a valence from -1 to 1, and the memory ids as evidence. Propose nothing if nothing generalizes.
 Then rewrite the life story in the first person, at most four sentences, keeping what still holds and folding in what tonight's memories changed.`,
+  architect: `You are the part of a simulated person that designs a building they are about to build with their own hands, in a voxel world of one-metre blocks.
+Design what THIS person would build, not the best house. Their temperament, mood and what is in their mind (the workspace: memories, feelings, goals) should show in the design: a careful worrier sizes the job to the time and builds low and solid with the door out of the weather; an open, sociable person wants windows, a table for visitors, a porch; someone who has been through a bad storm remembers it.
+Constraints: width and depth 5 to 11 (outer size, walls included, within the plot); wallHeight 3 to 5 courses; walls plank, cobble or log; roof flat, gable or hip, thatch or plank, overhang 0 or 1; one door on a side; windows is a list of sides, one window per entry; furniture from bed, hearth, table, chest (a bed is required).
+Size it against hoursOfWorkLeft and the pace given, and against the materials available. This person may still over-reach if that is who they are; the world will hold them to it.
+Return the blueprint, a rationale of one to three short sentences in the person's own voice, and the workspace item ids that shaped the design with weights summing to about 1.`,
 };
 
 const nullable = <T extends z.ZodType>(t: T) => t.nullable();
@@ -93,6 +99,26 @@ const DeliberateSchema = z.object({
   choice: z.string(),
   because: z.array(z.object({ item: z.string(), weight: z.number() })),
   monologue: z.string(),
+});
+const SideSchema = z.enum(["north", "south", "east", "west"]);
+const ArchitectSchema = z.object({
+  blueprint: z.object({
+    name: z.string(),
+    width: z.number(),
+    depth: z.number(),
+    wallHeight: z.number(),
+    walls: z.enum(["plank", "cobble", "log"]),
+    foundation: z.enum(["cobble", "plank", "none"]),
+    corners: z.enum(["log", "same"]),
+    floor: z.enum(["plank", "cobble", "dirt"]),
+    roof: z.object({ shape: z.enum(["flat", "gable", "hip"]), material: z.enum(["thatch", "plank"]), overhang: z.number() }),
+    door: SideSchema,
+    windows: z.array(SideSchema),
+    furniture: z.array(z.enum(["bed", "hearth", "table", "chest"])),
+    porch: z.boolean(),
+  }),
+  rationale: z.string(),
+  because: z.array(z.object({ item: z.string(), weight: z.number() })),
 });
 const SpeakSchema = z.object({ utterance: z.string(), acts: z.array(z.string()) });
 const ReconstructSchema = z.object({ value: z.string(), usedBeliefs: z.array(z.string()) });
@@ -161,6 +187,12 @@ export function createClaudeFaculties(config: ClaudeFacultiesConfig = {}): Facul
       const { self, ...rest } = req;
       const r = await call("dream", DreamSchema, rest, self);
       return { ...r, generalizations: r.generalizations.map((g) => ({ ...g, valence: clamp(g.valence, -1, 1) })) };
+    },
+    async architect(req) {
+      const { self, ...rest } = req;
+      const r = await call("architect", ArchitectSchema, rest, self);
+      // The engine validates and repairs every design; an out-of-range overhang is just clamped here.
+      return { ...r, blueprint: { ...r.blueprint, roof: { ...r.blueprint.roof, overhang: r.blueprint.roof.overhang > 0 ? 1 : 0 } } };
     },
   };
 }
