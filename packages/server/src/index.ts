@@ -40,6 +40,9 @@ import {
   PRESETS,
   type MindEdit,
   type EditRecord,
+  type EditInput,
+  type Butterfly,
+  butterfly,
   type GameFrame,
   type Notice,
   type RegionState,
@@ -730,6 +733,9 @@ function personasView() {
   });
 }
 
+/** For each recent change: the world just before it, so it can be run both ways (the butterfly). */
+const ripples = new Map<string, { before: WorldState; inputs: EditInput[]; runs: Map<number, Promise<Butterfly | undefined>> }>();
+
 /** Every change the player has made in this town, and how far each has reached since. */
 function editsView() {
   const L = ledger();
@@ -740,7 +746,7 @@ function editsView() {
       .reverse()
       .map((r) => {
         const inf = influence(L, nodeId.world(r.id));
-        return { ...r, decisions: inf?.decisions.length ?? 0, direct: inf?.direct ?? 0, minds: inf?.minds.length ?? 0, recent: inf?.decisions.slice(0, 5).map((d) => ({ id: d.node.id, label: d.node.label, tick: d.node.tick, agent: d.node.agent, trace: d.node.trace })) ?? [] };
+        return { ...r, ripple: ripples.has(r.id), decisions: inf?.decisions.length ?? 0, direct: inf?.direct ?? 0, minds: inf?.minds.length ?? 0, recent: inf?.decisions.slice(0, 5).map((d) => ({ id: d.node.id, label: d.node.label, tick: d.node.tick, agent: d.node.agent, trace: d.node.trace })) ?? [] };
       }),
   };
 }
@@ -1038,10 +1044,16 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       } else return send(res, 400, { error: "Send an edit or a preset." });
       const records = await exclusive(async () => {
         const out: EditRecord[] = [];
+        const before = structuredClone(session.world);
         for (const edit of edits) {
           await session.apply({ type: "edit", edit: { who, edit, notice: b.notice } });
           const r = session.world.edits?.at(-1);
           if (r) out.push(r);
+        }
+        // Kept so the change can be run both ways from this moment (the butterfly).
+        if (out[0]) {
+          ripples.set(out[0].id, { before, inputs: edits.map((edit) => ({ who, edit, notice: b.notice })), runs: new Map() });
+          for (const k of [...ripples.keys()].slice(0, Math.max(0, ripples.size - 8))) ripples.delete(k);
         }
         collectNotices();
         return out;
@@ -1073,6 +1085,21 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       governor.core.add(id);
       save(true);
       return send(res, 200, { id });
+    }
+    if (p === "/api/butterfly") {
+      // Run the town on from the moment of a change twice, with and without it, on the free mock with the same luck.
+      const b = await body<{ edit?: string; days?: number }>(req);
+      const r = b.edit ? ripples.get(b.edit) : undefined;
+      if (!r) return send(res, 404, { error: "Only changes made since the server started can be run both ways." });
+      const days = Math.max(1, Math.min(64, Math.round(b.days ?? 4)));
+      let run = r.runs.get(days);
+      if (!run) {
+        run = butterfly(r.before, r.inputs, createMockFaculties(), days, days > 8 ? 120 : 60, () => new Promise((ok) => setImmediate(ok)));
+        r.runs.set(days, run);
+        run.catch(() => r.runs.delete(days));
+      }
+      const out = await run;
+      return out ? send(res, 200, out) : send(res, 404, { error: "Nobody to change." });
     }
     if (p === "/api/input") {
       if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });

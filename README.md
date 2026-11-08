@@ -64,6 +64,26 @@ A whole-personality preset (Generous, Suspicious, Anxious, Bold, Curious, Loner)
 
 Each change is a recorded input (`{ type: "edit" }`), so a world with edits replays exactly. Each one leaves provenance on what it made, and the causal ledger has a node for it. So when you ask Why about a later choice, the trail can end at you: "You made Ula harder (agreeableness 0.15) → Ula chose: Hold back." The **Your changes** tab lists every change and how many choices it has bent since, in whose heads. See `packages/engine/src/world/edits.ts`.
 
+## Both ways (G3): what your change did
+
+After any change, **Both ways** runs the town on from that moment twice, once with the change and once without. Both runs use the free offline mock and the same luck, and the live world is left alone. You can run it for a season, a year or three years. You get:
+
+- a plain-language account
+- the choices that flipped, each marked as tracing straight back to you in the ledger or as a ripple through what others did
+- a day-by-day chart of how far it spread
+- the two towns side by side: store, houses, leader, laws, crafts, how warm people are, mood
+
+**Same luck.** Chance in a twin run is keyed by what it decides (who meets whom, who falls ill, the weather) instead of drawn from one shared stream. The run without the change therefore meets the same luck, and a change that changes nothing gives zero differences (a test checks this). Live worlds keep the old stream. See `luck()` in `packages/engine/src/world/world.ts` and `packages/engine/src/world/butterfly.ts`.
+
+**An example.** Making everyone in Hollow Bay harder and suspicious, then running three years both ways, gives very different towns:
+
+| | With the change | Without it |
+|---|---|---|
+| Common store | 37 food | 489 food |
+| How much people like each other | 0.31 | 0.59 |
+| Laws (made to force giving) | 3 | none |
+| Leader | someone else | the usual leader |
+
 ## Someone real: a mind read from their own writing
 
 Pick **＋ Someone real** in the game header and paste a person's own writing: chat messages, notes to self, a journal. A chat export ("Name: message" lines, with or without timestamps) works too; only their own lines are read. Psyche reads a mind from it (`packages/engine/src/persona/`):

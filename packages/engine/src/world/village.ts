@@ -23,7 +23,7 @@ import { ageOf, bedtime, hearStory, initLife, isChild, yearOf, lifeTurn, normHel
 import { carryKnowledge, craftBonus, knowledgeTurn, seedKnowledge, type Knowledge } from "./knowledge.js";
 import { CROSSING, createSettlers, crossingMemory, other } from "./people.js";
 import type { Place, PlaceId, RoutineEntry } from "./places.js";
-import { claimFromEpisode, eventPercept, feed, hop, isNight, personName, record, thirdPerson, type AgentState, type Sink, type WorldState } from "./world.js";
+import { claimFromEpisode, eventPercept, feed, hop, luck, isNight, personName, record, thirdPerson, type AgentState, type Sink, type WorldState } from "./world.js";
 
 export type Season = "summer" | "autumn" | "winter" | "spring";
 export const SEASONS: Season[] = ["summer", "autumn", "winter", "spring"];
@@ -382,7 +382,7 @@ async function newDay(world: WorldState, faculties: Faculties, sink: Sink): Prom
     knowledgeTurn(world, sink);
     if (v.season === "spring") elect(world, sink);
   }
-  const r = nextRandom(world);
+  const r = luck(world, "weather");
   v.weather = r < GALE_CHANCE[v.season] ? "gale" : r < GALE_CHANCE[v.season] + 0.25 ? "rain" : "fair";
   if (v.weather === "gale") {
     feed(world, sink, { kind: "event", agents: [], title: "A gale keeps the boats in", text: "Spray over the landing all day. Nobody fishes." });
@@ -816,7 +816,7 @@ async function fireside(world: WorldState, faculties: Faculties, sink: Sink): Pr
       if (/^(talk_|pc_|story_|ev_pledge|ev_hungry|ev_tent|ev_gale|ev_design)/.test(ep.id) || v.told.includes(`${id}:${ep.id}`)) continue;
       const charge = Math.abs(ep.valence) * (0.3 + ep.arousal) + (ep.details.length ? 0.1 : 0);
       if (charge < 0.2) continue;
-      cands.push({ who: id, ep, score: charge * (0.3 + m.traits.extraversion) * (0.7 + 0.6 * nextRandom(world)) });
+      cands.push({ who: id, ep, score: charge * (0.3 + m.traits.extraversion) * (0.7 + 0.6 * luck(world, "story", id, ep.id)) });
     }
   }
   cands.sort((a, b) => b.score - a.score);
@@ -893,7 +893,7 @@ function feedRecall(world: WorldState, sink: Sink, who: AgentId, changes: number
 export async function overhear(world: WorldState, a: AgentId, b: AgentId, place: PlaceId, claim: Claim, line: string, faculties: Faculties, sink: Sink): Promise<void> {
   const near = world.order.filter((x) => x !== a && x !== b && x !== claim.about && world.agents[x]!.place === place && (world.agents[x]!.talkingUntil ?? 0) <= world.tick);
   for (const id of near) {
-    if (nextRandom(world) > 0.25) continue;
+    if (luck(world, "overhear", a, b, id) > 0.25) continue;
     const m = world.minds[id]!;
     // Nothing new to catch: they already carry this story.
     if (claim.rumor && m.beliefs.some((b) => b.rumor === claim.rumor)) continue;

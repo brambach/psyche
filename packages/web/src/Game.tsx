@@ -31,7 +31,7 @@ type Strip = "feed" | "chronicle" | "notices" | "changes";
 
 export function Game() {
   const { view, connected, away, dismissAway } = useGameStream();
-  const [mind, setMind] = useState<{ id: string; trace?: string; edit?: boolean; life?: boolean }>();
+  const [mind, setMind] = useState<{ id: string; trace?: string; edit?: boolean; ripple?: string; life?: boolean }>();
   // Bringing someone in from their own writing, and who here came that way.
   const [studio, setStudio] = useState(false);
   const [personas, setPersonas] = useState<Set<string>>(new Set());
@@ -260,7 +260,7 @@ export function Game() {
       )}
       {director && !shot && mode === "town" && village && <div className="g-caption g-hands">You have the camera. The director takes it back after 20 seconds.</div>}
 
-      <BottomStrip view={view} strip={strip} setStrip={setStrip} names={names} onGo={goTo} onMind={(id, trace) => setMind({ id, trace })} />
+      <BottomStrip view={view} strip={strip} setStrip={setStrip} names={names} onGo={goTo} onMind={(id, trace) => setMind({ id, trace })} onRipple={(id, ripple) => setMind({ id, edit: true, ripple })} />
 
       {mind && (
         <aside className="g-mind" aria-label={`Inside ${names[mind.id] ?? mind.id}'s head`}>
@@ -274,7 +274,7 @@ export function Game() {
             <button className="g-btn" onClick={() => setMind(undefined)} aria-label="Close">✕</button>
           </div>
           {mind.edit ? (
-            <MindEditor key={mind.id} id={mind.id} names={names} />
+            <MindEditor key={`${mind.id}|${mind.ripple ?? ""}`} id={mind.id} names={names} ripple={mind.ripple} />
           ) : mind.life && personas.has(mind.id) ? (
             <Life key={mind.id} id={mind.id} tick={mindTick} names={names} onOpen={(id, t) => setMind({ id, trace: t })} />
           ) : (
@@ -385,7 +385,7 @@ function TownCard({ view, onGo }: { view: GameView; onGo: (town: string) => void
   );
 }
 
-function BottomStrip({ view, strip, setStrip, names, onGo, onMind }: { view: GameView; strip: Strip | ""; setStrip: (s: Strip | "") => void; names: Record<string, string>; onGo: (agent?: string, town?: string) => void; onMind: (id: string, trace?: string) => void }) {
+function BottomStrip({ view, strip, setStrip, names, onGo, onMind, onRipple }: { view: GameView; strip: Strip | ""; setStrip: (s: Strip | "") => void; names: Record<string, string>; onGo: (agent?: string, town?: string) => void; onMind: (id: string, trace?: string) => void; onRipple: (agent: string, edit: string) => void }) {
   const tabs: [Strip, string][] = [["feed", "What's happening"], ...(view.chronicle ? ([["chronicle", "Chronicle"]] as [Strip, string][]) : []), ["notices", `Notices${view.notices?.length ? ` (${view.notices.length})` : ""}`], ["changes", "Your changes"]];
   return (
     <section className={`g-strip ${strip ? "" : "shut"}`}>
@@ -438,13 +438,13 @@ function BottomStrip({ view, strip, setStrip, names, onGo, onMind }: { view: Gam
           {!view.notices?.length && <li className="g-quiet">Nothing to report yet. Notices tell you when a leader is chosen, a craft is down to its last keeper, or a town is about to split.</li>}
         </ol>
       )}
-      {strip === "changes" && <Changes tick={Math.floor(view.tick / 60)} onMind={onMind} />}
+      {strip === "changes" && <Changes tick={Math.floor(view.tick / 60)} onMind={onMind} onRipple={onRipple} />}
     </section>
   );
 }
 
 /** What you have changed in people here, and how many of their choices each change has bent since. */
-function Changes({ tick, onMind }: { tick: number; onMind: (id: string, trace?: string) => void }) {
+function Changes({ tick, onMind, onRipple }: { tick: number; onMind: (id: string, trace?: string) => void; onRipple: (agent: string, edit: string) => void }) {
   const [edits, setEdits] = useState<EditReach[]>();
   useEffect(() => {
     let live = true;
@@ -462,6 +462,7 @@ function Changes({ tick, onMind }: { tick: number; onMind: (id: string, trace?: 
             <span>{r.label}</span>
             <q>{r.decisions ? `Bent ${r.decisions} choice${r.decisions === 1 ? "" : "s"} since${r.minds ? `, reaching ${r.minds} other${r.minds === 1 ? "" : "s"}` : ""}` : "Nothing traced to it yet"}</q>
           </button>
+          {r.ripple && r.who[0] && <button className="g-mini" onClick={() => onRipple(r.who[0]!, r.id)} title="Run the town on from this change twice, with and without it">both ways</button>}
         </li>
       ))}
       {edits && !edits.length && <li className="g-quiet">You haven't changed anyone yet. Open someone's mind and pick "Change them": make them braver, give them a fear, make them forget, whisper a thought. Then watch what the town does with it.</li>}

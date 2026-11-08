@@ -29,3 +29,14 @@ export function nextId(mind: { idCounter: number }, prefix: string): string {
   mind.idCounter += 1;
   return `${prefix}_${mind.idCounter}`;
 }
+
+/**
+ * A draw that depends only on what it is for, not on how many draws came before: the same seed, tick
+ * and key always give the same number. Two runs of a world that differ in one mind keep the same luck
+ * everywhere else, so what differs between them is what the difference caused.
+ */
+export function keyedRandom(seed: number, tick: number, key: string): number {
+  let h = (2166136261 ^ seed ^ Math.imul(tick | 0, 2654435761)) >>> 0;
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619) >>> 0;
+  return nextRandom({ rng: h });
+}
