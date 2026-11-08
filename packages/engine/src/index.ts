@@ -137,6 +137,35 @@ export { applyEdit, editable, shapeFear, inheritEdits, FEARS, PRESETS, type Mind
 export { WORKS, WORK_KINDS, CIVIC_SLOTS, works, stands, civicSite, concernFor, worksSeason, worksDay, aggWorks, shownBlocks, type Work, type WorkKind } from "./world/works.js";
 export { intentOf, intentionsSeason, menu as intentMenu, steer, type Intention, type IntentKind } from "./world/intentions.js";
 export { butterfly, type Butterfly, type Flip, type TownSide } from "./world/butterfly.js";
+export {
+  nestedSeason,
+  nestedOf,
+  worldAt,
+  engines,
+  nestedWorldView,
+  nestedPersonView,
+  personOf,
+  suspicionOf,
+  flavorOf,
+  SUSPICIONS,
+  MIRROR,
+  MAX_DEPTH,
+  WAKING,
+  type NestedState,
+  type Machine,
+  type Making,
+  type Sign,
+  type SignKind,
+  type NestedEvent,
+  type LevelWhy,
+  type Flavor,
+  type Level,
+  type EngineChain,
+  type MachineSummary,
+  type InnerPerson,
+  type NestedWorldView,
+  type NestedPersonView,
+} from "./world/nested.js";
 export { readPerson, finishReading, sanitizeReading, mockReader, pronounsOf, VALUE_GOALS } from "./persona/finish.js";
 export { mockRead } from "./persona/mock.js";
 export { parseWriting, quoteFound, worldTopics, shapeBelief, inWorldWords } from "./persona/text.js";

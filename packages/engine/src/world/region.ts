@@ -22,6 +22,7 @@ import { foundingVersion, rootOf } from "./civic.js";
 import { craft, craftBonus, knows, learn, townCrafts } from "./knowledge.js";
 import { ageOf, hearStory, isChild, schemaLineage, yearOf } from "./life.js";
 import { CROSSING } from "./people.js";
+import { nestedSeason } from "./nested.js";
 import { WorldSession, type WorldSessionOptions } from "./session.js";
 import { carryWords, quietSpread } from "./voice.js";
 import { createVillage, foundVillage, type Household } from "./village.js";
@@ -58,7 +59,7 @@ export interface ChronicleEntry {
   tick: Tick;
   year: number;
   town?: string;
-  kind: "founding" | "leader" | "law" | "death" | "trade" | "quarrel" | "peace" | "hunger" | "craft" | "lost" | "work" | "ruin" | "faith";
+  kind: "founding" | "leader" | "law" | "death" | "trade" | "quarrel" | "peace" | "hunger" | "craft" | "lost" | "work" | "ruin" | "faith" | "engine";
   text: string;
   agents?: AgentId[];
   /** What led to it, as far back as the records go: the people, their reasons and the memories behind them. */
@@ -290,6 +291,9 @@ export class RegionSession {
       for (const t of r.towns) this.sample(t);
       if (first.season === "spring") await this.maybeSplit();
       await this.mend();
+      // Engines, and the worlds inside them (nested.ts): those always run on the cheap faculties.
+      const counting = () => r.towns.filter((t) => this.world(t.id).village!.nested?.machine).length;
+      for (const t of r.towns) await nestedSeason(this.world(t.id), this.opts.cheap ?? this.faculties, this.sinkOf(t.id), (r.nested ??= {}), { counting: counting() });
     }
     await this.trade();
     // Regard is worked out from everyone's beliefs: each season, and whenever something changed them.
