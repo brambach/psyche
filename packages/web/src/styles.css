@@ -280,6 +280,9 @@ pre { font: 12px/1.5 var(--mono); background: var(--surface); border: 1px solid 
 .agent-head h2 { font: 700 24px/1.1 var(--display); margin: 0; }
 .agent-head p { margin: 2px 0 0; }
 .bio { margin: 0; max-width: 75ch; }
+.pane.intent { margin: 10px 0; padding: 10px 12px; }
+.pane.intent h3 { margin: 0 0 4px; }
+.intent-what { margin: 0 0 4px; }
 td.gap { color: var(--feel); font-weight: 600; }
 .goals { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; font-size: 14px; }
 .goals .fid { display: block; margin-top: 3px; }
@@ -455,6 +458,8 @@ a.btn { color: inherit; text-decoration: none; display: inline-block; }
 .town-multiples h4 { margin: 0 0 4px; font-size: 13px; display: flex; justify-content: space-between; }
 .kind.k-craft { background: var(--accent-soft); color: var(--accent); }
 .kind.k-lost, .kind.k-hunger, .kind.k-quarrel { background: var(--feel-soft); color: var(--feel); }
+.kind.k-work { background: var(--accent-soft); color: var(--accent); }
+.kind.k-ruin { background: var(--feel-soft); color: var(--feel); font-style: italic; }
 .digest { white-space: pre-wrap; font: 12px/1.5 var(--mono); max-height: 480px; overflow: auto; background: var(--sunk); padding: 10px; border-radius: 8px; }
 
 /* The coast map */
@@ -553,6 +558,11 @@ a.btn { color: inherit; text-decoration: none; display: inline-block; }
 .g-card dt { color: var(--g-muted); font: 11px var(--mono); text-transform: uppercase; letter-spacing: 0.05em; padding-top: 2px; }
 .g-card dd { margin: 0; }
 .g-lost { color: var(--g-warn); }
+.g-works { display: flex; flex-wrap: wrap; gap: 4px; }
+.g-work { padding: 1px 6px; border-radius: 8px; background: rgba(255,255,255,0.08); border: 0; color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
+.g-work:hover { background: rgba(255,255,255,0.18); }
+.g-work.w-building { color: var(--g-accent, #f0c060); }
+.g-work.w-ruin { color: var(--g-warn); font-style: italic; }
 .g-towns { display: grid; gap: 2px; margin-top: 10px; border-top: 1px solid var(--glass-line); padding-top: 8px; }
 .g-towns button { display: flex; justify-content: space-between; background: none; border: 0; color: var(--g-ink); font: 13px var(--display); padding: 3px 6px; border-radius: 6px; text-align: left; }
 .g-towns button:hover { background: rgba(255, 255, 255, 0.08); }
@@ -692,6 +702,7 @@ a.btn { color: inherit; text-decoration: none; display: inline-block; }
 .bf-table { width: 100%; font-size: 14px; }
 .bf-table td:first-child { color: var(--muted); }
 .bf-table tr.diff td { font-weight: 600; }
+.bf-table td.wrap { white-space: normal; font-size: 13px; }
 .bf-table tr.diff td:nth-child(2) { color: var(--accent); }
 .bf-flips { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
 .bf-flips li { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }

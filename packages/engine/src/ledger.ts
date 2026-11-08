@@ -70,7 +70,9 @@ export type Mechanism =
   /** A teller's grudge, fear or vanity changed the words on their way to a listener (voice.ts). */
   | "bent by"
   | "you changed"
-  | "handed down";
+  | "handed down"
+  /** An intention made at the turn of the season leaned on this later choice. */
+  | "meant to";
 
 export interface LedgerEdge {
   from: string;
@@ -271,6 +273,12 @@ export function buildLedger(input: LedgerInput): Ledger {
       for (const [trait, N] of latest) {
         const v = opt?.terms.find((x) => x.name === `${trait} today`)?.value ?? 0;
         if (Math.abs(v) >= 0.01) edge({ from: N, to: D, mechanism: "you changed", weight: Math.min(1, Math.abs(v) * 3), tick: p.tick });
+      }
+      // What they meant to do this season, decided earlier, leans on the choice.
+      for (const term of opt?.terms ?? []) {
+        if (!term.ref?.startsWith("intent:") || term.value <= 0) continue;
+        const I = nodeId.decision(a, term.ref.slice(7));
+        if (L.nodes.has(I)) edge({ from: I, to: D, mechanism: "meant to", weight: Math.min(1, term.value * 2), tick: p.tick });
       }
       for (const w of t.workspace) {
         const src = sourceOf(a, t, w);

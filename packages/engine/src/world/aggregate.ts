@@ -23,6 +23,7 @@ import type { Trace } from "../trace.js";
 import type { AgentId, Episode, MindState } from "../types.js";
 import { civicOf, considerLaw, elect, enforceLaws, foundingVersion, rootOf, toldFrom } from "./civic.js";
 import { craftBonus, knowledgeTurn } from "./knowledge.js";
+import { aggWorks, stands } from "./works.js";
 import { ageOf, CHILDHOOD, hearStory, isChild, lifeTurn, normHeld, settleNorms, storeNorm, yearOf } from "./life.js";
 import { CROSSING, other } from "./people.js";
 import { GALE_CHANCE, JOBS, RATE, RATION, SEASON_YIELD, SPOIL, seasonOf, type Pledge } from "./village.js";
@@ -207,11 +208,14 @@ export async function aggSeason(w: WorldState, faculties: Faculties, sink: Sink)
     w.minds[id]!.lastSleep = w.tick;
   }
   v.blight = v.season === "autumn" && nextRandom(w) < 0.08;
+  // Nobody is watching closely enough to ask what anyone means to do.
+  v.intent = undefined;
   economy(w, sink);
   acquaint(w);
   await lifeTurn(w, faculties, sink);
   knowledgeTurn(w, sink);
   if (v.season === "spring") elect(w, sink);
+  aggWorks(w, sink);
   await pledgeRound(w, faculties, sink);
   if (v.season === "summer" && yearOf(w) > 1) for (const f of [...new Set([v.founding ?? CROSSING, CROSSING])]) tellFounding(w, f);
   bedtimes(w);
@@ -223,7 +227,7 @@ function economy(w: WorldState, sink: Sink): void {
   const v = w.village!;
   const sd = v.seasonDays;
   const skill: Record<string, number> = { fisher: 1 + craftBonus(w, "fish"), farmer: 1 + craftBonus(w, "farm") };
-  const spoil = SPOIL * (1 - craftBonus(w, "keep"));
+  const spoil = SPOIL * (1 - craftBonus(w, "keep")) * (stands(w, "granary") ? 0.5 : 1);
   const gale = GALE_CHANCE[v.season];
   const ration = w.order.some((x) => w.agents[x]!.role === "cook") ? RATION * 0.85 : RATION;
   let hungryDays = 0;
@@ -238,7 +242,7 @@ function economy(w: WorldState, sink: Sink): void {
       if (job.makes === "food") {
         let y = SEASON_YIELD[v.season][a.role] ?? 1;
         if (a.role === "farmer" && v.blight) y *= 0.4;
-        if (a.role === "fisher") y *= 1 - gale;
+        if (a.role === "fisher") y *= (1 - gale) * (stands(w, "jetty") ? 1.25 : 1);
         made += job.rate * y * (skill[a.role] ?? 1) * pace * 0.9;
       } else if (job.makes === "timber" || job.makes === "stone" || job.makes === "reeds") v.stock[job.makes] = Number((v.stock[job.makes] + job.rate * pace * 0.9 * sd).toFixed(1));
     }

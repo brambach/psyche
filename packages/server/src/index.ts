@@ -79,6 +79,7 @@ import {
   type FounderInput,
   type MindState,
   type WorldInput,
+  WORKS,
 } from "@psyche/engine";
 import { createFaculties, createMockFaculties } from "@psyche/faculties";
 
@@ -578,6 +579,14 @@ function simDaysPerHour() {
   return 3600 / (waking / Math.max(1, Math.min(speed, pace || speed)) + 1);
 }
 
+/** What the town means to do this season, most common first. */
+function planCounts(w: WorldState): { kind: string; text: string; n: number }[] {
+  const PLAN: Record<string, string> = { propose: "to ask for a work", store: "to put more by", help: "to help build", teach: "to teach", court: "to court someone", amends: "to make peace", challenge: "to stand against the leader", keep: "to keep to themselves" };
+  const by = new Map<string, number>();
+  for (const it of Object.values(w.village?.intent ?? {})) by.set(it.kind, (by.get(it.kind) ?? 0) + 1);
+  return [...by.entries()].sort((a, b) => b[1] - a[1]).map(([kind, n]) => ({ kind, text: PLAN[kind] ?? kind, n }));
+}
+
 function townCard(w: WorldState) {
   const v = w.village;
   if (!v) return undefined;
@@ -592,6 +601,10 @@ function townCard(w: WorldState) {
     houses: homes.filter((h) => h.shelter === "house").length,
     tents: homes.filter((h) => h.shelter !== "house").length,
     building: vv.structures.filter((x) => !x.done).map((x) => ({ name: x.name, progress: x.progress })),
+    works: (v.works ?? [])
+      .filter((x) => x.status !== "rejected")
+      .map((x) => ({ id: x.id, kind: x.kind, name: x.name, status: x.status, progress: Number((x.work / Math.max(0.1, x.hours)).toFixed(2)), condition: Number(x.condition.toFixed(2)), mending: !!x.mending, proposer: x.proposer, proposerName: w.agents[x.proposer]?.name ?? vv.people.find((p) => p.id === x.proposer)?.name, why: x.why, does: WORKS[x.kind].does, design: x.blueprint?.name, trace: x.trace })),
+    plans: planCounts(w),
     store: Math.round(vv.store.food),
     leader: vv.leader,
     leaderName: vv.leader ? (w.agents[vv.leader]?.name ?? vv.people.find((p) => p.id === vv.leader)?.name) : undefined,
@@ -806,7 +819,12 @@ function agentView(id: AgentId) {
     }));
   // How others actually feel about this person, to set against what this person believes.
   const actual = Object.fromEntries(w.order.filter((o) => o !== id).map((o) => [o, w.minds[o]!.others[id]?.liking ?? 0.5]));
-  return { mind, agent: w.agents[id], traces, actual };
+  // What they mean to do this season, and what they meant in seasons before.
+  // The offline mock's "thinking" is a plain template, not words anyone would say, so it isn't shown.
+  const own = w.village?.intent?.[id];
+  const intent = own && governor.mode === "mock" ? { ...own, words: undefined } : own;
+  const past = (w.village?.intentions ?? []).filter((x) => x.agent === id && x !== own).slice(-4).reverse().map((x) => ({ ...x, words: governor.mode === "mock" ? undefined : x.words }));
+  return { mind, agent: w.agents[id], traces, actual, intent, past };
 }
 
 function traceView(agent: AgentId, traceId: string) {

@@ -37,6 +37,7 @@ export function ButterflyPanel({ edit, names, label }: { edit: string; names: Re
     ["Born / died", (s) => `${s.births} / ${s.deaths}`],
     ["Common store", (s) => `${s.store} food`],
     ["Houses", (s) => String(s.houses)],
+    ["Built together", (s) => s.works ?? "nothing"],
     ["Leader", (s) => name(s.leader)],
     ["Laws", (s) => String(s.laws)],
     ["Norms", (s) => String(s.norms)],
@@ -76,7 +77,7 @@ export function ButterflyPanel({ edit, names, label }: { edit: string; names: Re
                   {rows.map(([k, f]) => {
                     const a = f(T.with);
                     const c = f(T.without);
-                    return <tr key={k} className={a !== c ? "diff" : ""}><td>{k}</td><td className="n">{a}</td><td className="n">{c}</td></tr>;
+                    return <tr key={k} className={a !== c ? "diff" : ""}><td>{k}</td><td className={k === "Built together" ? "wrap" : "n"}>{a}</td><td className={k === "Built together" ? "wrap" : "n"}>{c}</td></tr>;
                   })}
                 </tbody>
               </table>

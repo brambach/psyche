@@ -21,6 +21,8 @@ import { createCast, WORLD_START } from "./cast.js";
 import { considerLaw, elect, enforceLaws, foundingDay, type Civic, type Election, type Law } from "./civic.js";
 import { ageOf, bedtime, hearStory, initLife, isChild, yearOf, lifeTurn, normHeld, sanction, settleNorms, storeNorm, type Life, type Norm } from "./life.js";
 import { carryKnowledge, craftBonus, knowledgeTurn, seedKnowledge, type Knowledge } from "./knowledge.js";
+import { buildWork, civicSite, stands, worksDay, worksSeason, type Work } from "./works.js";
+import { intentionsSeason, steer, type Intention } from "./intentions.js";
 import { CROSSING, createSettlers, crossingMemory, other } from "./people.js";
 import type { Place, PlaceId, RoutineEntry } from "./places.js";
 import { claimFromEpisode, eventPercept, feed, hop, luck, isNight, personName, record, thirdPerson, type AgentState, type Sink, type WorldState } from "./world.js";
@@ -108,6 +110,12 @@ export interface VillageState {
   knowledge?: Knowledge;
   /** Set while the town runs on the aggregate tier: nobody is watching, so only rules run. */
   aggregate?: { since: number };
+  /** Civic works the town has proposed, built, mended or let fall (absent before G4). */
+  works?: Work[];
+  /** What each adult means to do this season, decided when it turned (absent before G4). */
+  intent?: Record<AgentId, Intention>;
+  /** Intentions over the seasons, newest last. */
+  intentions?: Intention[];
 }
 
 export type VillageEvent = { kind: "pledge" } | { kind: "blight" } | { kind: "gale" };
@@ -328,7 +336,11 @@ export function villageWorkplace(world: WorldState, a: AgentState, activity: str
   if (a.role === "farmer" && v.season === "winter") return { place: "woods", activity: "foraging the pinewood; nothing grows in winter" };
   if (job.makes === "build") {
     const site = v.structures.find((s) => !s.done && s.builders.includes(a.id)) ?? v.structures.find((s) => !s.done);
-    if (!site) return { place: "woods", activity: "felling pines for the next house" };
+    if (!site) {
+      const civic = civicSite(world);
+      if (civic) return { place: "works", activity: civic.mending ? `mending ${civic.name}` : `building ${civic.name}` };
+      return { place: "woods", activity: "felling pines for the next house" };
+    }
     const owner = v.households[site.household]!;
     return { place: owner.home, activity: `building ${possessive(owner)} house` };
   }
@@ -378,9 +390,12 @@ async function newDay(world: WorldState, faculties: Faculties, sink: Sink): Prom
   if (v.season !== before) {
     v.blight = false;
     feed(world, sink, { kind: "event", agents: [], title: `${cap(v.season)} comes to ${world.name}`, text: SEASON_TEXT[v.season] });
+    // Each adult first decides what they mean to do with the season; the rest of the turn leans on it.
+    const ask = await intentionsSeason(world, faculties, sink);
     await lifeTurn(world, faculties, sink);
     knowledgeTurn(world, sink);
     if (v.season === "spring") elect(world, sink);
+    await worksSeason(world, faculties, sink, ask);
   }
   const r = luck(world, "weather");
   v.weather = r < GALE_CHANCE[v.season] ? "gale" : r < GALE_CHANCE[v.season] + 0.25 ? "rain" : "fair";
@@ -392,9 +407,10 @@ async function newDay(world: WorldState, faculties: Faculties, sink: Sink): Prom
       record(world, sink, id, tr);
     }
   }
-  // Food spoils in tents. What is in the store keeps.
-  const spoil = SPOIL * (1 - craftBonus(world, "keep"));
+  // Food spoils in tents (half as fast with a granary to keep it in). What is in the store keeps.
+  const spoil = SPOIL * (1 - craftBonus(world, "keep")) * (stands(world, "granary") ? 0.5 : 1);
   for (const hh of Object.values(v.households)) hh.food = Number((hh.food * (1 - spoil)).toFixed(2));
+  worksDay(world, sink);
 }
 
 const SEASON_TEXT: Record<Season, string> = {
@@ -422,12 +438,19 @@ function work(world: WorldState, dt: number, sink: Sink): void {
       if (a.role === "farmer" && v.blight) y *= 0.4;
       if (a.place === "woods" && a.role !== "forager") y = (SEASON_YIELD[v.season].forager ?? 1) * 0.8;
       if (v.weather === "rain") y *= 0.8;
+      if (a.role === "fisher" && stands(world, "jetty")) y *= 1.25;
       if (hh) hh.food = Number((hh.food + JOBS[a.role]!.rate * y * (skill[a.role] ?? 1) * pace).toFixed(2));
     } else if (job.makes === "timber" || job.makes === "stone" || job.makes === "reeds") {
       v.stock[job.makes] = Number((v.stock[job.makes] + job.rate * pace * (v.weather === "rain" ? 0.8 : 1)).toFixed(2));
     } else if (job.makes === "build") {
       if (a.place === "woods") {
         v.stock.timber = Number((v.stock.timber + 1 * pace).toFixed(2));
+        continue;
+      }
+      if (a.place === "works") {
+        const civic = civicSite(world);
+        const short = civic && buildWork(world, civic, id, pace, sink);
+        if (short) a.activity = `waiting on ${short}`;
         continue;
       }
       const site = v.structures.find((s) => !s.done && v.households[s.household]?.home === a.place);
@@ -720,7 +743,7 @@ async function pledge(world: WorldState, faculties: Faculties, sink: Sink): Prom
       template: "At the fire, {who} asked every household to put by for the common store; {store}.",
       gist: own ? "I asked the village to put by for a common store." : `${P.name} asked every household to put by for the common store.`,
       eventId: evId,
-      options: PLEDGE_OPTIONS(SHARE, normHeld(world, id)),
+      options: steer(world, id, PLEDGE_OPTIONS(SHARE, normHeld(world, id)), { store: "commit", keep: "hold" }),
     };
     p.details.unshift({ key: "who", value: P.name, salience: 0.2 });
     // Hunger tonight weighs: the household's own food changes what giving costs.
