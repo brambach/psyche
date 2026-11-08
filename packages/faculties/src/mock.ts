@@ -145,6 +145,23 @@ export function mockSpeak(req: SpeakRequest): SpeakResponse {
       return { utterance: curt ? "We'll keep our own." : pick(["I'll feed my own first. Sorry.", "Not this time. We need what we've got."], seed), acts: ["refuse"] };
     case "Propose a law":
       return { utterance: pick(["From now on every household puts a quarter of what it can spare into the store each evening, and the keeper sees it done.", "A quarter of every household's spare food goes into the store each evening. The keeper will see to it.", "Every household gives a quarter of its surplus to the store, every evening, no exceptions."], seed), acts: ["propose"] };
+    // The made world (world/heresy.ts): suspicion, how people take it, and the leader against it.
+    case "Confide a suspicion":
+      return { utterance: `${pick(["Can I tell you something? Don't laugh. ", "I've not said this to anyone. ", "You'll think I'm mad. "], seed)}${story}`, acts: ["confide"] };
+    case "Hear them out":
+      return { utterance: pick(["Go on. I'm listening.", "That's a strange thing to say. Tell me more.", "I won't laugh. What did you see?"], seed), acts: ["engage"] };
+    case "Say you've seen it too":
+      return { utterance: `${pick(["I thought it was only me.", "Then I'm not mad either.", "Strange you say that."], seed)} ${story || pick(["I've noticed things too. Things that shouldn't happen.", "Something's been wrong for days. I didn't dare say.", "I keep hearing the same words from different people."], seed)}`, acts: ["confide", "agree"] };
+    case "Laugh it off":
+      return { utterance: pick(["You've been out in the sun too long.", "Ha. And the gulls are spies, I suppose.", "Get some sleep, you."], seed), acts: ["dismiss"] };
+    case "Call it madness":
+      return { utterance: pick(["That's madness, and you know it. Stop.", "Don't say that to anyone else. They'll think you've lost your wits.", "No. The world is the world. Leave it."], seed), acts: ["reject"] };
+    case "Preach at the fire":
+      return { utterance: `${pick(["Listen to me, all of you. ", "I'll say it if nobody else will. ", "You can laugh. "], seed)}${story} Ask yourselves why.`, acts: ["preach"] };
+    case "Denounce the heresy":
+      return { utterance: `${curt ? "Enough. " : "I'll say this once. "}${story}`, acts: ["denounce"] };
+    case "Call out to the watcher":
+      return { utterance: pick(["If someone is watching, give me a sign.", "I know you're there. Show me.", "Whoever made this place, answer me."], seed), acts: ["call"] };
     default:
       return { utterance: req.intent.description, acts: [] };
   }

@@ -8,11 +8,14 @@ import type { Faculties } from "../ports.js";
 import type { Tick } from "../types.js";
 import { dayOf } from "../mind.js";
 import { advance, inject, say, type FeedItem, type Sink, type WorldEvent, type WorldState, type WorldTrace } from "./world.js";
+import { leaveResidue, voiceFromSky } from "./heresy.js";
 
 export type WorldInput =
   | { type: "advance"; minutes: number }
   | { type: "inject"; event: WorldEvent }
-  | { type: "say"; to: string; text: string };
+  | { type: "say"; to: string; text: string }
+  /** A voice from the empty sky (the player answering someone who called out to the watcher). */
+  | { type: "sky"; to: string; text: string };
 
 export interface WorldFrame {
   index: number;
@@ -77,6 +80,7 @@ export class WorldSession {
     const before = this.world.tick;
     if (input.type === "advance") await advance(this.world, input.minutes, f, sink);
     else if (input.type === "inject") await inject(this.world, input.event, f, sink);
+    else if (input.type === "sky") await voiceFromSky(this.world, input.to, input.text, f, sink);
     else await say(this.world, input.to, input.text, f, sink);
     const dayStart = dayOf(this.world.tick) !== dayOf(before);
     const keep = opts.snapshot ?? (dayStart || (this.opts.keepRecent ?? KEEP_RECENT) > 0);
@@ -120,7 +124,10 @@ export class WorldSession {
     this.log = this.log.slice(0, target ? target.logEnd : 0);
     this.feed = this.feed.slice(0, target ? target.feedEnd : this.baseFeed);
     this.traces = this.traces.slice(0, (target ? target.traceEnd : this.baseTrace) - this.traceBase);
+    const discarded = this.world;
     this.world = structuredClone(target ? target.state! : this.initial);
+    // A timeline wound back can leave a trace in the minds that live it again (déjà vu).
+    if (this.world.heresy) leaveResidue(discarded, this.world);
   }
 
   /**

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isNight } from "@psyche/engine";
 import { api, type GameView, type Slot } from "./api";
 import { AgentPanel } from "./AgentPanel";
+import { HeresyChip, HeresyPanel } from "./Heresy";
 import { Coast3D } from "./Coast3D";
 import { useGameStream } from "./stream";
 import { Town3D, type Shot } from "./Town3D";
@@ -34,6 +35,7 @@ export function Game() {
   const [focusReq, setFocusReq] = useState<{ id: string; n: number }>();
   const [strip, setStrip] = useState<Strip | "">(() => (localGet("psyche.strip") as Strip | "") ?? "feed");
   const [menu, setMenu] = useState(false);
+  const [heresy, setHeresy] = useState(false);
   const [toasts, setToasts] = useState<{ id: string; text: string; kind: string; town?: string; agent?: string; at: number }[]>([]);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -204,6 +206,7 @@ export function Game() {
               {mode === "coast" ? "Back to town" : "Whole coast"}
             </button>
           )}
+          {view.heresy && <HeresyChip summary={view.heresy} open={heresy} onOpen={() => setHeresy(!heresy)} />}
           <button className={`g-btn ${director ? "on" : ""}`} aria-pressed={director} onClick={() => setDirector(!director)} title="The director cuts to whatever matters most (D)">
             🎬 Director
           </button>
@@ -240,6 +243,8 @@ export function Game() {
       {director && !shot && mode === "town" && village && <div className="g-caption g-hands">You have the camera. The director takes it back after 20 seconds.</div>}
 
       <BottomStrip view={view} strip={strip} setStrip={setStrip} names={names} onGo={goTo} onMind={(id, trace) => setMind({ id, trace })} />
+
+      {heresy && <HeresyPanel tick={view.tick} onMind={(id, trace) => setMind({ id, trace })} onClose={() => setHeresy(false)} />}
 
       {mind && (
         <aside className="g-mind" aria-label={`Inside ${names[mind.id] ?? mind.id}'s head`}>

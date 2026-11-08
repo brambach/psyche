@@ -13,6 +13,7 @@ import type { Ablations, AgentId, Belief, Episode, MindState, Pronouns, Tick } f
 import { CAST_ORDER, createCast, WORLD_START } from "./cast.js";
 import { PLACES, type Place, type PlaceId, type RoutineEntry, type Want } from "./places.js";
 import { injectVillage, overhear, villageStep, villageWorkplace, type VillageEvent, type VillageState } from "./village.js";
+import { heresyStep, markUnnatural, type HeresyState } from "./heresy.js";
 
 const STEP = 10;
 /** Minutes before the same two people strike up another conversation. */
@@ -86,6 +87,8 @@ export interface WorldState {
   events: WorldEventRecord[];
   /** Present when this world is a village with food, houses and a common store. */
   village?: VillageState;
+  /** Present when people here can come to suspect the world is made (world/heresy.ts). */
+  heresy?: HeresyState;
 }
 
 export interface FeedLine {
@@ -226,6 +229,7 @@ export async function advance(world: WorldState, minutes: number, faculties: Fac
     if (slept.length > 0) morning(world, sink, slept);
     updatePositions(world, sink);
     if (world.village) await villageStep(world, dt, faculties, sink);
+    if (world.heresy) await heresyStep(world, faculties, sink);
     if (isNight(world.tick)) continue;
     await encounters(world, faculties, sink);
   }
@@ -841,6 +845,8 @@ export async function say(world: WorldState, to: AgentId, text: string, facultie
 }
 
 export async function inject(world: WorldState, ev: WorldEvent, faculties: Faculties, sink: Sink): Promise<void> {
+  // Weather sent by the player has no cause inside the world, and someone may notice.
+  if (world.heresy && (ev.kind === "storm" || ev.kind === "gale" || ev.kind === "blight")) markUnnatural(world, ev.kind === "blight" ? "a blight on the barley" : `a ${ev.kind}`);
   if (ev.kind === "pledge" || ev.kind === "blight" || ev.kind === "gale") {
     if (!world.village) return;
     return injectVillage(world, ev, faculties, sink);

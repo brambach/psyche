@@ -34,6 +34,9 @@ import {
   momentNotices,
   chronicleNotices,
   awaySummary,
+  enableHeresy,
+  heresyView,
+  heresyNotices,
   type GameFrame,
   type Notice,
   type RegionState,
@@ -105,6 +108,19 @@ interface Saved {
   region?: { state: RegionState; worlds: Record<string, WorldState>; feeds: Record<string, FeedItem[]> };
 }
 
+/** People can come to suspect their world is made (world/heresy.ts). PSYCHE_HERESY=0 turns it off. */
+const HERESY = process.env.PSYCHE_HERESY !== "0";
+/** Switch the made-world machinery on in every town (worlds saved before it existed get it too). */
+function heresyOn() {
+  if (!HERESY) return;
+  if (region) {
+    for (const t of region.region.towns) enableHeresy(region.world(t.id));
+    return;
+  }
+  enableHeresy(session.world);
+  if (session.inputs.length === 0) enableHeresy(session.initial);
+}
+
 const envScenario = process.env.PSYCHE_SCENARIO;
 // The game is a civilization: a region of towns unless asked otherwise.
 let scenario: Scenario = envScenario === "village" || envScenario === "island" ? envScenario : "region";
@@ -142,6 +158,7 @@ function start() {
     region = undefined;
     session = new WorldSession(makeWorld(), faculties, sessionOpts());
   }
+  heresyOn();
 }
 start();
 /** Years passing on the offline mock, in the background. */
@@ -229,6 +246,7 @@ async function restoreFrom(saved: Saved) {
     town = Object.keys(region.towns)[0] ?? "hollow";
     session = region.focus(town);
     seen = saved.seen ?? region.region.tick;
+    heresyOn();
     console.log(`Restored a region of ${region.region.towns.length} towns.`);
     return;
   }
@@ -236,6 +254,7 @@ async function restoreFrom(saved: Saved) {
   const r = await WorldSession.replay(saved.base ?? world, saved.inputs, saved.log, faculties, sessionOpts());
   session = r.session;
   seen = saved.seen ?? session.world.tick;
+  heresyOn();
   console.log(`Restored ${saved.inputs.length} inputs${r.divergedAt !== undefined ? ` (diverged at call ${r.divergedAt})` : ""}.`);
 }
 
@@ -546,7 +565,9 @@ function collectNotices() {
   // town lives through, without telling the same thing twice (a leader's death is both).
   const told = (n: Notice) => [...history, ...notices].some((h) => h.kind === "chronicle" && h.agent === n.agent && Math.abs(h.tick - n.tick) <= 1440);
   const moments = momentNotices(session.feed.slice(-200), noticedFeed, region ? town : undefined).filter((n) => !n.agent || !told(n));
-  const fresh = [...history, ...moments, ...warnings(w, region ? town : undefined, region)];
+  // Someone calling out to the watcher is the player's cue to answer; conversions and denunciations are moments.
+  const heresy = heresyNotices(w, noticedFeed).map((n): Notice => ({ id: n.id, tick: n.tick, kind: n.kind === "call" ? "warning" : "moment", text: n.text, town: region ? town : undefined, agent: n.agent }));
+  const fresh = [...history, ...moments, ...heresy, ...warnings(w, region ? town : undefined, region)];
   noticedChronicle = region?.region.tick ?? w.tick;
   noticedFeed = w.tick;
   for (const n of fresh) {
@@ -586,6 +607,13 @@ function townCard(w: WorldState) {
     season: vv.season,
     weather: vv.weather,
   };
+}
+
+/** The made world at a glance, for the chip in the corner: who believes, and who is asking for a sign. */
+function heresySummary() {
+  const v = heresyView(session.world);
+  if (!v) return undefined;
+  return { factions: v.factions, open: v.calls.filter((c) => c.open).map((c) => ({ who: c.who, name: c.name, tick: c.tick })), anomalies: v.anomalies.length, leader: v.leader };
 }
 
 /** Everything on a player's screen, as one frame. Keyed lists go down the wire item by item. */
@@ -634,6 +662,7 @@ function gameFrame(): GameFrame {
     feed: session.feed.slice(-40).reverse().map((f) => ({ id: f.id, tick: f.tick, kind: f.kind, title: f.title, text: f.text, agents: f.agents, refs: f.refs?.slice(0, 1), line: f.lines?.[0] })),
     beats: beats(session.feed.slice(-200), w.tick),
     notices,
+    heresy: heresySummary(),
   };
   if (w.village) {
     const scene = townScene(w, session.feed.slice(-120), session.feed.filter((f) => f.kind === "event" || f.kind === "insight").slice(-12));
@@ -823,6 +852,10 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     if (p === "/api/divergence") return send(res, 200, { events: divergence(session.world) });
     if (p === "/api/myths") return region ? send(res, 200, compareMyths(region)) : send(res, 404, { error: "Only a region has more than one town." });
     if (p === "/api/atlas") return send(res, 200, { beliefs: atlas(session.world) });
+    if (p === "/api/heresy") {
+      const v = heresyView(session.world);
+      return v ? send(res, 200, v) : send(res, 404, { error: "The made world is switched off (PSYCHE_HERESY=0)." });
+    }
     if (p === "/api/town3d") return session.world.village ? send(res, 200, townScene(session.world, session.feed.slice(-120), session.feed.filter((f) => f.kind === "event" || f.kind === "insight").slice(-12))) : send(res, 404, { error: "Only a village has a 3D view." });
     if (p === "/api/timeline") return region ? send(res, 200, timeline(region)) : send(res, 404, { error: "Only a region has a timeline." });
     if (p === "/api/digest") {
@@ -970,6 +1003,16 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       await exclusive(() => session.apply(input));
       save(true);
       return send(res, 200, view());
+    }
+    if (p === "/api/heresy/answer") {
+      if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
+      const b = await body<{ agent?: string; text?: string }>(req);
+      const text = (b.text ?? "").trim().slice(0, 300);
+      if (!b.agent || !session.world.minds[b.agent] || !session.world.order.includes(b.agent)) return send(res, 400, { error: "Nobody by that name is here." });
+      if (!text) return send(res, 400, { error: "Say something." });
+      await exclusive(() => session.apply({ type: "sky", to: b.agent!, text }));
+      save(true);
+      return send(res, 200, heresyView(session.world) ?? {});
     }
     if (p === "/api/rewind") {
       if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
