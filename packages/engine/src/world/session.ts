@@ -7,12 +7,15 @@ import { recording, replaying } from "../session.js";
 import type { Faculties } from "../ports.js";
 import type { Tick } from "../types.js";
 import { dayOf } from "../mind.js";
+import { voiceAct, type VoiceAct } from "./voice.js";
 import { advance, inject, say, type FeedItem, type Sink, type WorldEvent, type WorldState, type WorldTrace } from "./world.js";
 
 export type WorldInput =
   | { type: "advance"; minutes: number }
   | { type: "inject"; event: WorldEvent }
-  | { type: "say"; to: string; text: string };
+  | { type: "say"; to: string; text: string }
+  /** You, speaking into the world as a stranger, a prophet, a voice from the sky or a dream (voice.ts). */
+  | { type: "voice"; act: VoiceAct };
 
 export interface WorldFrame {
   index: number;
@@ -77,6 +80,7 @@ export class WorldSession {
     const before = this.world.tick;
     if (input.type === "advance") await advance(this.world, input.minutes, f, sink);
     else if (input.type === "inject") await inject(this.world, input.event, f, sink);
+    else if (input.type === "voice") await voiceAct(this.world, input.act, f, sink);
     else await say(this.world, input.to, input.text, f, sink);
     const dayStart = dayOf(this.world.tick) !== dayOf(before);
     const keep = opts.snapshot ?? (dayStart || (this.opts.keepRecent ?? KEEP_RECENT) > 0);

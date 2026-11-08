@@ -23,6 +23,7 @@ import { craft, craftBonus, knows, learn, townCrafts } from "./knowledge.js";
 import { ageOf, hearStory, isChild, schemaLineage, yearOf } from "./life.js";
 import { CROSSING } from "./people.js";
 import { WorldSession, type WorldSessionOptions } from "./session.js";
+import { carryWords, quietSpread } from "./voice.js";
 import { createVillage, foundVillage, type Household } from "./village.js";
 import { eventPercept, feed, personName, record, thirdPerson, type Sink, type Why, type WorldState } from "./world.js";
 
@@ -57,7 +58,7 @@ export interface ChronicleEntry {
   tick: Tick;
   year: number;
   town?: string;
-  kind: "founding" | "leader" | "law" | "death" | "trade" | "quarrel" | "peace" | "hunger" | "craft" | "lost";
+  kind: "founding" | "leader" | "law" | "death" | "trade" | "quarrel" | "peace" | "hunger" | "craft" | "lost" | "faith";
   text: string;
   agents?: AgentId[];
   /** What led to it, as far back as the records go: the people, their reasons and the memories behind them. */
@@ -234,7 +235,10 @@ export class RegionSession {
     for (const t of this.region.towns) {
       this.reserve(t.id);
       if (this.towns[t.id]) await this.towns[t.id]!.apply({ type: "advance", minutes }, opts);
-      else await aggAdvance(this.aggs[t.id]!, minutes, this.facultiesOf(t.id), this.sinkOf(t.id));
+      else {
+        await aggAdvance(this.aggs[t.id]!, minutes, this.facultiesOf(t.id), this.sinkOf(t.id));
+        quietSpread(this.aggs[t.id]!);
+      }
     }
     this.region.tick = this.world(this.region.towns[0]!.id).tick;
     await this.turn();
@@ -550,6 +554,8 @@ export class RegionSession {
     const noticed = short && this.rand() < 0.75;
     const trade: Trade = { tick: r.tick, from: a.id, to: b.id, trader, gave: { kind: "food", amount: food }, got: { kind: "timber", amount: timber }, short, noticed };
     r.trades.push(trade);
+    // A trader who believes your words carries them too.
+    carryWords(A, B, trader);
     const yr = yearOf(A);
     const route = ((r.routes ??= {})[`${a.id}>${b.id}`] ??= {});
     route[yr] = (route[yr] ?? 0) + 1;

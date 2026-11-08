@@ -34,6 +34,10 @@ import {
   momentNotices,
   chronicleNotices,
   awaySummary,
+  voiceSummary,
+  voiceLineage,
+  voiceBends,
+  type Guise,
   type GameFrame,
   type Notice,
   type RegionState,
@@ -507,7 +511,7 @@ let ledgerCache: { session: WorldSession; traces: number; ledger: Ledger } | und
 function ledger(): Ledger {
   if (ledgerCache?.session !== session || ledgerCache.traces !== session.traces.length) {
     const w = session.world;
-    ledgerCache = { session, traces: session.traces.length, ledger: buildLedger({ minds: w.minds, traces: session.traces, rumors: w.rumors, events: w.events, village: w.village }) };
+    ledgerCache = { session, traces: session.traces.length, ledger: buildLedger({ minds: w.minds, traces: session.traces, rumors: w.rumors, events: w.events, village: w.village, bends: voiceBends(w) }) };
   }
   return ledgerCache.ledger;
 }
@@ -634,6 +638,8 @@ function gameFrame(): GameFrame {
     feed: session.feed.slice(-40).reverse().map((f) => ({ id: f.id, tick: f.tick, kind: f.kind, title: f.title, text: f.text, agents: f.agents, refs: f.refs?.slice(0, 1), line: f.lines?.[0] })),
     beats: beats(session.feed.slice(-200), w.tick),
     notices,
+    // Your words in this town: who heard them, who believes, what they have become (voice.ts).
+    voice: voiceSummary(w),
   };
   if (w.village) {
     const scene = townScene(w, session.feed.slice(-120), session.feed.filter((f) => f.kind === "event" || f.kind === "insight").slice(-12));
@@ -848,6 +854,11 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       const v = foundersTrace(ftrace[1]!);
       return v ? send(res, 200, v) : send(res, 404, { error: "That moment is gone (it was rewound)." });
     }
+    if (p === "/api/voice") return send(res, 200, { summary: voiceSummary(session.world) ?? { words: [], faiths: [], log: [] } });
+    if (p === "/api/voice/word") {
+      const v = voiceLineage(session.world, url.searchParams.get("id") ?? "");
+      return v ? send(res, 200, v) : send(res, 404, { error: "No such words in this town." });
+    }
     if (p === "/api/world") return send(res, 200, view());
     if (p === "/api/cost") return send(res, 200, costView());
     const cons = /^\/api\/concerns\/(\w+)$/.exec(p);
@@ -963,6 +974,17 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       const name = slotName((await body<{ name?: string }>(req)).name);
       if (name && existsSync(slotFile(name))) unlinkSync(slotFile(name));
       return send(res, 200, { slots: listSlots() });
+    }
+    if (p === "/api/voice/speak" || p === "/api/voice/fulfil") {
+      // You, speaking into the watched town: a stranger, a prophet, a voice from the sky, a dream.
+      if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
+      const b = await body<{ guise?: Guise; text?: string; to?: string; place?: string; word?: string }>(req);
+      const GUISES: Guise[] = ["stranger", "prophet", "sky", "dream"];
+      if (p === "/api/voice/speak" && (!b.text?.trim() || !b.guise || !GUISES.includes(b.guise))) return send(res, 400, { error: "Say something, and pick how you appear." });
+      const act = p === "/api/voice/speak" ? { act: "speak" as const, guise: b.guise!, text: b.text!.slice(0, 400), to: b.to, place: b.place } : { act: "fulfil" as const, word: b.word ?? "" };
+      await exclusive(() => session.apply({ type: "voice", act }));
+      save(true);
+      return send(res, 200, { summary: voiceSummary(session.world) });
     }
     if (p === "/api/input") {
       if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
