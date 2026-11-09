@@ -8,6 +8,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   buildLedger,
   BUILDERS,
@@ -96,6 +97,20 @@ import {
   openDebts,
 } from "@psyche/engine";
 import { createClaudeReader, createFaculties, createMockFaculties } from "@psyche/faculties";
+
+// Your key and settings can live in a .env file at the top of the repo (git ignores it), e.g.
+//   ANTHROPIC_API_KEY=sk-ant-...
+//   PSYCHE_DAILY_CAP=5
+// Anything already set in the shell wins. PSYCHE_ENV points somewhere else.
+{
+  const envFile = process.env.PSYCHE_ENV ?? fileURLToPath(new URL("../../../.env", import.meta.url));
+  if (existsSync(envFile)) {
+    const before = { ...process.env };
+    process.loadEnvFile(envFile);
+    Object.assign(process.env, before);
+    console.log(`Read settings from ${envFile}.`);
+  }
+}
 
 const PORT = Number(process.env.PORT ?? 8787);
 const DATA_DIR = resolve(process.env.PSYCHE_DATA ?? "data");
