@@ -21,7 +21,14 @@ npm test           # engine and world tests
 npm run demo       # the original single-mind demo (M0)
 ```
 
-With no Anthropic credentials, speech runs on an offline mock so everything works out of the box. Set `ANTHROPIC_API_KEY` (or `PSYCHE_FACULTIES=claude`) to use Claude. Set `PSYCHE_AUTOPLAY=0` to start paused, and `PSYCHE_SCENARIO=village` to start in Hollow Bay (or switch worlds from the menu in the header).
+With no Anthropic credentials, speech runs on an offline mock so everything works out of the box. Set `ANTHROPIC_API_KEY` (or `PSYCHE_FACULTIES=claude`) to use Claude. The easiest place for the key is a `.env` file at the top of the repo, which git ignores and the server reads on start:
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+PSYCHE_DAILY_CAP=5
+```
+
+Anything set in your shell wins over the file. Set `PSYCHE_AUTOPLAY=0` to start paused, and `PSYCHE_SCENARIO=village` to start in Hollow Bay (or switch worlds from the menu in the header).
 
 ### Cost
 
