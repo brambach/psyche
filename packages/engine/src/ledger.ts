@@ -11,6 +11,8 @@
 import type { Rumor, WorldEventRecord, WorldTrace } from "./world/world.js";
 import type { VillageState } from "./world/village.js";
 import type { EditRecord } from "./world/edits.js";
+import { describeDevRef } from "./develop/behaviour.js";
+import { upbringingSources } from "./develop/lineage.js";
 import type { Trace, WorkspaceEntry } from "./trace.js";
 import { EMOTION_NAMES, NEGATIVE_EMOTIONS, type AgentId, type EmotionName, type MindState, type Tick } from "./types.js";
 
@@ -31,6 +33,8 @@ export type NodeKind =
   | "sleep"
   | "outside"
   | "norm"
+  /** A piece of who someone was raised to be: their conscience on one thing, their attachment (develop/). */
+  | "upbringing"
   /** Something the player changed in someone's mind. */
   | "edit";
 
@@ -74,7 +78,11 @@ export type Mechanism =
   /** An intention made at the turn of the season leaned on this later choice. */
   | "meant to"
   /** A piece of someone's mind that came from their own writing (persona/). */
-  | "in their own words";
+  | "in their own words"
+  /** Who they were raised to be leaned on the choice (develop/). */
+  | "raised to"
+  /** A memory or core belief, theirs or a caregiver's, that their upbringing goes back to. */
+  | "raised by";
 
 export interface LedgerEdge {
   from: string;
@@ -281,6 +289,19 @@ export function buildLedger(input: LedgerInput): Ledger {
         if (!term.ref?.startsWith("intent:") || term.value <= 0) continue;
         const I = nodeId.decision(a, term.ref.slice(7));
         if (L.nodes.has(I)) edge({ from: I, to: D, mechanism: "meant to", weight: Math.min(1, term.value * 2), tick: p.tick });
+      }
+      // Who they were raised to be: conscience and attachment terms, traced to what made them so.
+      for (const term of opt?.terms ?? []) {
+        if (!term.ref?.startsWith("dev:") || Math.abs(term.value) < 0.02) continue;
+        const U = nodeId.item(a, term.ref);
+        if (!L.nodes.has(U)) {
+          node({ id: U, kind: "upbringing", agent: a, tick: -Infinity, label: `${nameOf(a)}: ${describeDevRef(minds[a]!, term.ref) ?? term.name}` });
+          for (const src of upbringingSources(minds, a, term.ref)) {
+            const from = src.kind === "schema" ? schemaNode(src.agent, src.id) : episodeNode(src.agent, src.id);
+            if (from) edge({ from, to: U, mechanism: "raised by", weight: Math.min(1, Math.max(0.1, src.share)), tick: p.tick });
+          }
+        }
+        edge({ from: U, to: D, mechanism: "raised to", weight: Math.min(1, Math.abs(term.value) * 3), tick: p.tick });
       }
       for (const w of t.workspace) {
         const src = sourceOf(a, t, w);

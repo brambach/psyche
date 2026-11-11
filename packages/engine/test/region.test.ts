@@ -5,10 +5,11 @@ import { createMockFaculties } from "@psyche/faculties";
 const YEAR = 16;
 
 describe("a region of towns", () => {
-  // Small towns split early here, so a second town forms within a few years.
+  // Small towns split early here, so a second town forms within a few years. Which seed is used
+  // matters only in that the daughter towns must have left early enough to tell the story their own way.
   let rs: RegionSession;
   beforeAll(async () => {
-    rs = RegionSession.create(11, createMockFaculties(), { splitAt: 18, maxTowns: 3, session: { keepRecent: 0, keepDays: 0, maxTraces: 2000 } });
+    rs = RegionSession.create(13, createMockFaculties(), { splitAt: 18, maxTowns: 3, session: { keepRecent: 0, keepDays: 0, maxTraces: 2000 } });
     for (let d = 0; d < 9 * YEAR; d++) {
       for (let h = 0; h < 4; h++) await rs.advance(360, { snapshot: false });
       if ((d + 1) % YEAR === 0) rs.rebase();

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type AgentView, type ConcernView, type TraceView } from "./api";
 import { Lineage, type LineageQuery } from "./Lineage";
+import { Roots } from "./Roots";
 import { Scan } from "./Scan";
 import { Account } from "./Village";
 import { WhatIfNot } from "./Generations";
@@ -145,6 +146,7 @@ export function AgentPanel({ id, tick, names, trace, onTrace, onOpen }: { id: st
           </ul>
         )}
       </div>
+      {view.roots && <Roots view={view.roots} name={m.name} subject={m.pronouns.subject} names={names} onOpen={(a) => onOpen(a)} />}
       <div ref={lineageRef}>
         {lineage && <Lineage query={lineage} focus={id} names={names} onOpen={(a, t) => (a === id ? onTrace(t) : onOpen(a, t))} onClose={() => setLineage(undefined)} />}
       </div>

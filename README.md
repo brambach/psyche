@@ -161,8 +161,8 @@ npm run why -- mara 3 7 --storm   # what weighs on Mara after three days, and wh
 ## The experiments: Milgram, Asch, Darley & Latané, Stanford
 
 ```bash
-npm run lab                         # seed 11, 40 volunteers, offline mock, about 5 s; writes out/lab/lab.html
-npm run lab -- 7 out/lab7 --quick  # another seed, skip the counterfactual sweeps
+npm run lab                         # seed 11, 40 volunteers, offline mock, about 30 s; writes out/lab/lab.html
+npm run lab -- 7 out/lab7 --quick  # another seed, about 5 s: skip the counterfactual sweeps and the developmental studies
 ```
 
 Forty generated volunteers, each with a formative past and a core belief, go through the shock generator (8 of Milgram's conditions), Asch's line judgments (group sizes 1 to 15, an ally, written answers), the seizure and smoke-filled-room studies, and a six-day prison (the Stanford briefing against the BBC study's). Same minds in every room, so you can ask whether the person who went to 450 V also went along with the lines, and how long they sat listening to the seizure.
@@ -170,6 +170,54 @@ Forty generated volunteers, each with a formative past and a core belief, go thr
 The report (`lab.html`) sets every condition beside the human number and opens a case file on anyone: the forces behind their decisive choice, what they said when asked why, what they left out (Nisbett & Wilson), the causal ledger back to the memory that installed their core belief, and the exact counterfactual without that memory. Ablations switch one mechanism off and rerun everyone.
 
 Honest caveat: the situation weights were hand-tuned against the human results, so matching the numbers is a calibration, not a prediction. What is not tuned: the ordering across conditions falls out of the same forces, the same minds are reused across all four studies, and the pasts and trait correlates come from the engine. Code in `packages/engine/src/lab/`.
+
+## Growing up: attachment, childhood, identity, conscience
+
+Everyone in a town now has a development record (`packages/engine/src/develop/`): how they were looked after, what it taught them, what they met on the way, who they decided to be, and what their conscience is about. Founders and newcomers get theirs sketched backwards from who they are. Anyone born in the world lives theirs a season at a time.
+
+- **Care, season by season.** Each caregiver's warmth, steadiness and hard hand that season come from their temperament, their own attachment, what the household is under (hunger, a winter under canvas, a death), core beliefs they have never laid to rest, how they were raised themselves, and how well they and this child happen to suit each other. A hard winter lands harder on a parent whose core belief it confirms.
+- **Attachment** forms from that care, fastest in the first two years: steady warmth gives a secure child, care that comes and goes an anxious one, care that is reliably cool an avoidant one. Nothing copies a parent's attachment into a child. The parent's attachment shapes the care, and the care shapes the child. From six the other children count too, and in adult life a steady partner can undo an insecure start.
+- **Adversity** is counted the way the ACE study counted it. Met with someone warm there it is tolerable, and leaves a child a little surer of themself. Met alone it is toxic: it wears on the body, and from age three it becomes a memory that can install a core belief ("There is never enough to go round"), by the same machinery that gives the founders theirs. Before three there is no memory, only the mark.
+- **Erikson's stages** close one after another, each leaving something in the self: trust, autonomy, initiative, industry, then intimacy, generativity and integrity.
+- **Identity** (Marcia): trying things out needs an open temperament, a home that allowed it and enough to eat; committing comes with a trade, a partner, children. Commitment without exploration is foreclosure. A settled identity holds its own line under pressure, and a blow to the life someone settled into opens the question again.
+- **Conscience** is six moral foundations (care, fairness, loyalty, authority, sanctity, liberty), starting from temperament, taken on from the people who raised them (more fully from warm ones), then from the town. Each choice that upholds or breaks a foundation pulls on a person in proportion to how far they sit from the middle on it, so the terms are zero for the typical person and only tell people apart.
+- **Roots.** Every change records what caused it and through whom, so a person's panel can follow "why is she anxious" from her own childhood into her father's mind (he was strained that winter), to the belief that made the winter worse for him, to the memory that installed it, to whoever told him the story. The causal ledger carries the same links: a choice, the conscience behind it, the memory behind that.
+- **Trauma across generations** therefore travels two ways: out loud, as the bedtime story that passes a belief on, and silently, through the care a strained parent could give.
+
+Open anyone's mind to see **Where they come from**. Three more mechanism switches turn the behavioural side off: attachment, conscience, identity.
+
+![Where Ada comes from: her attachment, who raised her, how each stage went, who she is, and the why-tree back through her father](docs/develop/roots.png)
+
+### The nursery, and what it was checked against
+
+```bash
+npm run lab           # the four classic experiments and the developmental studies, about 30 s; writes out/lab/lab.html
+```
+
+The nursery (`lab/nursery.ts`) raises families with no town around them: rolled settlers are paired off, their children are born and cared for by the same code that raises children in a town, grow up, pair off and raise the third generation. About 1,600 children over three seeds, in a few seconds. `lab/development.ts` then measures them the way developmental psychologists measure children.
+
+| | Humans | Psyche | On seeds held aside |
+| --- | --- | --- | --- |
+| Infants secure / avoidant / resistant (van IJzendoorn & Kroonenberg 1988) | 65 / 21 / 14% | 66 / 21 / 14% | 69 / 20 / 11% |
+| Observed sensitivity and security (De Wolff & van IJzendoorn 1997) | r = .24 | .32 | .32 |
+| Parent and infant agree, secure or not (van IJzendoorn 1995) | 75% | 67% | 65% |
+| Parent security and infant security (Verhage et al. 2016) | r = .31 | .37 | .33 |
+| Same class at seventeen as at one (Waters et al. 2000) | 72% | 70% | 70% |
+| Security at one and later (Fraley 2002) | r = .39 | .39 | .39 |
+| Secure on coming of age (Mickelson, Kessler & Shaver 1997) | 59% | 55% | 56% |
+| Harshly raised parents who raise harshly (Kaufman & Zigler 1987) | about 30% | 30% | 21% |
+
+![Published numbers beside the nursery's, with the held-aside seeds](docs/develop/benchmarks.png)
+
+Sixteen published directions also come out the right way (16 of 16, on both sets of seeds): dismissing parents have avoidant infants and preoccupied parents resistant ones; secure infants who meet an unbuffered hardship lose their security more often; adult distress rises with each further childhood adversity, less when someone warm was there; identity achievement rises through the twenties and a large minority never get there; children take their conscience from warm parents more than cold ones; an insecure adult with a secure partner often becomes secure.
+
+**The counterfactual.** The same families are raised twice with every winter, death and draw of luck identical, once with the founders' formative pasts removed. With the pasts, 48% of their children and 42% of their grandchildren are insecure at seventeen; without, 44% and 36%. About one grandchild in thirteen comes of age with a different attachment class in the two worlds, and the report follows one back. Ysolde is fearful at seventeen, and secure in the world without the pasts. Wynn, who raised Ysolde, was hard to reach. Wynn was raised by Rafe, who was hard to reach. Rafe believed "Family or not, people will cheat you". That goes back to the day Rafe's brother sold their share of the boat in Kilnford, before the crossing, two generations before Ysolde was born.
+
+**Back in the classic lab.** With the deeper minds the four classic experiments sit 3.3 points from the human numbers (3.9 before), with all 60 condition pairs in the human order. Who walks in now matters the way the original studies found: obedient subjects hold authority dearer than defiant ones (Elms & Milgram 1966), people with an achieved identity conform less under Asch's majority (Toder & Marcia 1973), and people whose conscience is about harm help sooner. People born and raised in the nursery and brought to the lab as adults help sooner if they were raised warmly (r = -.51 with seconds before helping). One thing did not come out as Adorno proposed: the harshly raised do not obey more (r = -.10); in this model they push back.
+
+![The same families with and without the founders' pasts, and one grandchild followed back](docs/develop/counterfactual.png)
+
+Honest caveats. The development constants were tuned by hand on three seeds against the benchmark rows above, so that fit is calibration (mean gap 2.9 points), and the held-aside column is the fairer one (4.1 points, three seeds first run after the tuning stopped). The harsh-parenting row rests on about twenty people per sample. How far one afternoon's home visit strays from a caregiver's season is an assumption the sensitivity row depends on. Life among other children from six on is keyed chance, not simulated. One situational weight in Milgram's shabby-office condition was touched up after the new mechanisms went in. The directional findings, the counterfactual and the nursery graduates in the lab were not tuned against. All of it runs on the offline mock.
 
 ## Hollow Bay (C1): the village
 
@@ -399,6 +447,13 @@ Every number is in `packages/engine/src/params.ts` with its source, or marked as
 | Allostatic load | McEwen 1998 |
 | Trust (ability, benevolence, integrity) and its asymmetry | Mayer, Davis & Schoorman 1995; Slovic 1993 |
 | Adult attachment dimensions | Brennan, Clark & Shaver 1998 |
+| Attachment from caregiving; earned security | Bowlby 1969; Ainsworth, Blehar, Waters & Wall 1978; Roisman et al. 2002 |
+| Caregiving under strain, and from the caregiver's own past | Conger et al. 1994; van IJzendoorn 1995; Main & Hesse 1990; Kaufman & Zigler 1987 |
+| Goodness of fit; differential susceptibility | Thomas & Chess 1977; Belsky & Pluess 2009 |
+| Psychosocial stages | Erikson 1950 |
+| Childhood adversity: counted, buffered or toxic, steeling | Felitti et al. 1998; Shonkoff et al. 2012; Seery, Holman & Silver 2010 |
+| Identity status and narrative identity | Marcia 1966; Erikson 1968; McAdams 2001 |
+| Moral foundations and where they come from | Haidt & Joseph 2004; Graham, Haidt & Nosek 2009; Grusec & Goodnow 1994; Harris 1995 |
 | Motivated reasoning | Kunda 1990 |
 | Dual process | Evans & Stanovich 2013 |
 | Whole trait theory, trait drift | Fleeson 2001; Wrzus & Roberts 2017 |
