@@ -322,3 +322,4 @@ export {
   type Found,
 } from "./history.js";
 export { buildBrief, renderBrief, offlineHistorian, offlineReader, citedIn, type Brief, type BriefNode, type BriefLink, type BriefFocus, type BriefOptions, type Historian, type HistorianAnswer, type HistorianReply } from "./historian.js";
+export { ME, youAct, youCheck, youStep, youView, type YouAct, type YouState, type YouView, type Deed, type Reaction, type Ask, type AskKind, type Verdict, type Theft, type YouDebt } from "./world/you.js";

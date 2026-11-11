@@ -1,0 +1,114 @@
+/* Walking into the world (you/Walk.tsx). Everything floats over the 3D town, in the game's glass. */
+
+.y-panel { position: absolute; left: 12px; top: 64px; bottom: 232px; width: min(390px, calc(100% - 24px)); overflow-y: auto; background: var(--glass-strong); border: 1px solid var(--glass-line); border-radius: 12px; backdrop-filter: blur(10px); z-index: 6; padding: 10px 12px 14px; display: grid; gap: 9px; align-content: start; color: var(--g-ink); font: 14px/1.4 var(--body); animation: g-in 0.25s ease-out; }
+.game:has(.g-strip.shut) .y-panel { bottom: 96px; }
+.y-panel h4 { margin: 6px 0 0; font: 11px var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--g-muted); }
+.y-panel p { margin: 0; }
+.y-panel q, .y-ask q { quotes: "“" "”"; font: 15px/1.4 var(--body); }
+.y-panel input[type="text"], .y-panel select, .y-box input[type="text"] { flex: 1 1 140px; min-width: 0; font: 14px var(--body); color: var(--g-ink); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--glass-line); border-radius: 8px; padding: 5px 8px; }
+.y-panel select option { color: #111; }
+
+.y-tabs { display: flex; gap: 4px; position: sticky; top: -10px; margin: -10px -12px 0; padding: 10px 12px 6px; background: #0a1117; border-radius: 12px 12px 0 0; z-index: 1; }
+.y-tabs button { font: 600 12.5px var(--display); color: var(--g-muted); background: var(--glass); border: 1px solid var(--glass-line); border-radius: 999px; padding: 4px 12px; }
+.y-tabs button.on { color: #1a1a1a; background: var(--g-accent); border-color: var(--g-accent); }
+
+.y-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.y-row .g-btn { white-space: normal; text-align: left; }
+.g-btn.y-bad { border-color: rgba(255, 120, 100, 0.55); color: #ffb4a6; }
+.g-btn.y-bad:hover { border-color: #ff8a75; }
+.y-check { display: inline-flex; gap: 4px; align-items: center; }
+.y-error { color: var(--g-warn); font: 13px/1.35 var(--body); border: 1px solid var(--g-warn); border-radius: 8px; padding: 5px 9px; cursor: pointer; }
+.y-quiet { color: var(--g-muted); font: 13px/1.45 var(--body); }
+.y-lead { font: 14.5px/1.4 var(--body); }
+.y-here, .y-actions, .y-people { display: grid; gap: 8px; }
+
+.y-who { display: flex; align-items: center; gap: 6px; }
+.y-who > div { flex: 1; display: grid; }
+.y-who b { font: 700 17px var(--display); }
+.y-who span { font: 12px var(--mono); color: var(--g-muted); }
+.y-who .g-mini, .y-react-head .g-mini, .y-deed-head .g-mini { margin-top: 0; }
+.y-regard { display: grid; gap: 4px; }
+
+.y-meter { display: grid; grid-template-columns: 74px 1fr auto; gap: 8px; align-items: center; font: 11.5px var(--mono); color: var(--g-muted); }
+.y-meter i { position: relative; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.14); overflow: hidden; }
+.y-meter i::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(255, 255, 255, 0.45); }
+.y-meter i b { display: block; height: 100%; background: #9fb0bd; border-radius: 3px; transition: width 0.5s ease-out; }
+.y-meter i b.up { background: #7fd49a; }
+.y-meter i b.down { background: #ff8a75; }
+.y-meter em { font-style: normal; min-width: 38px; text-align: right; color: var(--g-ink); }
+.y-panel .up, .y-box .up { color: #7fd49a; }
+.y-panel .down, .y-box .down { color: #ff8a75; }
+.y-meter i b.up, .y-meter i b.down { color: inherit; }
+
+.y-deed { display: grid; gap: 7px; border: 1px solid var(--glass-line); border-left: 3px solid #9fb0bd; border-radius: 10px; padding: 9px 10px; background: rgba(0, 0, 0, 0.28); animation: g-in 0.3s ease-out; }
+.y-deed.t-good { border-left-color: #7fd49a; }
+.y-deed.t-bad { border-left-color: #ff8a75; }
+.y-deed ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.y-deed-head { display: flex; align-items: baseline; gap: 7px; }
+.y-deed-head b { flex: 1; font: 700 14.5px var(--display); }
+.y-deed-head time { font: 11px var(--mono); color: var(--g-muted); }
+.y-said { color: var(--g-muted); font-style: italic; }
+.y-result { font: 600 13.5px var(--display); color: var(--g-accent); }
+.y-react { display: grid; gap: 4px; }
+.y-react-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.y-react-head b { font: 600 14px var(--display); }
+.y-choice { font: 11.5px var(--mono); color: #1a1a1a; background: var(--g-accent); border-radius: 999px; padding: 1px 8px; }
+.y-folk .y-choice { color: var(--g-ink); background: rgba(255, 255, 255, 0.12); }
+.y-sys { font: 11px var(--mono); color: var(--g-muted); border: 1px solid var(--glass-line); border-radius: 999px; padding: 0 7px; }
+.y-react-head .g-mini { margin-left: auto; }
+.y-react-head .g-mini + .g-mini { margin-left: 0; }
+.y-felt, .y-why, .y-kept { font: 12.5px/1.45 var(--body); color: var(--g-muted); }
+.y-felt span, .y-why span { display: inline-block; margin-right: 7px; font: 12px var(--mono); }
+.y-felt span { color: var(--g-ink); }
+.y-kept { font-style: italic; }
+.y-saw { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; border-top: 1px solid var(--glass-line); padding-top: 7px; }
+.y-saw small { flex-basis: 100%; font: 11px var(--mono); color: var(--g-muted); }
+.y-saw button { font: 12px var(--mono); color: var(--g-ink); background: var(--glass); border: 1px solid var(--glass-line); border-radius: 999px; padding: 2px 9px; }
+.y-saw button span { color: var(--g-muted); }
+
+.y-list, .y-folk { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.y-list li { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; font: 13px/1.4 var(--body); }
+.y-list em { color: var(--g-muted); font: 12px var(--body); }
+.y-folk li { display: grid; gap: 4px; border-top: 1px solid var(--glass-line); padding-top: 8px; }
+
+/* The line along the bottom: who you are, what you carry, where you stand. */
+.y-hud { position: absolute; left: 414px; right: 12px; bottom: 232px; width: fit-content; max-width: 780px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 12px; background: var(--glass-strong); border: 1px solid var(--glass-line); border-radius: 12px; padding: 7px 14px; z-index: 5; color: var(--g-ink); font: 13.5px var(--body); }
+.game:has(.g-strip.shut) .y-hud { bottom: 52px; }
+.y-hud > b { font: 700 15px var(--display); color: var(--g-accent); }
+.y-hud small { flex-basis: 100%; text-align: center; font: 11px var(--mono); color: var(--g-muted); }
+.y-standing { font: 11.5px var(--mono); border: 1px solid var(--glass-line); border-radius: 999px; padding: 1px 9px; color: var(--g-muted); }
+.y-standing.s-welcome { color: #7fd49a; border-color: #7fd49a; }
+.y-where { color: var(--g-muted); }
+
+.y-near { position: absolute; left: calc(50% + 201px); bottom: 318px; transform: translateX(-50%); font: 600 14px var(--display); color: #1a1a1a; background: var(--g-accent); border: 0; border-radius: 999px; padding: 6px 16px; z-index: 5; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4); animation: g-in 0.2s ease-out; }
+.game:has(.g-strip.shut) .y-near { bottom: 138px; }
+.y-near kbd { font: 700 12px var(--mono); background: rgba(0, 0, 0, 0.18); border-radius: 4px; padding: 1px 6px; margin-right: 6px; }
+
+/* Someone has come over and wants an answer. */
+.y-ask { display: grid; gap: 8px; border: 1px solid var(--g-accent); border-radius: 10px; padding: 9px 11px; background: rgba(255, 211, 77, 0.08); animation: g-in 0.3s ease-out; }
+.y-ask small { font: 11.5px var(--mono); color: var(--g-accent); }
+.y-ask q { font-size: 16px; }
+
+.y-veil { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(4, 8, 12, 0.6); backdrop-filter: blur(3px); z-index: 10; padding: 16px; }
+.y-box { width: min(480px, 100%); max-height: 100%; overflow-y: auto; display: grid; gap: 10px; background: var(--glass-strong); border: 1px solid var(--glass-line); border-radius: 16px; padding: 20px 22px; color: var(--g-ink); font: 15px/1.5 var(--body); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6); }
+.y-box small { font: 11.5px var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--g-accent); }
+.y-box h2 { margin: 0; font: 700 24px/1.15 var(--display); }
+.y-box h4 { margin: 4px 0 0; font: 11px var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--g-muted); }
+.y-box p { margin: 0; }
+.y-box input[type="text"] { font-size: 17px; padding: 8px 10px; }
+.y-box .g-mini { margin-top: 0; color: var(--g-ink); }
+
+/* While you walk, the watcher's furniture steps back. */
+.game.g-walking .t3-card { display: none; }
+.game.g-walking .g-keys { display: none; }
+
+@media (max-width: 720px) {
+  .game.g-walking .g-strip { display: none; }
+  .y-panel, .game:has(.g-strip.shut) .y-panel { left: 6px; right: 6px; width: auto; top: auto; bottom: 100px; max-height: 44%; }
+  .y-hud, .game:has(.g-strip.shut) .y-hud { left: 6px; right: 6px; width: auto; max-width: none; bottom: 8px; padding: 5px 8px; font-size: 12.5px; }
+  .y-hud small { display: none; }
+  .y-near, .game:has(.g-strip.shut) .y-near { left: 50%; bottom: auto; top: 176px; }
+  .y-near kbd { display: none; }
+  .y-box { padding: 16px; }
+  .y-box h2 { font-size: 20px; }
+}

@@ -2,6 +2,7 @@
 // and be tested with no API key. Its language is deliberately plain: it exists to exercise the
 // engine, not to write well. Everything it produces is visible as "mock" in the brain scan.
 
+import { mockYouSpeak } from "./mockYou.js";
 import type {
   ArchitectRequest,
   ArchitectResponse,
@@ -163,7 +164,8 @@ export function mockSpeak(req: SpeakRequest): SpeakResponse {
     case "Call out to the watcher":
       return { utterance: pick(["If someone is watching, give me a sign.", "I know you're there. Show me.", "Whoever made this place, answer me."], seed), acts: ["call"] };
     default:
-      return { utterance: req.intent.description, acts: [] };
+      // Someone meeting the player in person (engine/world/you.ts) has lines of their own.
+      return mockYouSpeak(req) ?? { utterance: req.intent.description, acts: [] };
   }
 }
 

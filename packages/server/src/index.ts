@@ -99,11 +99,13 @@ import {
   WORKS,
   acceptedShare,
   openDebts,
+  youView,
 } from "@psyche/engine";
 import { createClaudeHistorian, createClaudeReader, createFaculties, createMockFaculties, OPUS } from "@psyche/faculties";
 import { checkWorldFile, cleanThumb, cleanWorldName, type WorldSummary } from "@psyche/engine";
 import { HistoryKeeper } from "./history.js";
 import { packWorld, readRaw, TooLarge, unpackWorld } from "./worldfile.js";
+import { youRoutes } from "./you.js";
 
 // Your key and settings can live in a .env file at the top of the repo (git ignores it), e.g.
 //   ANTHROPIC_API_KEY=sk-ant-...
@@ -799,6 +801,8 @@ function gameFrame(): GameFrame {
     engines: region ? engineChips() : undefined,
     // Your words in this town: who heard them, who believes, what they have become (voice.ts).
     voice: voiceSummary(w),
+    // You, in this town in person: your pack, who is with you, what people made of what you did (you.ts).
+    you: youView(w),
   };
   if (w.village) {
     const scene = townScene(w, session.feed.slice(-120), session.feed.filter((f) => f.kind === "event" || f.kind === "insight").slice(-12));
@@ -1122,9 +1126,22 @@ function send(res: ServerResponse, status: number, data: unknown) {
 
 const MIME: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json" };
 
+/** You, walking in the watched town: /api/you (see you.ts). */
+const you = youRoutes({
+  session: () => session,
+  exclusive,
+  save,
+  busy: () => (fastForward ? "Years are passing. Wait for them to finish." : undefined),
+  speed: () => speed,
+  body,
+  send,
+  broadcast,
+});
+
 async function route(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? "/", "http://localhost");
   const p = url.pathname;
+  if (p.startsWith("/api/you")) return void (await you(p, req, res));
   if (!p.startsWith("/api/")) {
     const file = join(WEB_DIST, p === "/" ? "index.html" : p);
     if (file.startsWith(WEB_DIST) && existsSync(file)) {
@@ -1311,6 +1328,8 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       await exclusive(async () => {
         // The town being left may drop to the aggregate tier and lose its traces: read them first.
         keepHistory(true);
+        // If you were walking in the town you are leaving, your body rests there until you come back.
+        if (session.world.you?.here) await session.apply({ type: "you", act: { act: "rest" } }, { snapshot: false });
         town = b.town!;
         session = region!.focus(town);
         // The town you arrive in has its own feed; notice what happens from now on.

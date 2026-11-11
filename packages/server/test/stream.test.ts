@@ -207,4 +207,36 @@ describe("the live game", () => {
     expect((await watch(300)).frame.tick as number).toBeGreaterThan(before);
     await post("/api/control", { running: false });
   }, 60_000);
+  it("lets you walk in: what you do comes back with how they took it, and rides the stream", async () => {
+    type You = { name: string; here: boolean; place: string; deeds: { id: string; reactions: { agent: string; trace: string; liking: number[] }[] }[] };
+    expect((await post("/api/you/act", { act: { act: "fly" } })).status).toBe(400);
+    expect((await post("/api/you/act", { act: { act: "greet", to: "mara" } })).body.error).toMatch(/not in this world/);
+    const arrived = await post("/api/you/act", { act: { act: "arrive", name: "Bryce" } });
+    expect(arrived.status).toBe(200);
+    expect(arrived.body.you).toMatchObject({ name: "Bryce", here: true, food: 6 });
+
+    // Say hello to whoever is awake (letting the night pass if it is one).
+    let hello: Awaited<ReturnType<typeof post>> | undefined;
+    for (let tries = 0; tries < 12 && hello?.status !== 200; tries++) {
+      const people = (await watch(300)).frame["scene.people"] as { id: string; asleep?: boolean; child?: boolean }[];
+      const up = people.find((p) => !p.asleep && !p.child);
+      if (up) hello = await post("/api/you/act", { act: { act: "greet", to: up.id } });
+      else {
+        await post("/api/control", { running: true, speed: 400 });
+        await new Promise((r) => setTimeout(r, 700));
+        await post("/api/control", { running: false, speed: 4 });
+      }
+    }
+    expect(hello?.status).toBe(200);
+    const deed = hello!.body.deed as You["deeds"][number];
+    expect(deed.reactions[0]!.trace).toBeTruthy();
+    expect(deed.reactions[0]!.liking).toHaveLength(2);
+    // The same deed is in the frame everyone watching gets.
+    const you = (await watch(300)).frame.you as You;
+    expect(you.deeds[0]!.id).toBe(deed.id);
+    // The heartbeat says where you are standing.
+    const beat = await post("/api/you/beat", { place: "store" });
+    expect((beat.body.you as You).place).toBe("store");
+    expect((beat.body.you as You).here).toBe(true);
+  });
 });

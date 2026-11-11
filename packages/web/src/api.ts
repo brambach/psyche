@@ -1,4 +1,4 @@
-import type { VoiceSummary, VoiceLineage, Guise, DevelopmentView, CivView, RegionCivView } from "@psyche/engine";
+import type { VoiceSummary, VoiceLineage, Guise, DevelopmentView, CivView, RegionCivView, YouView } from "@psyche/engine";
 import type { HeresyView, Faction, Intention, Butterfly, EngineChain, NestedPersonView, NestedWorldView, EditRecord, MindEdit, TraitName, AwaySummary, Beat, ChronicleEntry, Notice, Scene3D, Timeline, Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
 
 export interface AgentSummary {
@@ -275,6 +275,8 @@ export interface GameView {
   notices?: Notice[];
   /** Your words in this town, once you have spoken. */
   voice?: VoiceSummary;
+  /** You, in this town in person, once you have walked in (you/Walk.tsx). */
+  you?: YouView | null;
   /** The town's 3D scene, put back together from its `scene.*` keys. */
   scene?: Scene3D;
   /** The made world at a glance (absent when it is switched off). */

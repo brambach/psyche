@@ -16,13 +16,14 @@ import { Life } from "./persona/Life";
 import { personaApi } from "./persona/api";
 import { Studio } from "./persona/Studio";
 import { useGameStream } from "./stream";
-import { Town3D, type Shot } from "./Town3D";
+import { Town3D, type Shot, type Stage } from "./Town3D";
 import { Lineage, VoicePanel } from "./Voice";
 import { agentColors, clock, setPlaces } from "./util";
 import { PhotoBar, type Look } from "./polish/Photo";
 import { SkyDial } from "./polish/SkyDial";
 import { Worlds } from "./polish/Worlds";
 import "./polish/polish.css";
+import { WalkIn } from "./you/Walk";
 
 /** The clock's speeds, in sim minutes a real second. 1x is a sim day in about four real minutes. */
 export const GAME_SPEEDS = [
@@ -58,6 +59,9 @@ export function Game() {
   const [nested, setNested] = useState(false);
   // Speaking into the world (voice), and the word whose lineage is open.
   const [voice, setVoice] = useState(false);
+  // Walking in the town yourself (you/Walk.tsx): the director lets go of the camera and WASD moves you.
+  const [walking, setWalking] = useState(false);
+  const [stage, setStage] = useState<Stage>();
   const [traceWord, setTraceWord] = useState<string>();
   const [toasts, setToasts] = useState<{ id: string; text: string; kind: string; town?: string; agent?: string; at: number }[]>([]);
   const [error, setError] = useState<string>();
@@ -144,12 +148,14 @@ export function Game() {
         e.preventDefault();
         void act(() => api.control({ running: !view.running }));
       } else if (/^[1-4]$/.test(e.key)) void act(() => api.control({ speed: GAME_SPEEDS[Number(e.key) - 1]!.value, running: true }));
+      else if (walking && /^[wasdeqm]$/i.test(e.key)) return; // these move you while you walk
       else if (e.key === "d" || e.key === "D") setDirector((d) => !d);
       else if ((e.key === "m" || e.key === "M") && view.towns) setMode((m) => (m === "town" ? "coast" : "town"));
       else if (e.key === "p" || e.key === "P") setPhoto((x) => !x);
       else if (e.key === "Escape") {
         if (nested) return;
         if (photo) setPhoto(false);
+        else if (walking && !mind && !menu && !traceWord) return; // Esc closes the walk menu (Walk.tsx)
         else if (menu) setMenu(false);
         else if (traceWord) setTraceWord(undefined);
         else setMind(undefined);
@@ -157,7 +163,10 @@ export function Game() {
     };
     window.addEventListener("keydown", on);
     return () => window.removeEventListener("keydown", on);
-  }, [view, act, menu, traceWord, nested, photo]);
+  }, [view, act, menu, traceWord, nested, photo, walking, mind]);
+
+  // Looking at another town puts you back above it: your body stays where you left it.
+  useEffect(() => setWalking(false), [view?.town]);
 
   const peopleKey = `${view?.town ?? ""}:${view?.agents?.length ?? 0}`;
   useEffect(() => {
@@ -190,10 +199,12 @@ export function Game() {
   const night = isNight(view.tick);
   const village = !!view.scene;
   const free = view.free ?? (view.faculties === "mock" ? "mock" : undefined);
+  // You can only walk a town you are looking at.
+  const strolling = walking && village && mode === "town" && !nested;
   const lagging = view.running && view.speed > 16 && view.pace > 0 && view.pace < view.speed * 0.6;
 
   return (
-    <div className={`game${night ? " g-night" : ""}${photo ? " g-photo" : ""}`}>
+    <div className={`game${night ? " g-night" : ""}${photo ? " g-photo" : ""}${strolling ? " g-walking" : ""}`}>
       <style>{colors}</style>
       <div className="g-stage">
         {nested ? null : mode === "coast" && view.towns ? (
@@ -205,10 +216,11 @@ export function Game() {
             pushed
             scene={view.scene}
             beats={view.beats}
-            director={director && !photo}
+            director={director && !photo && !strolling}
             sound={sound}
             look={photo ? look : undefined}
             onShot={setShot}
+            onStage={setStage}
             focusReq={focusReq}
             onOpen={(id) => setMind({ id })}
           />
@@ -261,8 +273,13 @@ export function Game() {
               ⊚ Worlds inside{view.engines.some((e) => e.depth > 0) ? ` · ${Math.max(...view.engines.map((e) => e.depth))} deep` : ""}
             </button>
           )}
+          {village && mode === "town" && !nested && (
+            <button className={`g-btn ${walking ? "on" : "primary"}`} aria-pressed={walking} onClick={() => { setVoice(false); setWalking(!walking); }} title="Step into the town yourself: walk around, talk, trade, help, make trouble, and see how each mind takes it">
+              {walking ? "🚶 Walking" : view.you ? "🚶 Walk back in" : "🚶 Walk in"}
+            </button>
+          )}
           {village && (
-            <button className={`g-btn ${voice ? "on" : ""}`} aria-pressed={voice} onClick={() => setVoice(!voice)} title="Speak into the world: as a stranger, a prophet, a voice from the sky, or a dream">
+            <button className={`g-btn ${voice ? "on" : ""}`} aria-pressed={voice} onClick={() => { setWalking(false); setVoice(!voice); }} title="Speak into the world: as a stranger, a prophet, a voice from the sky, or a dream">
               🗣 Speak
             </button>
           )}
@@ -295,7 +312,7 @@ export function Game() {
       {!connected && <div className="g-lag g-warn">Lost the connection to the world. Reconnecting...</div>}
       {error && <div className="g-lag g-warn" role="alert" onClick={() => setError(undefined)}>{error}</div>}
 
-      {card && mode === "town" && !voice && <TownCard view={view} onGo={(t) => goTo(undefined, t)} onLook={(id) => setFocusReq({ id: `at:${id}`, n: Date.now() })} />}
+      {card && mode === "town" && !voice && !strolling && <TownCard view={view} onGo={(t) => goTo(undefined, t)} onLook={(id) => setFocusReq({ id: `at:${id}`, n: Date.now() })} />}
       {voice && mode === "town" && village && <VoicePanel view={view} busy={busy} act={act} onClose={() => setVoice(false)} onMind={(id, trace) => setMind({ id, trace })} onTrace={setTraceWord} />}
 
       <div className="g-toasts" aria-live="polite">
@@ -307,7 +324,7 @@ export function Game() {
         ))}
       </div>
 
-      {director && shot && mode === "town" && (
+      {director && shot && mode === "town" && !strolling && (
         <div className={`g-caption g-${shot.kind}`}>
           {shot.name && !shot.title.startsWith(shot.name) && <b>{shot.name}</b>}
           <span>{shot.title}</span>
@@ -315,7 +332,9 @@ export function Game() {
           {shot.agent && <button onClick={() => setMind({ id: shot.agent! })}>Open their mind</button>}
         </div>
       )}
-      {director && !shot && mode === "town" && village && <div className="g-caption g-hands">You have the camera. The director takes it back after 20 seconds.</div>}
+      {director && !shot && mode === "town" && village && !strolling && <div className="g-caption g-hands">You have the camera. The director takes it back after 20 seconds.</div>}
+
+      {village && <WalkIn view={view} stage={strolling ? stage : undefined} walking={strolling} setWalking={setWalking} onMind={(id, trace) => setMind({ id, trace })} covered={!!mind || menu || !!traceWord} />}
 
       <BottomStrip view={view} strip={strip} setStrip={setStrip} names={names} onGo={goTo} onMind={(id, trace) => setMind({ id, trace })} onRipple={(id, ripple) => setMind({ id, edit: true, ripple })} />
 

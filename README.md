@@ -149,6 +149,29 @@ Each piece of the mind keeps its provenance (an edit record with `source: "writi
 
 The reading runs on a free offline reader (word patterns) by default. With Claude connected it is one Sonnet call per import (`packages/faculties/src/persona.ts`, a few cents, metered and capped like every other call; `PSYCHE_MODEL_PERSONA` overrides the model). The writing itself is not saved; the reading and the short quotes it cites are kept with the world. **Try a made-up sample person** loads Juniper Vale, an invented person for testing.
 
+## Walk in: be there yourself
+
+Press **🚶 Walk in** in the game header, give yourself a name, and you step off the boat at the landing with 6 food and 3 pieces of amber. **WASD** (or a click on the ground) walks you round the town in 3D, **Shift** runs, and the camera stays on you. Walk up to anyone and press **E**, or click them, and a menu opens with what you can do to them:
+
+- **Talk**: say hello (which tells them your name), say anything in your own words, ask what people make of you, ask what they think of someone else.
+- **Be kind**: compliment them, ask what's wrong, give food or amber, put in two hours on their work, say sorry (which pays back what you took, if you can), repay a loan.
+- **Trade**: buy or sell food for amber (whether they take amber depends on whether they think anyone else will), or ask for food, which they may give, lend, sell or refuse.
+- **Make trouble**: insult them where everyone can hear, tell them a story about a neighbour (true or not), take from the common store or from a house while its people are out.
+
+Nothing a villager does back is scripted. Each thing you do goes into their mind as something that happened to them, through the same cognitive cycle as everything else, and they choose among ways to take it: welcome you, stay guarded, smell flattery, snap back, refuse the gift. The card that comes back shows **what they felt, what they chose and the terms that tipped it, how far their liking and trust of you moved, and the memory they will keep**, and **mind** opens their head at that moment. Whoever was close enough to see it gets a smaller version, and the card lists them too. First impressions weigh more than later ones.
+
+What you do stays done (`packages/engine/src/world/you.ts`):
+
+- **It travels.** Each deed is an event in the world, so people talk about it, and **Why?** on something a villager does later can lead back to the afternoon you called them a fool. People who were never there hold a view of you from what they heard.
+- **People come to you.** Someone sizes you up, asks for food on a hungry night, has it out with you over something you did, calls in a loan, thanks you, tells you what they can't tell a neighbour, asks you to the fire, or warns you that people are talking. The world waits while you answer, and the answer goes through their mind too.
+- **Theft is noticed.** Seen, and it is remembered against you on the spot. Unseen, and whoever keeps that food finds it gone later and decides who took it, which means the person they trust least: you, or a neighbour who had nothing to do with it.
+- **Stories get back.** A story you start about someone can reach its subject, with your name on it.
+- **The town decides about you.** When enough people hold something against you, someone stands up at the fire and asks the town to send you away, everyone present votes from their own mind (the box shows who voted which way, and you can open any vote), and a town that votes you out puts you on a boat for three days. A town that has come to like you asks you to stay, and you stop being a stranger.
+
+Time runs at a quarter speed while you are on foot (a day in 24 minutes), and at night you can sleep until morning. Leave the page, or go back to watching from above, and your body rests at its camp where nobody comes looking for it. You are one person per town, and everything you do is a recorded input (`{ type: "you" }`), so a town you walked through replays exactly.
+
+On the offline mock all of this is free. With Claude connected, each thing you do to someone is one short call for their reply (two when you type your own words), on the same meter and daily cap as every other call. What people decide is the engine's doing either way; the model only writes the words.
+
 ## Why: the causal ledger
 
 The brain scan shows one moment. The ledger (`packages/engine/src/ledger.ts`) joins every moment into one graph of what caused what, across time and across people: the event a memory came from, the beliefs and trust it moved, what was in mind at each choice, who told whom, which belief rewrote which memory, and the formative night behind a core belief. Nothing in it causes behaviour; it is built from the traces after the fact.
