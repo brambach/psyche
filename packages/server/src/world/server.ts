@@ -229,7 +229,12 @@ export class WorldServer {
       this.state = growing ? "growing" : "running";
       const t0 = this.now();
       try {
-        await this.serial(async () => this.record(await this.realm.step(), this.now() - t0));
+        await this.serial(async () => {
+          const res = await this.realm.step();
+          this.record(res, this.now() - t0);
+          // Coasts fill at different rates: every few years, even out what each thread carries.
+          if (res.season === "winter" && res.year % 5 === 0) await this.host.rebalance(new Map(this.realm.state.regions.map((r) => [r.id, r.people])));
+        });
         if (this.now() - this.lastCheckpointAt >= this.config.checkpointMinutes * 60_000) await this.serial(() => this.checkpoint());
         if (this.now() >= this.nextDigestAt()) await this.serial(() => this.writeDigest());
       } catch (e) {
