@@ -28,6 +28,8 @@ import { carryWords, quietSpread } from "./voice.js";
 import { createVillage, foundVillage, type Household } from "./village.js";
 import { enableHeresy } from "./heresy.js";
 import { eventPercept, feed, personName, record, thirdPerson, type Sink, type Why, type WorldState } from "./world.js";
+import type { CivHost } from "./civ/host.js";
+import { civAfterTrade, civBlocksTrade, civFound, civRegionSeason, enableCiv } from "./civ/index.js";
 
 export interface Town {
   id: string;
@@ -64,7 +66,7 @@ export interface ChronicleEntry {
   tick: Tick;
   year: number;
   town?: string;
-  kind: "founding" | "leader" | "law" | "death" | "trade" | "quarrel" | "peace" | "hunger" | "craft" | "lost" | "work" | "ruin" | "faith" | "engine" | "heresy" | "money";
+  kind: "founding" | "leader" | "law" | "death" | "trade" | "quarrel" | "peace" | "hunger" | "craft" | "lost" | "work" | "ruin" | "faith" | "engine" | "heresy" | "money" | "market" | "faction" | "election" | "plague" | "migration" | "record" | "war" | "truce";
   text: string;
   agents?: AgentId[];
   /** What led to it, as far back as the records go: the people, their reasons and the memories behind them. */
@@ -113,6 +115,8 @@ export interface RegionOptions {
   nameTown?: (n: number) => string;
   /** In a realm: this region's letters. Each town founded here gets them and a number as its own mark (Town.tag). */
   idTag?: string;
+  /** Run the civilization systems (civ/): trades and markets, factions, contested elections, sickness, migration, records, raids. Default: off. */
+  civ?: boolean;
 }
 
 /**
@@ -175,6 +179,7 @@ export class RegionSession {
   static create(seed = 11, faculties: Faculties, opts: RegionOptions = {}): RegionSession {
     const w = createVillage(seed);
     w.village!.town = "hollow";
+    if (opts.civ) enableCiv(w);
     const region: RegionState = {
       seed,
       tick: w.tick,
@@ -429,6 +434,8 @@ export class RegionSession {
       for (const t of r.towns) this.sample(t);
       if (first.season === "spring") await this.maybeSplit();
       await this.mend();
+      // Merchants, households that move, raids and truces (civ/): only where towns run those systems.
+      await civRegionSeason(this.civHost());
       // Engines, and the worlds inside them (nested.ts): those always run on the cheap faculties.
       const counting = () => r.towns.filter((t) => this.world(t.id).village!.nested?.machine).length;
       for (const t of r.towns) await nestedSeason(this.world(t.id), this.opts.cheap ?? this.faculties, this.sinkOf(t.id), (r.nested ??= {}), { counting: counting() });
@@ -514,33 +521,39 @@ export class RegionSession {
     return undefined;
   }
 
-  private async split(from: Town, w: WorldState): Promise<void> {
+  /**
+   * A group leaves to found a town. Left to itself the group forms around whoever belongs least;
+   * `preset` names a group that has already decided to go together (a faction leaving, civ/migration.ts).
+   */
+  private async split(from: Town, w: WorldState, preset?: { group: Household[]; seed: AgentId; reason: string; why: Why[] }): Promise<Town | undefined> {
     const r = this.region;
     const v = w.village!;
     const adults = w.order.filter((x) => !isChild(w, x) && ageOf(w, x) >= 18);
     const belonging = (id: AgentId) => belongingOf(w, id, adults);
     const hhOf = (id: AgentId) => Object.values(v.households).find((h) => h.members.includes(id));
-    const seed = leastBelonging(w)?.id;
-    if (!seed) return;
+    const seed = preset?.seed ?? leastBelonging(w)?.id;
+    if (!seed) return undefined;
     const S = w.minds[seed]!;
-    const group: Household[] = [hhOf(seed)!];
+    const group: Household[] = preset ? [...preset.group] : [hhOf(seed)!];
     const size = () => group.reduce((s, h) => s + h.members.length, 0);
-    const close = Object.values(v.households)
-      .filter((h) => !group.includes(h))
-      .map((h) => ({ h, pull: Math.max(...h.members.filter((m) => !isChild(w, m)).map((m) => w.minds[m]!.others[seed]?.liking ?? 0), 0) - Math.max(...h.members.map((m) => belonging(m) - 0.5), 0) }))
-      .sort((a, b) => b.pull - a.pull || a.h.id.localeCompare(b.h.id));
+    const close = preset
+      ? []
+      : Object.values(v.households)
+          .filter((h) => !group.includes(h))
+          .map((h) => ({ h, pull: Math.max(...h.members.filter((m) => !isChild(w, m)).map((m) => w.minds[m]!.others[seed]?.liking ?? 0), 0) - Math.max(...h.members.map((m) => belonging(m) - 0.5), 0) }))
+          .sort((a, b) => b.pull - a.pull || a.h.id.localeCompare(b.h.id));
     for (const { h, pull } of close) {
       if (size() >= w.order.length * 0.3 || pull < 0.45) break;
       if (size() + h.members.length > w.order.length * 0.45) continue;
       group.push(h);
     }
-    if (size() < 5) return;
+    if (size() < 5) return undefined;
     const leavers = group.flatMap((h) => h.members);
     const tname = this.opts.nameTown ? this.opts.nameTown((r.named = (r.named ?? 0) + 1) - 1) : (TOWN_NAMES[r.towns.length - 1] ?? `New ${w.name} ${r.towns.length}`);
     const town: Town = { id: tname.toLowerCase().replace(/\s+/g, "_"), name: tname, founded: r.tick, from: from.id, founders: leavers, history: [], site: this.siteNear(from) };
     if (this.opts.idTag) town.tag = `${this.opts.idTag}${(r.tagged = (r.tagged ?? 0) + 1)}`;
-    const why = this.splitWhy(w, seed, belonging(seed), group.slice(1), adults);
-    const reason = belonging(seed) < 0.45 ? `${S.name} never felt welcome at the fire in ${w.name}` : `there was no more room at ${w.name} for all of us`;
+    const why = preset?.why ?? this.splitWhy(w, seed, belonging(seed), group.slice(1), adults);
+    const reason = preset?.reason ?? (belonging(seed) < 0.45 ? `${S.name} never felt welcome at the fire in ${w.name}` : `there was no more room at ${w.name} for all of us`);
     const leaving = `ep_leaving_${town.id}`;
     const share = v.store.food * (leavers.length / w.order.length) * 0.5;
     v.store.food = Number((v.store.food - share).toFixed(1));
@@ -581,6 +594,8 @@ export class RegionSession {
     // The session works on its own copy; everything from here on happens to that one.
     const nwLive = this.towns[town.id]!.world;
     this.watched = this.watched.filter((x) => x !== town.id);
+    // A daughter of a town with trades, sides and records has them too, and takes what was its people's.
+    civFound(w, nwLive, group);
 
     // Both sides remember it. The leavers share one memory of leaving: the new town's founding story.
     const counts = new Map<string, number>();
@@ -614,6 +629,26 @@ export class RegionSession {
     r.regard[`${from.id}>${town.id}`] = 0;
     this.dirty = true;
     this.budget();
+    return town;
+  }
+
+  /** What the between-town civilization systems (civ/) may ask of the region. */
+  /** What the between-town civ systems (migration, raids, truces, merchants) are given to work with. */
+  civHost(): CivHost {
+    return {
+      region: this.region,
+      world: (id) => this.world(id),
+      sink: (id) => this.sinkOf(id),
+      faculties: (id) => this.facultiesOf(id),
+      live: (id) => !!this.towns[id],
+      rand: () => this.rand(),
+      chronicle: (e) => this.chronicle(e),
+      touch: () => {
+        this.dirty = true;
+      },
+      canFound: () => this.region.towns.length < (this.opts.maxTowns ?? MAX_TOWNS),
+      found: (from, group, seed, reason, why) => this.split(from, this.world(from.id), { group, seed, reason, why }),
+    };
   }
 
   /** A new town's place: further along the coast from where they left, on whichever side has room. */
@@ -673,6 +708,8 @@ export class RegionSession {
         const B = this.world(b.id);
         const perHead = (w: WorldState) => w.village!.store.food / Math.max(1, w.order.length);
         if (perHead(A) < 3 || perHead(A) < perHead(B) * 1.6 || B.village!.stock.timber < 20) continue;
+        // A landing shut for a sickness takes no boats (civ/disease.ts).
+        if (civBlocksTrade(A, B)) continue;
         if (r.trades.some((t) => t.from === a.id && t.to === b.id && r.tick - t.tick < B.village!.seasonDays * 1440)) continue;
         if (this.rand() > 0.5) continue;
         await this.exchange(a, A, b, B);
@@ -701,6 +738,8 @@ export class RegionSession {
     r.trades.push(trade);
     // A trader who believes your words carries them too.
     carryWords(A, B, trader);
+    // And sometimes a sickness (civ/disease.ts).
+    civAfterTrade(a, A, b, B, trader, this.sinkOf(a.id), this.sinkOf(b.id));
     const yr = yearOf(A);
     const route = ((r.routes ??= {})[`${a.id}>${b.id}`] ??= {});
     route[yr] = (route[yr] ?? 0) + 1;

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isNight } from "@psyche/engine";
 import { api, type EditReach, type GameView, type Slot } from "./api";
 import { AgentPanel } from "./AgentPanel";
+import { CivChip, CivPanel } from "./Civ";
 import { HeresyChip, HeresyPanel } from "./Heresy";
 import { Coast3D } from "./Coast3D";
 import { MindEditor } from "./MindEditor";
@@ -45,6 +46,7 @@ export function Game() {
   const [strip, setStrip] = useState<Strip | "">(() => (localGet("psyche.strip") as Strip | "") ?? "feed");
   const [menu, setMenu] = useState(false);
   const [heresy, setHeresy] = useState(false);
+  const [civ, setCiv] = useState(false);
   const [nested, setNested] = useState(false);
   // Speaking into the world (voice), and the word whose lineage is open.
   const [voice, setVoice] = useState(false);
@@ -230,7 +232,8 @@ export function Game() {
               {mode === "coast" ? "Back to town" : "Whole coast"}
             </button>
           )}
-          {view.heresy && <HeresyChip summary={view.heresy} open={heresy} onOpen={() => setHeresy(!heresy)} />}
+          {view.civ && <CivChip summary={view.civ} open={civ} onOpen={() => { setCiv(!civ); setHeresy(false); }} />}
+          {view.heresy && <HeresyChip summary={view.heresy} open={heresy} onOpen={() => { setHeresy(!heresy); setCiv(false); }} />}
           {view.engines && view.engines.length > 0 && (
             <button className={`g-btn ${nested ? "on" : ""}`} onClick={() => setNested(!nested)} title="Engines the towns have built, and the worlds running inside them">
               ⊚ Worlds inside{view.engines.some((e) => e.depth > 0) ? ` · ${Math.max(...view.engines.map((e) => e.depth))} deep` : ""}
@@ -285,6 +288,7 @@ export function Game() {
       <BottomStrip view={view} strip={strip} setStrip={setStrip} names={names} onGo={goTo} onMind={(id, trace) => setMind({ id, trace })} onRipple={(id, ripple) => setMind({ id, edit: true, ripple })} />
 
       {heresy && <HeresyPanel tick={view.tick} onMind={(id, trace) => setMind({ id, trace })} onClose={() => setHeresy(false)} />}
+      {civ && view.civ && <CivPanel tick={view.tick} onMind={(id, trace) => setMind({ id, trace })} onClose={() => setCiv(false)} />}
 
       {mind && (
         <aside className="g-mind" aria-label={`Inside ${names[mind.id] ?? mind.id}'s head`}>

@@ -19,6 +19,7 @@ import { runPercept } from "../mind.js";
 import type { ActionOption, Faculties, Percept } from "../ports.js";
 import { nextId } from "../rng.js";
 import type { AgentId, Tick } from "../types.js";
+import { craftBonus } from "./knowledge.js";
 import { isChild } from "./life.js";
 import { householdOf, type Household } from "./village.js";
 import { eventPercept, feed, luck, personName, record, type Sink, type WorldState } from "./world.js";
@@ -40,6 +41,10 @@ export interface Debt {
   /** The lender's decision, and the borrower's when they paid. */
   trace: string;
   paidTrace?: string;
+  /** Wiped out by a clean-slate law rather than paid (civ/polity.ts). */
+  forgiven?: Tick;
+  /** Set down by a scribe: harder to put off, and it outlives the lender's memory (civ/records.ts). */
+  written?: Tick;
 }
 
 export type Deal = "give" | "lend" | "sell" | "refuse";
@@ -342,6 +347,8 @@ export async function settle(w: WorldState, faculties: Faculties, sink: Sink, ra
       pc.addressedToSelf = true;
       pc.request = { what: `pay back the ${d.amount} food`, topics: ["debt", "food"] };
       pc.options = REPAY(cn, d.amount);
+      // A debt a scribe has set down is harder to put off (civ/records.ts).
+      if (d.written) pc.options[0]!.pull = [{ name: "it is written down", value: 0.2 }];
       const tr = await runPercept(D, pc, faculties);
       record(w, sink, d.debtor, tr);
       if (tr.decision?.choice === "repay") {
@@ -390,7 +397,8 @@ export function aggMoney(w: WorldState, sink: Sink): void {
   for (const d of M.debts) {
     if (d.repaid) continue;
     if (!w.order.includes(d.debtor)) continue;
-    if (luck(w, "repay", d.id) < 0.3 + 0.5 * w.minds[d.debtor]!.traits.conscientiousness) d.repaid = w.tick;
+    // Counted on tally sticks, or written down, a debt is harder to let slide (civ/tech.ts, civ/records.ts).
+    if (luck(w, "repay", d.id) < 0.3 + 0.5 * w.minds[d.debtor]!.traits.conscientiousness + (d.written ? 0.15 : 0) + 0.3 * craftBonus(w, "count")) d.repaid = w.tick;
     else d.overdue ??= w.tick;
   }
   marks(w, sink, before);

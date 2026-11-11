@@ -11,8 +11,9 @@ import { nextRandom } from "../rng.js";
 import type { AgentId, Tick } from "../types.js";
 import { ageOf, isChild } from "./life.js";
 import { feed, luck, personName, type Sink, type Why, type WorldState } from "./world.js";
+import { readBack } from "./civ/records.js";
 
-export type CraftEffect = "fish" | "farm" | "keep" | "health" | "build" | "boats";
+export type CraftEffect = "fish" | "farm" | "keep" | "health" | "build" | "boats" | "pots" | "warmth" | "tools" | "arms" | "letters" | "count" | "walls" | "care";
 
 export interface Craft {
   id: string;
@@ -24,6 +25,12 @@ export interface Craft {
   effect: CraftEffect;
   /** How much it does: a yield multiplier, a share of spoilage or fevers avoided. */
   size: number;
+  /** Crafts the town must already know before anyone can work this one out (civ/tech.ts). */
+  needs?: string[];
+  /** Adults a town needs before it can be worked out: complex skills need many minds (Henrich 2004). */
+  minAdults?: number;
+  /** The trade it opens to someone who knows it (civ/economy.ts). */
+  trade?: string;
 }
 
 export const CRAFTS: Craft[] = [
@@ -35,13 +42,31 @@ export const CRAFTS: Craft[] = [
   { id: "keels", name: "keel boats", does: "traders can carry more", without: "trade loads shrink back to what an open boat holds", effect: "boats", size: 0.5 },
   { id: "weather", name: "reading the weather", does: "fewer days are lost to gales", without: "the gales catch the boats out again", effect: "fish", size: 0.08 },
 ];
-export const craft = (id: string) => CRAFTS.find((c) => c.id === id)!;
+
+/**
+ * Later crafts: each needs earlier ones, and most open a trade of their own. They are worked out
+ * only in towns where the civilization systems run (civ/tech.ts), under the pressure that makes
+ * them worth working out, and they are taught, carried and lost exactly as the first seven are.
+ */
+export const TECHS: Craft[] = [
+  { id: "pottery", name: "firing clay", does: "fired pots keep damp and mice out of what a household puts by", without: "households go back to baskets and lose more to rot", effect: "pots", size: 0.5, trade: "potter" },
+  { id: "weaving", name: "the loom", does: "woven cloth keeps the cold out", without: "people go back to hides and feel every winter", effect: "warmth", size: 0.5, trade: "weaver" },
+  { id: "tally", name: "tally sticks", does: "debts and the store are counted on notched sticks, so fewer are forgotten", without: "what is owed lives only in people's heads again", effect: "count", size: 0.2 },
+  { id: "plough", name: "the ard plough", does: "one farmer turns far more ground", without: "the fields are dug by hand again", effect: "farm", size: 0.25, needs: ["fallow"], minAdults: 12 },
+  { id: "medicine", name: "nursing the sick apart", does: "the sick are kept apart and nursed, and fewer die", without: "the sick lie among the well again", effect: "care", size: 0.3, needs: ["herbs"], minAdults: 14, trade: "healer" },
+  { id: "smelting", name: "smelting bog iron", does: "iron tools make every hour of work go further", without: "tools are bone, wood and stone again", effect: "tools", size: 0.2, needs: ["pottery"], minAdults: 20, trade: "smith" },
+  { id: "masonry", name: "mortared stone", does: "walls stand against weather and against raiders", without: "walls are stacked dry and come down easier", effect: "walls", size: 0.5, needs: ["drystone"], minAdults: 16 },
+  { id: "sails", name: "the square sail", does: "boats go further and carry more", without: "boats go only as far as arms can row them", effect: "boats", size: 0.4, needs: ["keels", "weaving"], minAdults: 16 },
+  { id: "writing", name: "writing", does: "laws, debts, crafts and the town's own story can be set down and read back", without: "nothing outlasts the memory of the people who knew it", effect: "letters", size: 1, needs: ["tally"], minAdults: 24, trade: "scribe" },
+  { id: "arms", name: "spear and shield drill", does: "the town's fighters stand together", without: "a fight is every one for themselves again", effect: "arms", size: 0.4, needs: ["smelting"], minAdults: 24 },
+];
+export const craft = (id: string) => CRAFTS.find((c) => c.id === id) ?? TECHS.find((c) => c.id === id)!;
 
 export interface Know {
   craft: string;
   tick: Tick;
-  how: "worked out" | "taught" | "brought";
-  /** Who showed them. */
+  how: "worked out" | "taught" | "brought" | "read";
+  /** Who showed them (for something read: who wrote it down). */
   from?: AgentId;
   /** Teachers between this person and `from` who are no longer on the town's books (aggregate.ts forget). */
   elided?: number;
@@ -126,7 +151,7 @@ export function craftLineage(world: WorldState, id: AgentId, c: string): { agent
     const k: Know | undefined = K?.known[at]?.find((x) => x.craft === c);
     if (!k) break;
     out.push({ agent: at, name: personName(world, at), how: k.how, tick: k.tick, town: k.town });
-    at = k.how === "taught" ? k.from : undefined;
+    at = k.how === "taught" || k.how === "read" ? k.from : undefined;
   }
   return out;
 }
@@ -145,6 +170,8 @@ export function knowledgeTurn(world: WorldState, sink: Sink): void {
   const ever = new Set(Object.values(K.known).flatMap((ks) => ks.map((k) => k.craft)));
   for (const c of ever) {
     if (K.lost[c] !== undefined || world.order.some((id) => knows(world, id, c))) continue;
+    // Where it was written down and someone can still read, it is learned again from the page.
+    if (readBack(world, c, sink)) continue;
     const knowers = Object.keys(K.known).filter((id) => knows(world, id, c));
     const gone = knowers.map((id) => ({ id, died: v.life[id]?.died })).filter((x) => x.died !== undefined).sort((a, b) => b.died! - a.died!);
     const last = gone[0]?.id;
