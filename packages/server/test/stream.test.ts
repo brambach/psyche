@@ -4,6 +4,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { applyDelta, type FrameDelta, type GameFrame } from "@psyche/engine";
@@ -150,4 +151,60 @@ describe("the live game", () => {
     expect(existsSync(join(data, "history", "current.json"))).toBe(true);
     expect(existsSync(join(data, "history", "slot-With its past.json")) || readdirSync(join(data, "history")).some((f) => f.startsWith("slot-"))).toBe(true);
   });
+  it("hands a world to someone else as a file, and takes one back with care", async () => {
+    const send = async (bytes: Uint8Array | string) => {
+      const r = await fetch(`${base}/api/worlds/import`, { method: "POST", headers: { "content-type": "application/octet-stream" }, body: bytes });
+      return { status: r.status, body: (await r.json()) as { name?: string; error?: string; slots?: { name: string; seed?: number; people?: number }[] } };
+    };
+    await post("/api/control", { running: false });
+    const before = (await watch(300)).frame.tick as number;
+
+    // Out: a gzipped file with a header saying what it is.
+    const out = await fetch(`${base}/api/worlds/export`);
+    expect(out.status).toBe(200);
+    expect(out.headers.get("content-disposition")).toMatch(/\.psyche"$/);
+    const file = new Uint8Array(await out.arrayBuffer());
+    expect([file[0], file[1]]).toEqual([0x1f, 0x8b]);
+    const world = JSON.parse(gunzipSync(file).toString("utf8")) as Record<string, any>;
+    expect(world).toMatchObject({ format: "psyche-world", version: 1, scenario: "region" });
+
+    // In: kept as a save under a free name, and nothing is loaded by it.
+    const first = await send(file), second = await send(file);
+    expect(first.status).toBe(200);
+    expect(second.body.name).toBe(`${first.body.name} 2`);
+    expect(second.body.slots!.find((s) => s.name === first.body.name)).toMatchObject({ seed: world.seed, people: world.summary.people });
+    expect((await watch(300)).frame.tick).toBe(before);
+
+    // Things that are not worlds are turned away with a reason.
+    for (const bad of ["hello", JSON.stringify({ seed: 1 }), gzipSync("not json"), file.subarray(0, 60)]) {
+      const r = await send(bad);
+      expect(r.status).toBe(422);
+      expect(r.body.error).toBeTruthy();
+    }
+
+    // A file that looks right and isn't: it gets past the checks, fails when the world is built and
+    // run, and the world that was running is put back exactly.
+    const town = world.region.state.towns[0].id as string;
+    const person = world.region.worlds[town].order[0] as string;
+    world.region.worlds[town].agents[person] = { broken: true };
+    world.region.worlds[town].minds[person] = { broken: true };
+    world.name = "Sneaky";
+    const sneaky = await send(gzipSync(JSON.stringify(world)));
+    expect(sneaky.status).toBe(200);
+    const refused = await post("/api/slots/load", { name: sneaky.body.name });
+    expect(refused.status).toBe(422);
+    expect(refused.body.error).toMatch(/still running/);
+    expect((await watch(300)).frame.tick).toBe(before);
+
+    // A good one loads, and the game carries on from it.
+    await post("/api/control", { running: true, speed: 400 });
+    await new Promise((r) => setTimeout(r, 1500));
+    await post("/api/control", { running: false });
+    expect((await post("/api/slots/load", { name: first.body.name })).status).toBe(200);
+    expect((await watch(300)).frame.tick).toBe(before);
+    await post("/api/control", { running: true, speed: 400 });
+    await new Promise((r) => setTimeout(r, 1500));
+    expect((await watch(300)).frame.tick as number).toBeGreaterThan(before);
+    await post("/api/control", { running: false });
+  }, 60_000);
 });

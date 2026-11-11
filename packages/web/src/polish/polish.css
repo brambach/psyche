@@ -1,0 +1,74 @@
+/* Game polish: the sky dial, photo mode, the worlds menu, and a few finishing touches on the shell. */
+
+/* The world fades up when the page opens, and the edges of the frame fall away a little. */
+.game .g-stage { animation: g-wake 1.4s ease-out both; }
+@keyframes g-wake { from { opacity: 0; } to { opacity: 1; } }
+.g-vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 46%, rgba(0, 0, 0, 0) 58%, rgba(4, 8, 14, 0.34) 100%); }
+@media (prefers-reduced-motion: reduce) { .game .g-stage { animation: none; } }
+
+/* The sky dial beside the clock. */
+.g-sky { display: inline-flex; align-items: center; gap: 6px; font: 12.5px var(--mono); color: var(--g-muted); white-space: nowrap; }
+.g-sky svg { display: block; flex: none; }
+.g-sky.day { color: #dfe9e6; }
+
+/* Speech and name labels sit a little softer over the new light. */
+.t3-game .t3-bubble { box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3); border-color: rgba(0, 0, 0, 0.08); }
+.t3-game .t3-label { backdrop-filter: blur(3px); }
+
+/* Photo mode: everything steps aside. */
+.g-photo .g-top, .g-photo .g-card, .g-photo .g-strip, .g-photo .g-caption, .g-photo .g-toasts, .g-photo .g-lag, .g-photo .t3-card, .g-photo .t3-labels, .g-photo .g-menu, .g-photo .g-mind { display: none; }
+.g-photo-bar { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 14px; max-width: calc(100% - 24px); background: var(--glass-strong); border: 1px solid var(--glass-line); border-radius: 14px; padding: 8px 12px; z-index: 12; backdrop-filter: blur(10px); animation: g-in 0.3s ease-out; }
+.g-photo-time { display: flex; align-items: center; gap: 8px; font: 12px var(--mono); color: var(--g-muted); }
+.g-photo-time input { width: min(220px, 40vw); accent-color: var(--g-accent); }
+.g-photo-time b { min-width: 44px; color: var(--g-ink); font-weight: 600; }
+.g-photo-check { display: flex; align-items: center; gap: 5px; font: 12.5px var(--display); color: var(--g-ink); }
+.g-photo-check input { accent-color: var(--g-accent); }
+.g-photo-bar .g-seg { display: flex; gap: 2px; background: rgba(255, 255, 255, 0.06); border-radius: 9px; padding: 2px; }
+.g-photo-bar .g-seg button { font: 600 12.5px var(--display); color: var(--g-muted); background: none; border: 0; border-radius: 7px; padding: 4px 10px; }
+.g-photo-bar .g-seg button.on { background: var(--g-accent); color: #1a1a1a; }
+
+/* The worlds menu. */
+.g-menu.g-worlds { width: min(480px, calc(100% - 24px)); }
+.g-worlds a.g-btn { text-decoration: none; display: inline-block; }
+.g-worlds .g-slots li { align-items: stretch; gap: 10px; }
+.g-worlds .g-slots img, .g-nothumb { flex: none; width: 112px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; background: linear-gradient(160deg, #23405a, #101a26); align-self: center; }
+.g-worlds .g-slots li > div { gap: 1px; }
+.g-slot-acts { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 5px; }
+.g-slot-acts .g-btn { padding: 2px 9px; font-size: 12px; }
+.g-share { display: grid; gap: 6px; border-top: 1px solid var(--glass-line); border-bottom: 1px solid var(--glass-line); padding: 10px 0; }
+.g-share > b { font: 700 14px var(--display); }
+.g-code { font: 600 12.5px var(--mono); color: var(--g-accent); background: rgba(255, 211, 77, 0.1); border: 1px dashed rgba(255, 211, 77, 0.5); border-radius: 6px; padding: 1px 8px; cursor: copy; }
+.g-note { margin: 0; font: 13px var(--display); color: #1a1a1a; background: var(--g-accent); border-radius: 8px; padding: 5px 10px; }
+.g-copies summary { font: 600 13px var(--display); color: var(--g-muted); cursor: pointer; }
+.g-copies .g-slots { margin-top: 6px; }
+.g-copies .g-slots li { align-items: center; }
+.g-row input[aria-invalid="true"] { border-color: var(--g-warn); }
+
+/* These few rules adjust ones in styles.css, which loads after this file, so they carry one more class to win. */
+
+/* Until the screen is very wide the header is two rows; the worlds menu and the card for whoever is picked open below both, so the buttons stay in reach. */
+@media (min-width: 721px) and (max-width: 1700px) {
+  .g-menu.g-worlds { top: 92px; max-height: calc(100% - 112px); }
+  .game .t3-game .t3-card { top: 92px; }
+  .game .g-card { top: 92px; max-height: calc(100% - 92px - 240px); }
+}
+@media (min-width: 721px) and (max-width: 1240px) {
+  .g-menu.g-worlds { top: 124px; max-height: calc(100% - 144px); }
+  .game .t3-game .t3-card { top: 124px; }
+  .game .g-card { top: 124px; max-height: calc(100% - 124px - 240px); }
+}
+
+/* A laptop-width screen: pull the header in a little so every button stays on one row. */
+@media (min-width: 721px) and (max-width: 1420px) {
+  .game .g-controls { gap: 4px; }
+  .game .g-controls .g-btn { padding-inline: 8px; }
+  .game .g-top .g-chip { padding-inline: 8px; letter-spacing: -0.01em; }
+}
+
+@media (max-width: 720px) {
+  /* The header runs to four rows on a phone; the card for whoever is picked sits below it. */
+  .game .t3-game .t3-card { top: 172px; }
+  .g-sky span { display: none; }
+  .g-worlds .g-slots img, .g-nothumb { width: 84px; }
+  .g-photo-bar { bottom: 8px; padding: 6px 8px; gap: 6px 10px; }
+}

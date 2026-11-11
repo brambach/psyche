@@ -179,7 +179,18 @@ export const api = {
   heresy: () => call<HeresyView>("/api/heresy"),
   heresyAnswer: (agent: string, text: string) => call<HeresyView>("/api/heresy/answer", { agent, text }),
   slots: () => call<{ slots: Slot[] }>("/api/slots"),
-  saveSlot: (name: string) => call<{ slots: Slot[] }>("/api/slots/save", { name }),
+  saveSlot: (name: string, thumb?: string) => call<{ slots: Slot[] }>("/api/slots/save", { name, thumb }),
+  snapshots: () => call<{ snapshots: SnapshotFile[] }>("/api/snapshots"),
+  loadSnapshot: (file: string) => call<{ snapshots: SnapshotFile[] }>("/api/snapshots/load", { file }),
+  /** Send a world file someone shared. It is checked and kept as a save; it does not replace the running world. */
+  importWorld: async (file: Blob): Promise<{ slots: Slot[]; name: string }> => {
+    const res = await fetch("/api/worlds/import", { method: "POST", headers: { "content-type": "application/octet-stream" }, body: file });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+    return data;
+  },
+  /** Where a world file downloads from: a named save, or the world as it stands now. */
+  exportUrl: (name?: string) => `/api/worlds/export${name ? `?${new URLSearchParams({ name })}` : ""}`,
   loadSlot: (name: string) => call<{ slots: Slot[] }>("/api/slots/load", { name }),
   deleteSlot: (name: string) => call<{ slots: Slot[] }>("/api/slots/delete", { name }),
   speak: (b: { guise: Guise; text: string; to?: string; place?: string }) => call<{ summary: VoiceSummary }>("/api/voice/speak", b),
@@ -203,6 +214,18 @@ export interface Slot {
   year?: number;
   towns?: number;
   people?: number;
+  seed?: number;
+  /** Bytes on disk. */
+  size?: number;
+  /** A small picture of the world when it was saved. */
+  thumb?: string;
+}
+
+/** One of the hourly copies the server keeps. */
+export interface SnapshotFile {
+  file: string;
+  savedAt: number;
+  size: number;
 }
 
 /** One frame of the live game, as the stream builds it (see the server's gameFrame). */
