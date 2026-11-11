@@ -56,6 +56,14 @@ export function Game() {
   // A town switch waits for the new town's scene before flying to someone in it.
   const pendingFocus = useRef<{ town: string; agent: string } | undefined>(undefined);
 
+  // A link from the history explorer opens someone's brain scan at a moment: #/?mind=<id>&trace=<trace>.
+  useEffect(() => {
+    const q = new URLSearchParams(location.hash.split("?")[1] ?? "");
+    const id = q.get("mind");
+    if (!id) return;
+    setMind({ id, trace: q.get("trace") ?? undefined });
+    history.replaceState(null, "", "#/");
+  }, []);
   useEffect(() => localSet("psyche.director", director ? "1" : "0"), [director]);
   useEffect(() => localSet("psyche.strip", strip), [strip]);
 
@@ -462,6 +470,7 @@ function BottomStrip({ view, strip, setStrip, names, onGo, onMind, onRipple }: {
           </button>
         ))}
         <span className="g-keys">Space pause · 1 to 4 speed · D director{view.towns ? " · M coast" : ""}</span>
+        <a href="#/history" className="g-lab" title="The causal history: every kept choice on one timeline, and the why behind each, walked back through the years">History →</a>
         <a href="#/lab" className="g-lab" title="Every analysis view: stories going round, who feels what, fears across generations, how each town tells it">Lab →</a>
       </div>
       {strip === "feed" && (

@@ -37,6 +37,7 @@ Every model call goes through a budget governor (`packages/faculties/src/governo
 - **Tiers.** Speech, perception, memory reconstruction and dreams run on `claude-haiku-5-5`; deliberation and the Architect on `claude-sonnet-5-5`. Override any faculty with `PSYCHE_MODEL_PERCEIVE`, `PSYCHE_MODEL_SPEAK`, `PSYCHE_MODEL_RECONSTRUCT`, `PSYCHE_MODEL_DELIBERATE`, `PSYCHE_MODEL_DREAM` or `PSYCHE_MODEL_ARCHITECT`.
 - **Templates for small moments.** The engine scores how much each line matters. Greetings and small talk come from templates; replies that tell a memory, answer you, or follow deliberation go to the model. Whoever you are looking inside always speaks with the model.
 - **A daily cap**, default $10 (`PSYCHE_DAILY_CAP`), shared by every run on the machine and kept in `~/.psyche/usage.json` (every call is logged beside it in `usage.log`). At 80% of the cap Sonnet calls drop to Haiku, at 90% only the most salient lines use the model, and at 100% everything falls back to the mock until the next UTC day. The world keeps running throughout.
+- **One Opus call per question to the Historian** (`claude-opus-5-5`, `PSYCHE_MODEL_HISTORIAN`), only when you ask one. Nothing else uses Opus.
 - **A live meter.** The `$` chip in the island header opens a breakdown by faculty and model. `npm run island` and `npm run why` print it too. On the mock, the meter shows what the same run would have cost on Claude.
 
 - **Two tiers of attention (L0 and L1).** In the village, the Kettle five and whoever you are watching are L0: Sonnet deliberation and model speech for anything that matters. The settlers are L1: Haiku only, and only their more salient lines go to the model. Set the named characters with `governor.core`.
@@ -155,6 +156,24 @@ In the island UI, open anyone's head. **What weighs on them** lists their core b
 
 ```bash
 npm run why -- mara 3 7 --storm   # what weighs on Mara after three days, and where each thing came from
+```
+
+## History: walk any choice back through the years
+
+The ledger is rebuilt from the traces a running town still holds, and a town lets its oldest traces go after about a year and a half. The causal history (`packages/engine/src/history.ts`) is what outlasts them. As the world runs, the server reads each live town's ledger into it before those traces go: every choice that was not routine, with everything behind it (what was in mind, the memory behind that, who told it to them, the core belief it was read through, the night that installed the belief), what weighs on each person, and the chronicle. It is saved beside the world in `data/history` and follows named saves, loads and rewinds. Twelve years of a region come to about 4,700 choices and 8 MB; thirty-six years to about 15,800 choices and 27 MB.
+
+Open **History →** from the game (`#/history`):
+
+- **The timeline** is the whole run: choices kept each season, coloured by what they were about, with the chronicle above. Drag it (or use ← →) to move through time; the list beside it shows that season's choices. The legend filters, and you can narrow to one person or search for a choice, a memory or a belief.
+- **Click any choice** and the trail walks back from it. The graph has one lane per mind the trail passes through and a time axis that fits the last hour and the last thirty years in one picture. **Walk it back** lists the thread step by step, furthest back or strongest: "Rhys chose: Tell the whole story ← he felt reproach ← Milo held back from the common store ← read through the core belief “When food runs short, people look after their own” (21 years earlier) ← installed by the hungry winter in Marrow". A cause only counts if it had already happened. Any step can become the question (**walk back from here**), and where the live town still holds the moment, **Open the brain scan** shows it.
+- **Fears and beliefs** lists every core belief and dark belief by how many later choices it has shaped. Open one to see where it came from, whose choices it has bent, and in which years.
+- **Ask the Historian** anything about what is open, or about the record at large. The engine cuts a brief (the piece of the record the question is about, every line tagged), one Claude Opus call reads it and answers with citations, and only tags that are really in the brief count; click a citation to open that record (`packages/faculties/src/historian.ts`). A question costs about three to five cents, metered and held to the daily cap like every other call; `PSYCHE_MODEL_HISTORIAN` overrides the model. With no key, or once the cap is spent, a free offline reader answers from the same brief and says what Opus would have cost.
+
+In the game, **Walk it back through the years** above any brain scan opens that choice here. Towns you are not watching run on rules and keep no traces, so the history holds the choices of the towns that were live, and the chronicle for the rest. `PSYCHE_HISTORY=0` keeps the history in memory only.
+
+```bash
+npm run history -- 12 11                                   # twelve years on the mock: a late choice walked back, a fear followed forward
+npm run history -- 12 11 "Why does Fen hold back?" --brief  # ask the offline Historian, and print the brief Opus would read
 ```
 
 ## The experiments: Milgram, Asch, Darley & Latané, Stanford
@@ -400,6 +419,8 @@ Every number is in `packages/engine/src/params.ts` with its source, or marked as
 Across 30 seeds of the M0 demo, Mara adopts Jun's rumor ("Theo never showed up") as her own memory in a fraction of runs, and never when the misinformation mechanism is off. She never adopts it at the moment she hears it, because the source is still vivid. Replays from the recorded log are byte-identical, rewinds restore exact state, and changing a mechanism is reported as a divergence instead of silently reusing stale responses.
 
 On the island, the same seed always gives the same island, replay from the log is exact, and rewinding to a morning restores it exactly. Across eight seeds, stories pass beyond the person who first told them, a planted rumor travels on its own in most runs, and people come to remember what they were told about shared events, but never when the misinformation mechanism is switched off.
+
+The causal history keeps choices a town's session has long let go, adds nothing when the same traces are read twice, never follows a cause that had not happened yet, walks a year-four choice back to a memory from before the story, and survives a save, a load and a rewind. The Historian's citations are checked against the brief, so a made-up tag is dropped.
 
 ## Not here yet
 
