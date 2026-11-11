@@ -100,9 +100,10 @@ export {
 export { atlas, divergence, saysVsWas, type AtlasEntry, type AtlasHolder, type Account, type DivergenceEntry, type HiddenCause, type SaysVsWas } from "./analysis.js";
 export { ageOf, isChild, yearOf, schemaLineage, STORE_NORM, CHILDHOOD, type Life, type Norm } from "./world/life.js";
 export { counterfactual, type Counterfactual, type CounterfactualEdit, type ChoiceDiff } from "./world/counterfactual.js";
-export { RegionSession, compareMyths, regionView, carryLineage, belongingOf, leastBelonging, type RegionState, type RegionOptions, type RegionView, type Town, type Trade, type ChronicleEntry, type MythComparison } from "./world/region.js";
+export { RegionSession, compareMyths, regionView, carryLineage, belongingOf, leastBelonging, type RegionState, type RegionOptions, type RegionView, type Town, type Trade, type ChronicleEntry, type MythComparison, type RegionPort, type TownPacket } from "./world/region.js";
+export * as realm from "./realm/index.js";
 export { rootOf, foundingVersion, type Law, type Election, type Civic } from "./world/civic.js";
-export { dematerialize, materialize, aggAdvance, aggSeason, compactMinds, drift, implant, tellFounding } from "./world/aggregate.js";
+export { dematerialize, materialize, aggAdvance, aggSeason, compactMinds, drift, forget, implant, tellFounding } from "./world/aggregate.js";
 export { CRAFTS, craft, craftBonus, craftLineage, knows, townCrafts, knowledgeOf, type Craft, type Know, type Knowledge, type KnowledgeEvent } from "./world/knowledge.js";
 export { digest, timeline, type Timeline } from "./world/digest.js";
 export { luck } from "./world/world.js";

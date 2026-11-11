@@ -17,6 +17,7 @@ npm run island -- 3 7 --storm   # three days of island life in the terminal (see
 npm run village -- 8 11         # eight days of Hollow Bay, the village, in the terminal
 npm run generations -- 10       # ten years of Hollow Bay on the mock: lives, norms, inherited fears
 npm run region -- 22            # a region of towns: splits, trade, laws, and the crossing told differently
+npm run world                   # a realm of 50,000 minds on worker threads that runs for days (docs/world-server.md)
 npm test           # engine and world tests
 npm run demo       # the original single-mind demo (M0)
 ```
@@ -227,6 +228,19 @@ A region can now grow to thousands, because only the town you're looking at has 
 
 `npm run century -- 100` runs a century headless: the first two years live, the rest on rules, writing `digest.md` (a decade at a time), `timeline.json` and a save the server can open (`PSYCHE_DATA=out/century npm run dev`). With seed 11 it reaches about 1,800 people in 16 towns, in about 35 seconds, with no model calls.
 
+## The realm: 50,000 minds, running for days
+
+Above the region there is now a realm: many coasts, each a region of up to a dozen towns, each on a worker thread (`packages/engine/src/realm`, `packages/server/src/world`). The full write-up is in [docs/world-server.md](docs/world-server.md).
+
+- **Coasts fill and send colonies over the sea.** A full coast cannot keep a new town, so the town sails: its people, their memories and the stories they were told go with it, and the chronicle records who led them and why.
+- **Boats, grievances and gifts cross between coasts** the same way they do between towns, with the story's teller remembered on the far shore.
+- **The same world on any number of threads.** Regions only meet between seasons, in a fixed order, so one thread or eight give the same world to the byte, as does stopping and picking up from a save.
+- **A server that stays up.** `npm run world` grows the world to 50,000 people, then keeps it to a year a minute. It saves every ten minutes, picks up exactly where it stopped, goes back to its last save if a thread dies, and lets go of the long dead so memory stays level over thousands of years.
+- **A morning digest.** At 7 each morning it writes a page: the dozen things that mattered in the night with the reasons behind each, new shores, what passed between the coasts, every coast in a table, and how the oldest story is told now. http://localhost:8790 shows it live.
+- **$0.** Every town in the realm runs on rules. A model is only called when you export a coast (`npm run world -- export r3`) and open it in the game.
+
+On a 4-core machine, seed 11 grows from the 15 people of the crossing to 50,000 people in about 23 minutes (sim year 279, 36 coasts, 466 towns). At that size a sim year takes about 24 seconds, a save is 180 MB, and nothing is spent. `npm run scale -- 50000 4` measures it on your machine.
+
 ## The made world: people come to suspect it
 
 People in Hollow Bay can come to suspect that their world is made, and that someone is watching (`world/heresy.ts`). Nothing in it is scripted. The suspicion is built from things they actually live through, it is held as an ordinary belief, it travels the way any story does, and every step of it opens in the ledger.
@@ -350,6 +364,8 @@ The psychology lives in a deterministic engine (`packages/engine`). Memory stren
 | `packages/faculties` | Claude-backed faculties with structured outputs, plus a deterministic offline mock. |
 | `packages/engine/src/world` | Kettle Island: places, the cast, routines, encounters, conversations, gossip, events, and event-sourced world sessions. |
 | `packages/server` | Hosts the island with a running clock, saved as seed + inputs + recorded calls. |
+| `packages/engine/src/realm` | Many regions as one world: colonies, boats and grievances between coasts, and the digest. |
+| `packages/server/src/world` | The world server: worker threads, saves, crash recovery, pacing, the status page and API. |
 | `packages/web` | The island UI: map, feed, stories, relationships and the brain scan (React + Vite). |
 
 ## One cognitive cycle
@@ -403,4 +419,4 @@ On the island, the same seed always gives the same island, replay from the log i
 
 ## Not here yet
 
-There is no writing yet, so nothing outlives its authors except through being told. Inside a town there is no barter yet, only the common store, and roles are picked at coming of age from aptitude and what the town lacks. Rewind is off in a region (towns change each other, so one town's log can't replay it), and a region is saved as it stands rather than replayed. Conversations are still two people (group moments are the fire and the village meeting). The village is not yet on Founders' voxel grid. The mock faculties write plain language and extract little from free text; real perception and speech need Claude. Several parameters are engineering choices that M3's validation suite should calibrate.
+There is no writing yet, so nothing outlives its authors except through being told. Inside a town there is no barter yet, only the common store, and roles are picked at coming of age from aptitude and what the town lacks. Rewind is off in a region (towns change each other, so one town's log can't replay it), and a region is saved as it stands rather than replayed. A coast exported from the realm and watched in the game does not flow back into the running realm. Conversations are still two people (group moments are the fire and the village meeting). The village is not yet on Founders' voxel grid. The mock faculties write plain language and extract little from free text; real perception and speech need Claude. Several parameters are engineering choices that M3's validation suite should calibrate.

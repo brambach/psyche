@@ -27,7 +27,7 @@ import { intentOf } from "./intentions.js";
 
 const courts = (world: WorldState, a: AgentId, b: AgentId) => intentOf(world, a)?.kind === "court" && intentOf(world, a)?.target === b;
 import { craftBonus, learn, CRAFTS } from "./knowledge.js";
-import { createSettlers, FIRST_NAMES, other, routineFor, uniqueId } from "./people.js";
+import { createSettlers, FIRST_NAMES, mintBase, other, routineFor, uniqueId } from "./people.js";
 import type { RoutineEntry } from "./places.js";
 import { eventPercept, feed, luck, personName, record, thirdPerson, type Sink, type WorldState } from "./world.js";
 import type { Household, VillageState } from "./village.js";
@@ -196,7 +196,7 @@ async function birth(world: WorldState, parents: AgentId[], faculties: Faculties
   const free = FIRST_NAMES.filter(([n]) => !used.has(n));
   const pool = free.length ? free : FIRST_NAMES;
   const [first, pronouns] = pool[Math.floor(luck(world, "name", ...parents) * pool.length)]!;
-  const id = uniqueId(first.toLowerCase(), taken);
+  const id = uniqueId(mintBase(v, first.toLowerCase()), taken);
   const hh = householdOf(v, parents[0]!)!;
   const surname = /^(\S+) (\S+)/.exec(p1!.identity.summary)?.[2]?.replace(/,$/, "") ?? hh.name.replace(/^the /, "");
   const rng = { rng: (world.rng ^ Math.imul(world.idCounter + 1, 2654435761)) >>> 0 };
@@ -342,7 +342,7 @@ async function newcomers(world: WorldState, faculties: Faculties, sink: Sink): P
   const known = world.order.map((id) => ({ id, name: world.minds[id]!.name, role: world.agents[id]!.role }));
   const taken = new Set([...Object.keys(world.minds), ...Object.keys(v.households), ...(v.reserved?.ids ?? [])]);
   const crossing = `ep_boat_y${year}`;
-  const { settlers, households } = createSettlers(world.seed * 31 + year * 977, n, world.minds[world.order[0]!]!.ablations, known, { taken, names: new Set([...Object.values(world.minds).map((m) => m.name), ...(v.reserved?.names ?? [])]), crossing, now: world.tick });
+  const { settlers, households } = createSettlers(world.seed * 31 + year * 977, n, world.minds[world.order[0]!]!.ablations, known, { taken, names: new Set([...Object.values(world.minds).map((m) => m.name), ...(v.reserved?.names ?? [])]), crossing, now: world.tick, mint: (name) => mintBase(v, name) });
   const placeCount = Object.keys(v.households).length + Object.keys(world.places).filter((p) => p.startsWith("home_")).length;
   households.forEach((h, i) => {
     const home = `home_${h.id}`;
@@ -492,8 +492,8 @@ export async function bedtime(world: WorldState, faculties: Faculties, sink: Sin
 }
 
 /** Where a core belief came from, hop by hop through who told whom, back to a first-hand memory. */
-export function schemaLineage(world: WorldState, agent: AgentId, schema: Schema): { agent: AgentId; episode: string; gist: string; firstHand: boolean }[] {
-  const out: { agent: AgentId; episode: string; gist: string; firstHand: boolean }[] = [];
+export function schemaLineage(world: WorldState, agent: AgentId, schema: Schema): { agent: AgentId; episode: string; gist: string; firstHand: boolean; elided?: number }[] {
+  const out: { agent: AgentId; episode: string; gist: string; firstHand: boolean; elided?: number }[] = [];
   let at: { agent: AgentId; id: string } | undefined = schema.origin?.[0] ? { agent, id: schema.origin[0] } : undefined;
   const seen = new Set<string>();
   while (at && !seen.has(`${at.agent}/${at.id}`)) {
@@ -501,7 +501,8 @@ export function schemaLineage(world: WorldState, agent: AgentId, schema: Schema)
     const ep = world.minds[at.agent]?.episodes.find((e) => e.id === at!.id);
     if (!ep) break;
     const told = ep.source.kind === "told" && ep.source.from && ep.source.ref;
-    out.push({ agent: at.agent, episode: ep.id, gist: ep.gist, firstHand: !told });
+    // `elided`: tellers between this one and the next who are no longer remembered (Source.elided).
+    out.push({ agent: at.agent, episode: ep.id, gist: ep.gist, firstHand: !told, ...(told && ep.source.elided ? { elided: ep.source.elided } : {}) });
     at = told ? { agent: ep.source.from!, id: ep.source.ref! } : undefined;
   }
   return out;

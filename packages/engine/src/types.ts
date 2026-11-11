@@ -100,6 +100,12 @@ export interface Source {
   from?: AgentId;
   /** Which belief or episode the content came from, if known. */
   ref?: string;
+  /**
+   * Tellings between this memory and the one it points to that are no longer kept. A story many
+   * generations old keeps its nearest tellers and the person it began with; the long-dead in
+   * between are let go, and counted here.
+   */
+  elided?: number;
 }
 
 /**

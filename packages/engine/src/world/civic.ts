@@ -197,8 +197,8 @@ export function rootOf(minds: Record<AgentId, MindState>, agent: AgentId, ep: Ep
     seen.add(`${at.agent}/${at.episode.id}`);
     const next = minds[at.episode.source.from]?.episodes.find((e) => e.id === at.episode.source.ref);
     if (!next) break;
+    hops += 1 + (at.episode.source.elided ?? 0);
     at = { agent: at.episode.source.from, episode: next };
-    hops++;
   }
   return { ...at, hops };
 }
