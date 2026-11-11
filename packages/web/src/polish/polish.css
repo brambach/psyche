@@ -58,6 +58,16 @@
   .game .g-card { top: 124px; max-height: calc(100% - 124px - 240px); }
 }
 
+/* The header is measured (Game.tsx sets --g-head), so with any number of buttons at any width, whatever opens under it starts below its last row. */
+@media (min-width: 721px) {
+  .game.g-fit .g-card { top: calc(var(--g-head) + 8px); max-height: calc(100% - var(--g-head) - 248px); }
+  .game.g-fit .t3-game .t3-card { top: calc(var(--g-head) + 8px); }
+  .game.g-fit .g-menu, .game.g-fit .g-menu.g-worlds { top: calc(var(--g-head) + 2px); max-height: calc(100% - var(--g-head) - 24px); }
+  .game.g-fit .g-toasts { top: calc(var(--g-head) + 8px); }
+  .game.g-fit .g-lag { top: calc(var(--g-head) + 2px); }
+  .game.g-fit .v-panel, .game.g-fit .y-panel { top: calc(var(--g-head) + 8px); }
+}
+
 /* A laptop-width screen: pull the header in a little so every button stays on one row. */
 @media (min-width: 721px) and (max-width: 1420px) {
   .game .g-controls { gap: 4px; }

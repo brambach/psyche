@@ -61,6 +61,17 @@ export function Game() {
   const [voice, setVoice] = useState(false);
   // Walking in the town yourself (you/Walk.tsx): the director lets go of the camera and WASD moves you.
   const [walking, setWalking] = useState(false);
+  // How tall the header is right now. It wraps to more rows on a narrower screen or with more buttons, and what opens under it has to clear all of them.
+  const [headH, setHeadH] = useState<number>();
+  const headWatch = useRef<ResizeObserver>();
+  const headRef = useCallback((el: HTMLElement | null) => {
+    headWatch.current?.disconnect();
+    if (!el) return;
+    const read = () => setHeadH(Math.round(el.getBoundingClientRect().height));
+    headWatch.current = new ResizeObserver(read);
+    headWatch.current.observe(el);
+    read();
+  }, []);
   const [stage, setStage] = useState<Stage>();
   const [traceWord, setTraceWord] = useState<string>();
   const [toasts, setToasts] = useState<{ id: string; text: string; kind: string; town?: string; agent?: string; at: number }[]>([]);
@@ -204,7 +215,7 @@ export function Game() {
   const lagging = view.running && view.speed > 16 && view.pace > 0 && view.pace < view.speed * 0.6;
 
   return (
-    <div className={`game${night ? " g-night" : ""}${photo ? " g-photo" : ""}${strolling ? " g-walking" : ""}`}>
+    <div className={`game${night ? " g-night" : ""}${photo ? " g-photo" : ""}${strolling ? " g-walking" : ""}${headH ? " g-fit" : ""}`} style={headH ? ({ "--g-head": `${headH}px` } as React.CSSProperties) : undefined}>
       <style>{colors}</style>
       <div className="g-stage">
         {nested ? null : mode === "coast" && view.towns ? (
@@ -233,7 +244,7 @@ export function Game() {
         <div className="g-vignette" aria-hidden="true" />
       </div>
 
-      <header className="g-top">
+      <header className="g-top" ref={headRef}>
         <div className="g-title">
           <a className="g-brand" href="#/" title="Psyche Live">Psyche</a>
           {view.towns && view.towns.length > 1 ? (
@@ -537,7 +548,7 @@ function BottomStrip({ view, strip, setStrip, names, onGo, onMind, onRipple }: {
                 <span>{f.title}</span>
                 {f.line && <q>{f.line.text}</q>}
               </button>
-              {f.agents[0] && names[f.agents[0]] && <button className="g-mini" onClick={() => onMind(f.agents[0]!, f.refs?.[0]?.trace)} title={`Open ${names[f.agents[0]]}'s mind at this moment`}>mind</button>}
+              {f.agents[0] && names[f.agents[0]] && <button className="g-mini" onClick={() => onMind(f.agents[0]!, f.refs?.find((r) => r.agent === f.agents[0])?.trace)} title={`Open ${names[f.agents[0]]}'s mind at this moment`}>mind</button>}
             </li>
           ))}
         </ol>
