@@ -12,6 +12,7 @@
     "island": "tsx --conditions=source scripts/island.ts",
     "founders": "tsx --conditions=source scripts/founders.ts",
     "why": "tsx --conditions=source scripts/why.ts",
+    "history": "tsx --conditions=source scripts/history.ts",
     "village": "tsx --conditions=source scripts/village.ts",
     "generations": "tsx --conditions=source scripts/generations.ts",
     "region": "tsx --conditions=source scripts/region.ts",

@@ -207,3 +207,34 @@ export { parseWriting, quoteFound, worldTopics, shapeBelief, inWorldWords } from
 export { admitPersona, personaMind, personaLife, type PersonaOrigin, type PersonaLife } from "./persona/arrive.js";
 export { SAMPLE_PERSONA, SAMPLE_CHAT } from "./persona/sample.js";
 export { VALUES, PERSONA_TRADES, type RawReading, type PersonaReading, type PersonaReader, type WritingInput, type Quote, type PersonaTrait, type PersonaMemory, type PersonaBelief, type PersonaValue, type PersonaPerson, type ValueName, type PersonaTrade } from "./persona/types.js";
+export {
+  CausalHistory,
+  trail,
+  strongestThread,
+  longestThread,
+  origins,
+  reach,
+  find,
+  whenText,
+  agoText,
+  yearAt,
+  yearMinutes,
+  MOMENT_KINDS,
+  type Calendar,
+  type HistoryNode,
+  type HistoryOptions,
+  type HistorySource,
+  type SavedHistory,
+  type AbsorbReport,
+  type Moment,
+  type MomentKind,
+  type PersonRecord,
+  type Mark,
+  type Weight,
+  type ThreadStep,
+  type TrailOptions,
+  type Origins,
+  type Reach,
+  type Found,
+} from "./history.js";
+export { buildBrief, renderBrief, offlineHistorian, offlineReader, citedIn, type Brief, type BriefNode, type BriefLink, type BriefFocus, type BriefOptions, type Historian, type HistorianAnswer, type HistorianReply } from "./historian.js";

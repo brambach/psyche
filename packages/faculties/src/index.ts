@@ -21,3 +21,4 @@ export function createFaculties(
   return { kind: governor.mode, faculties: governor.faculties, governor };
 }
 export { createClaudeReader, MAX_WRITING_CHARS, type ClaudeReaderOptions } from "./persona.js";
+export { createClaudeHistorian, historianEstimate, type ClaudeHistorianOptions } from "./historian.js";
