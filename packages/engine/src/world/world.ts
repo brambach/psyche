@@ -16,6 +16,7 @@ import { PLACES, type Place, type PlaceId, type RoutineEntry, type Want } from "
 import { voiceStep, type VoiceState } from "./voice.js";
 import { injectVillage, overhear, villageStep, villageWorkplace, type VillageEvent, type VillageState } from "./village.js";
 import { heresyStep, markUnnatural, type HeresyState } from "./heresy.js";
+import { youStep, type YouState } from "./you.js";
 
 const STEP = 10;
 /** Minutes before the same two people strike up another conversation. */
@@ -101,6 +102,8 @@ export interface WorldState {
   edits?: EditRecord[];
   /** Chance is keyed by what it decides (see luck()), so twin runs share their luck. */
   keyedLuck?: boolean;
+  /** Present once you have walked into this world yourself (you.ts). */
+  you?: YouState;
 }
 
 export interface FeedLine {
@@ -190,7 +193,7 @@ export const isNight = (t: Tick) => hourOf(t) >= 23 || hourOf(t) < 7;
 const untilMorning = (t: Tick) => Math.round(((7 - hourOf(t) + 24) % 24) * 60) || 1440;
 
 function name(world: WorldState, id: string): string {
-  if (id === "visitor") return "the visitor";
+  if (id === "visitor") return world.you?.name ?? "the visitor";
   return world.agents[id]?.name ?? id;
 }
 
@@ -252,6 +255,7 @@ export async function advance(world: WorldState, minutes: number, faculties: Fac
     if (world.village) await villageStep(world, dt, faculties, sink);
     if (world.voice) await voiceStep(world, faculties, sink);
     if (world.heresy) await heresyStep(world, faculties, sink);
+    if (world.you) await youStep(world, faculties, sink);
     if (isNight(world.tick)) continue;
     await encounters(world, faculties, sink);
   }
@@ -459,7 +463,8 @@ async function chooseOpener(world: WorldState, a: AgentId, b: AgentId, place: Pl
   const ag = world.agents[a]!;
   type Cand = { score: number; key: string; ep?: Episode; bel?: Belief; subject: AgentId };
   const cands: Cand[] = [];
-  const valid = (s: string) => s in world.minds && s !== a && s !== b;
+  // Once you have walked in, you are someone to talk about too.
+  const valid = (s: string) => (s in world.minds || (s === "visitor" && !!world.you)) && s !== a && s !== b;
   for (const ep of A.episodes) {
     if (ep.id.startsWith("talk_") || ep.agency === "self") continue;
     const subject = ep.about.find(valid);

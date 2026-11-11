@@ -105,6 +105,20 @@ function compose(land: TownTerrain, wood: Tree[], scene: Scene3D, plans: Map<str
   return { grid: { version: 0, w, d, h, cells }, ghost, chimneys };
 }
 
+/**
+ * What the town hands to anything that wants to add to the 3D scene from outside this file (the
+ * walk-in avatar, you/walk.ts): the camera, the scene, where everyone is, the land's heights, and
+ * `layers`, callbacks run every frame just before the camera settles.
+ */
+export interface Stage {
+  camera: THREE.PerspectiveCamera;
+  controls: OrbitControls;
+  scene: THREE.Scene;
+  figures: Map<string, { group: THREE.Group; pos: THREE.Vector3; target: THREE.Vector3; p: Person }>;
+  ground: number[];
+  layers: Set<(dt: number, now: number) => void>;
+}
+
 /** What the director is showing, for the caption under it. */
 export interface Shot {
   kind: "close" | "wide" | "idle";
@@ -132,6 +146,8 @@ export function Town3D(props: {
   /** Fly to someone (a notice or a feed line was clicked). */
   focusReq?: { id: string; n: number };
   onSelect?: (id: string | undefined) => void;
+  /** Called once the scene exists, with what an outside layer needs to draw into it. */
+  onStage?: (stage: Stage | undefined) => void;
 }) {
   const { onOpen, game } = props;
   const [focus, setFocus] = useState<{ id: string; n: number }>();
@@ -169,6 +185,7 @@ export function Town3D(props: {
     /** When someone last moved the camera by hand. */
     touched: number;
     flyTo: (target: THREE.Vector3, dist: number, opts?: { azimuth?: number; elevation?: number; dur?: number }) => void;
+    layers: Set<(dt: number, now: number) => void>;
   }>();
   const plans = useRef(new Map<string, Placement[]>());
   const seed = scene?.seed;
@@ -260,6 +277,7 @@ export function Town3D(props: {
       selected: undefined as string | undefined, follow: undefined as string | undefined,
       fly: undefined as { fromPos: THREE.Vector3; fromTarget: THREE.Vector3; toPos: THREE.Vector3; toTarget: THREE.Vector3; t: number; dur: number } | undefined,
       touched: -1e9,
+      layers: new Set<(dt: number, now: number) => void>(),
       /** Glide the camera to look at `target` from `dist` away, keeping the current bearing unless told otherwise. */
       flyTo: (target: THREE.Vector3, dist: number, opts: { azimuth?: number; elevation?: number; dur?: number } = {}) => {
         const cur = camera.position.clone().sub(controls.target);
@@ -273,6 +291,7 @@ export function Town3D(props: {
     three.current = state;
     // A handle for screenshots and debugging: lets a script point the camera.
     (window as unknown as { __town3d?: unknown }).__town3d = state;
+    props.onStage?.(state);
 
     const resize = () => {
       const w = el.clientWidth, h = el.clientHeight;
@@ -453,12 +472,14 @@ export function Town3D(props: {
         ra.needsUpdate = true;
       }
       for (const pl of state.places) project(pl.x, standY(pl.x, pl.z) + 3, pl.z, pl.el, pl.home ? 85 : 220);
+      for (const layer of state.layers) layer(dt, now);
       controls.update();
       renderer.render(sc, camera);
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => {
+      props.onStage?.(undefined);
       cancelAnimationFrame(raf);
       ro.disconnect();
       renderer.domElement.removeEventListener("wheel", onWheel);

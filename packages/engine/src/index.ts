@@ -207,3 +207,4 @@ export { parseWriting, quoteFound, worldTopics, shapeBelief, inWorldWords } from
 export { admitPersona, personaMind, personaLife, type PersonaOrigin, type PersonaLife } from "./persona/arrive.js";
 export { SAMPLE_PERSONA, SAMPLE_CHAT } from "./persona/sample.js";
 export { VALUES, PERSONA_TRADES, type RawReading, type PersonaReading, type PersonaReader, type WritingInput, type Quote, type PersonaTrait, type PersonaMemory, type PersonaBelief, type PersonaValue, type PersonaPerson, type ValueName, type PersonaTrade } from "./persona/types.js";
+export { ME, youAct, youCheck, youStep, youView, type YouAct, type YouState, type YouView, type Deed, type Reaction, type Ask, type AskKind, type Verdict, type Theft, type YouDebt } from "./world/you.js";
