@@ -107,6 +107,13 @@ export interface VillageState {
   town?: string;
   /** Ids and names in use anywhere in the region, so a birth in one town never takes another's. */
   reserved?: { ids: string[]; names: string[] };
+  /**
+   * Set when this town is one of many in a realm: the town's own mark, which no other town anywhere has.
+   * Ids made here end `_<tag>_<n>`, counting up for the life of the town, so no id is ever made twice,
+   * here or anywhere, however towns move between regions.
+   */
+  idTag?: string;
+  idSerial?: number;
   /** Crafts people know, who taught whom, and what has been lost (absent before C4). */
   knowledge?: Knowledge;
   /** Set while the town runs on the aggregate tier: nobody is watching, so only rules run. */

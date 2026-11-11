@@ -31,6 +31,16 @@ const NAMES: [string, Pronouns][] = [
 export const FIRST_NAMES = NAMES;
 const SURNAMES = ["Ashby", "Brack", "Coyle", "Dunmore", "Fenwick", "Harrow", "Kell", "Lusk", "Moss", "Pardoe", "Rook", "Tarrant", "Garvey", "Hume", "Locke", "Penhale", "Quarry", "Sallow", "Tull", "Venn"];
 
+/**
+ * The base for a new id in a town: the name alone, or in a town with a mark of its own (see
+ * VillageState.idTag) the name, the mark and the next number, which nobody else can ever be given.
+ */
+export function mintBase(v: { idTag?: string; idSerial?: number }, name: string): string {
+  if (!v.idTag) return name;
+  v.idSerial = (v.idSerial ?? 0) + 1;
+  return `${name}_${v.idTag}_${v.idSerial}`;
+}
+
 /** A fresh id from a name: "ada", or "ada2" if an Ada already lives (or lived) here. */
 export function uniqueId(base: string, taken: Set<string>): string {
   let id = base;
@@ -190,11 +200,13 @@ export function createSettlers(
   known: { id: AgentId; name: string; role: string }[],
   /** For later boats: ids already in use, the crossing's episode id, and when they land. */
   /** `names` already in use (the living and the remembered dead), avoided while any are left. */
-  opts: { taken?: Set<string>; names?: Set<string>; crossing?: string; now?: number } = {},
+  /** `mint` gives the base for each new id (see mintBase); by default the name itself. */
+  opts: { taken?: Set<string>; names?: Set<string>; crossing?: string; now?: number; mint?: (name: string) => string } = {},
 ): { settlers: Settler[]; households: HouseholdSeed[] } {
   const r: Rng = { rng: (Math.imul(seed + 17, 2246822519) ^ 0x5bd1e995) >>> 0 };
   const taken = opts.taken ?? new Set(known.map((k) => k.id));
   const now = opts.now ?? 0;
+  const mint = opts.mint ?? ((name: string) => name);
   const names = NAMES.filter(([n]) => !opts.names?.has(n));
   const settlers: Settler[] = [];
   const households: HouseholdSeed[] = [];
@@ -203,14 +215,14 @@ export function createSettlers(
   while (made < count) {
     const size = Math.min(count - made, count - made === 4 ? 2 : nextRandom(r) < 0.5 ? 2 : 3);
     const surname = surnames.length ? surnames.splice(Math.floor(nextRandom(r) * surnames.length), 1)[0]! : pick(r, SURNAMES);
-    const hid = uniqueId(surname.toLowerCase(), taken);
+    const hid = uniqueId(mint(surname.toLowerCase()), taken);
     const town = pick(r, HOMETOWNS);
     const home = `home_${hid}`;
     const members: AgentId[] = [];
     const past = pick(r, PASTS);
     for (let i = 0; i < size; i++) {
       const [first, pronouns] = names.length ? names.splice(Math.floor(nextRandom(r) * names.length), 1)[0]! : pick(r, NAMES);
-      const id = uniqueId(first.toLowerCase(), taken);
+      const id = uniqueId(mint(first.toLowerCase()), taken);
       const role = SETTLER_TRADES[made % SETTLER_TRADES.length]!;
       const age = Math.round(roll(r, 19, 61));
       const traits = {

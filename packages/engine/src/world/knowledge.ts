@@ -72,7 +72,12 @@ export const knows = (world: WorldState, id: AgentId, c: string) => (world.villa
 export function townCrafts(world: WorldState): string[] {
   const k = world.village?.knowledge;
   if (!k) return [];
-  return [...new Set(world.order.flatMap((id) => (k.known[id] ?? []).map((x) => x.craft)))];
+  const out = new Set<string>();
+  for (const id of world.order) {
+    const mine = k.known[id];
+    if (mine) for (const x of mine) out.add(x.craft);
+  }
+  return [...out];
 }
 
 /** The summed effect of the crafts the town knows: 0 when nobody alive knows any. */

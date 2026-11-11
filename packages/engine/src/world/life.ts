@@ -27,7 +27,7 @@ import { intentOf } from "./intentions.js";
 
 const courts = (world: WorldState, a: AgentId, b: AgentId) => intentOf(world, a)?.kind === "court" && intentOf(world, a)?.target === b;
 import { craftBonus, learn, CRAFTS } from "./knowledge.js";
-import { createSettlers, FIRST_NAMES, other, routineFor, uniqueId } from "./people.js";
+import { createSettlers, FIRST_NAMES, mintBase, other, routineFor, uniqueId } from "./people.js";
 import type { RoutineEntry } from "./places.js";
 import { eventPercept, feed, luck, personName, record, thirdPerson, type Sink, type WorldState } from "./world.js";
 import type { Household, VillageState } from "./village.js";
@@ -196,7 +196,7 @@ async function birth(world: WorldState, parents: AgentId[], faculties: Faculties
   const free = FIRST_NAMES.filter(([n]) => !used.has(n));
   const pool = free.length ? free : FIRST_NAMES;
   const [first, pronouns] = pool[Math.floor(luck(world, "name", ...parents) * pool.length)]!;
-  const id = uniqueId(first.toLowerCase(), taken);
+  const id = uniqueId(mintBase(v, first.toLowerCase()), taken);
   const hh = householdOf(v, parents[0]!)!;
   const surname = /^(\S+) (\S+)/.exec(p1!.identity.summary)?.[2]?.replace(/,$/, "") ?? hh.name.replace(/^the /, "");
   const rng = { rng: (world.rng ^ Math.imul(world.idCounter + 1, 2654435761)) >>> 0 };
@@ -342,7 +342,7 @@ async function newcomers(world: WorldState, faculties: Faculties, sink: Sink): P
   const known = world.order.map((id) => ({ id, name: world.minds[id]!.name, role: world.agents[id]!.role }));
   const taken = new Set([...Object.keys(world.minds), ...Object.keys(v.households), ...(v.reserved?.ids ?? [])]);
   const crossing = `ep_boat_y${year}`;
-  const { settlers, households } = createSettlers(world.seed * 31 + year * 977, n, world.minds[world.order[0]!]!.ablations, known, { taken, names: new Set([...Object.values(world.minds).map((m) => m.name), ...(v.reserved?.names ?? [])]), crossing, now: world.tick });
+  const { settlers, households } = createSettlers(world.seed * 31 + year * 977, n, world.minds[world.order[0]!]!.ablations, known, { taken, names: new Set([...Object.values(world.minds).map((m) => m.name), ...(v.reserved?.names ?? [])]), crossing, now: world.tick, mint: (name) => mintBase(v, name) });
   const placeCount = Object.keys(v.households).length + Object.keys(world.places).filter((p) => p.startsWith("home_")).length;
   households.forEach((h, i) => {
     const home = `home_${h.id}`;

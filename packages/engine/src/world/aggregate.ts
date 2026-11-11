@@ -92,7 +92,20 @@ export function materialize(agg: WorldState): WorldState {
  * remembered only the memories someone living still traces a story back to.
  */
 export function compactMinds(w: WorldState): void {
-  for (const id of w.order) compactMind(w, w.minds[id]!);
+  // A memory someone else was told a story from is kept, so the story can always be followed back.
+  const told = toldFrom(w);
+  // Who lives with whom and whose children are whose, worked out once for the whole town.
+  const v = w.village!;
+  const kin = new Map<AgentId, AgentId[]>();
+  const push = (id: AgentId, other: AgentId) => {
+    const xs = kin.get(id);
+    if (xs) xs.push(other);
+    else kin.set(id, [other]);
+  };
+  for (const x of w.order) for (const p of v.life[x]?.parents ?? []) push(p, x);
+  const homes = new Map<AgentId, AgentId[]>();
+  for (const h of Object.values(v.households)) for (const m of h.members) if (!homes.has(m)) homes.set(m, h.members);
+  for (const id of w.order) compactMind(w, w.minds[id]!, told, kin.get(id) ?? [], homes.get(id) ?? []);
   pruneDead(w);
 }
 
@@ -149,13 +162,14 @@ function pruneDead(w: WorldState, only?: Set<AgentId>): void {
 const charge = (e: Episode) => Math.abs(e.valence) * (0.3 + e.arousal);
 const FOUNDING_TOPICS = ["founding", "crossing", "leaving"];
 
-function compactMind(w: WorldState, m: MindState): void {
+function compactMind(w: WorldState, m: MindState, told: Set<string>, children: AgentId[], home: AgentId[]): void {
   const v = w.village!;
   const l = v.life[m.id];
   for (const s of m.schemas) if (s.deepenedBy && s.deepenedBy.length > 4) s.deepenedBy.splice(0, s.deepenedBy.length - 4);
   // Beliefs: everything about the town and the other towns, and the most confident of the rest.
-  const civic = m.beliefs.filter((b) => b.about === "village" || b.about === "faith" || b.about.startsWith("town:"));
-  const rest = m.beliefs.filter((b) => !civic.includes(b)).sort((a, b) => b.confidence - a.confidence).slice(0, 15);
+  const isCivic = (b: MindState["beliefs"][number]) => b.about === "village" || b.about === "faith" || b.about.startsWith("town:");
+  const civic = m.beliefs.filter(isCivic);
+  const rest = m.beliefs.filter((b) => !isCivic(b)).sort((a, b) => b.confidence - a.confidence).slice(0, 15);
   m.beliefs = [...civic, ...rest];
   for (const b of m.beliefs) {
     b.evidence = b.evidence.slice(-4);
@@ -166,7 +180,7 @@ function compactMind(w: WorldState, m: MindState): void {
   const keep = new Set<string>([
     ...m.schemas.flatMap((s) => [...(s.origin ?? []), ...(s.deepenedBy ?? []).map((d) => d.episode)]),
     ...m.beliefs.flatMap((b) => b.evidence.slice(-2)),
-    ...m.episodes.filter((e) => e.topics.some((t) => FOUNDING_TOPICS.includes(t))).map((e) => e.id),
+    ...m.episodes.filter((e) => e.topics.some((t) => FOUNDING_TOPICS.includes(t)) || told.has(`${m.id}/${e.id}`)).map((e) => e.id),
   ]);
   const others = m.episodes.filter((e) => !keep.has(e.id)).sort((a, b) => charge(b) - charge(a) || b.tick - a.tick);
   for (const e of others.slice(0, 10)) keep.add(e.id);
@@ -177,7 +191,7 @@ function compactMind(w: WorldState, m: MindState): void {
     e.versions = e.versions.slice(-2);
   }
   // The people they are closest to, or feel most strongly about, and family.
-  const kin = new Set<AgentId>([...(l?.parents ?? []), ...(l?.partner ? [l.partner] : []), ...w.order.filter((x) => v.life[x]?.parents.includes(m.id)), ...(Object.values(v.households).find((h) => h.members.includes(m.id))?.members ?? [])]);
+  const kin = new Set<AgentId>([...(l?.parents ?? []), ...(l?.partner ? [l.partner] : []), ...children, ...home]);
   const ranked = Object.entries(m.others)
     .filter(([id]) => id !== "visitor")
     .sort((a, b) => b[1].bond + Math.abs(b[1].liking - 0.5) - (a[1].bond + Math.abs(a[1].liking - 0.5)));
@@ -312,9 +326,10 @@ function acquaint(w: WorldState): void {
   const ids = w.order.filter((x) => ageOf(w, x) >= 10);
   // The unpartnered young seek each other out (at the fire, at the harvest, at the landing).
   const single = ids.filter((x) => !v.life[x]?.partner && ageOf(w, x) >= 16 && ageOf(w, x) < 40);
+  const isSingle = new Set(single);
   for (const a of ids) {
     const A = w.minds[a]!;
-    const pool = single.includes(a) && single.length > 1 ? single : ids;
+    const pool = isSingle.has(a) && single.length > 1 ? single : ids;
     for (let k = 0; k < 4; k++) {
       const b = pool[Math.floor(nextRandom(w) * pool.length)]!;
       if (b === a) continue;
@@ -440,6 +455,14 @@ function bedtimes(w: WorldState): void {
     const kids = hh.members.filter((m) => ageOf(w, m) >= 3 && ageOf(w, m) < CHILDHOOD);
     const adults = hh.members.filter((m) => !isChild(w, m));
     if (!kids.length || !adults.length) continue;
+    // What each child has already been told, and by whom, looked up once.
+    const heard = new Map<AgentId, Set<string>>();
+    for (const k of kids) {
+      const set = new Set<string>();
+      for (const e of w.minds[k]!.episodes) if (e.source.kind === "told") set.add(`${e.source.from}/${e.source.ref}`);
+      heard.set(k, set);
+    }
+    const heardFrom = (k: AgentId, teller: AgentId, ref: string) => heard.get(k)!.has(`${teller}/${ref}`);
     for (let night = 0; night < 2; night++) {
       if (nextRandom(w) > 0.55) continue;
       let best: { teller: AgentId; ep: Episode; score: number } | undefined;
@@ -447,18 +470,20 @@ function bedtimes(w: WorldState): void {
         const m = w.minds[t]!;
         for (const ep of m.episodes) {
           if (/^(talk_|pc_|ev_pledge|ev_hungry|ev_tent|ev_gale|ev_design|ev_birth|ev_pair)/.test(ep.id)) continue;
-          if (kids.every((k) => heardFrom(w, k, t, ep.id))) continue;
+          if (kids.every((k) => heardFrom(k, t, ep.id))) continue;
           const score = charge(ep) * (0.5 + m.traits.extraversion) + (m.schemas.some((s) => s.origin?.includes(ep.id)) ? 0.6 : 0);
           if (!best || score > best.score) best = { teller: t, ep, score };
         }
       }
       if (!best || best.score < 0.2) continue;
-      for (const k of kids) if (!heardFrom(w, k, best.teller, best.ep.id)) implant(w, best.teller, best.ep, k, 0.35);
+      for (const k of kids)
+        if (!heardFrom(k, best.teller, best.ep.id)) {
+          implant(w, best.teller, best.ep, k, 0.35);
+          heard.get(k)!.add(`${best.teller}/${best.ep.id}`);
+        }
     }
   }
 }
-
-const heardFrom = (w: WorldState, listener: AgentId, teller: AgentId, ref: string) => w.minds[listener]!.episodes.some((e) => e.source.kind === "told" && e.source.from === teller && e.source.ref === ref);
 
 const SHARPEN: [RegExp, string][] = [
   [/\bthe storm\b/, "the great storm"],
