@@ -1,4 +1,4 @@
-import type { VoiceSummary, VoiceLineage, Guise } from "@psyche/engine";
+import type { VoiceSummary, VoiceLineage, Guise, CivView, RegionCivView } from "@psyche/engine";
 import type { HeresyView, Faction, Intention, Butterfly, EngineChain, NestedPersonView, NestedWorldView, EditRecord, MindEdit, TraitName, AwaySummary, Beat, ChronicleEntry, Notice, Scene3D, Timeline, Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
 
 export interface AgentSummary {
@@ -173,6 +173,7 @@ export const api = {
   years: (years: number) => call<WorldView>("/api/years", { years }),
   counterfactual: (edit: CounterfactualEdit & { days?: number }) => call<Counterfactual>("/api/counterfactual", edit),
   account: (agent: string, trace: string) => call<SaysVsWas>(`/api/account?${new URLSearchParams({ agent, trace })}`),
+  civ: (town?: string) => call<CivData>(`/api/civ${town ? `?town=${encodeURIComponent(town)}` : ""}`),
   heresy: () => call<HeresyView>("/api/heresy"),
   heresyAnswer: (agent: string, text: string) => call<HeresyView>("/api/heresy/answer", { agent, text }),
   slots: () => call<{ slots: Slot[] }>("/api/slots"),
@@ -253,8 +254,19 @@ export interface GameView {
   scene?: Scene3D;
   /** The made world at a glance (absent when it is switched off). */
   heresy?: { factions: Record<Faction, number>; open: { who: string; name: string; tick: number }[]; anomalies: number; leader?: HeresyView["leader"] };
+  /** The civilization systems in the watched town at a glance (absent when they are off). */
+  civ?: { specialists: number; factions: number; literate: boolean; sick?: string; closed: boolean; raids: number; treaties: number };
   /** Towns that have started counting, and the worlds inside their engines. */
   engines?: EngineChip[];
+}
+
+/** The civilization panel: one town's systems, and what has passed between the towns. */
+export interface CivData {
+  town: string;
+  name: string;
+  year: number;
+  civ: CivView;
+  region?: RegionCivView;
 }
 
 export interface EngineChip {

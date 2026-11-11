@@ -36,6 +36,9 @@ import {
   chronicleNotices,
   awaySummary,
   enableHeresy,
+  enableCiv,
+  civView,
+  regionCivView,
   heresyView,
   heresyNotices,
   voiceSummary,
@@ -163,6 +166,17 @@ function heresyOn() {
   if (session.inputs.length === 0) enableHeresy(session.initial);
 }
 
+/**
+ * The civilization systems (world/civ): trades and markets, sides, contested elections and laws,
+ * sickness, records, migration, raids and truces. On in a region; PSYCHE_CIV=0 turns them off.
+ */
+const CIV = process.env.PSYCHE_CIV !== "0";
+/** Switch them on in every town (a region saved before they existed gets them from now on). */
+function civOn() {
+  if (!CIV || !region) return;
+  for (const t of region.region.towns) enableCiv(region.world(t.id));
+}
+
 const envScenario = process.env.PSYCHE_SCENARIO;
 // The game is a civilization: a region of towns unless asked otherwise.
 let scenario: Scenario = envScenario === "village" || envScenario === "island" ? envScenario : "region";
@@ -185,7 +199,7 @@ const sessionOpts = (): WorldSessionOptions =>
  * Towns run live (hour by hour, on Claude) only while watched: by default one at a time, the rest on
  * the aggregate tier, on rules. PSYCHE_LIVE_TOWNS raises it.
  */
-const regionOpts = () => ({ session: sessionOpts(), live: Number(process.env.PSYCHE_LIVE_TOWNS) || 1, cheap: createMockFaculties(), maxTowns: Number(process.env.PSYCHE_MAX_TOWNS) || 16 });
+const regionOpts = () => ({ session: sessionOpts(), live: Number(process.env.PSYCHE_LIVE_TOWNS) || 1, cheap: createMockFaculties(), maxTowns: Number(process.env.PSYCHE_MAX_TOWNS) || 16, civ: CIV });
 /** In a region, the towns; `session` is the one being watched. */
 let region: RegionSession | undefined;
 let town = "hollow";
@@ -289,6 +303,7 @@ async function restoreFrom(saved: Saved) {
     session = region.focus(town);
     seen = saved.seen ?? region.region.tick;
     heresyOn();
+    civOn();
     console.log(`Restored a region of ${region.region.towns.length} towns.`);
     return;
   }
@@ -685,6 +700,15 @@ function heresyLive() {
   return { ...v, events: v.events.map(keep), anomalies: v.anomalies.map(keep), people: v.people.map((p) => ({ ...p, chain: p.chain.map(keep) })) };
 }
 
+/** The civilization systems at a glance, for the chip in the game's top bar. */
+function civSummary() {
+  if (!region) return undefined;
+  const rc = regionCivView(region.region, (t) => region!.world(t));
+  const here = rc?.towns.find((t) => t.id === town);
+  if (!rc || !here) return undefined;
+  return { specialists: here.specialists, factions: here.factions, literate: here.literate, sick: here.sick, closed: here.closed, raids: rc.raids.length, treaties: rc.treaties.filter((t) => t.inForce).length };
+}
+
 function heresySummary() {
   const v = heresyView(session.world);
   if (!v) return undefined;
@@ -738,6 +762,7 @@ function gameFrame(): GameFrame {
     beats: beats(session.feed.slice(-200), w.tick),
     notices,
     heresy: heresySummary(),
+    civ: civSummary(),
     engines: region ? engineChips() : undefined,
     // Your words in this town: who heard them, who believes, what they have become (voice.ts).
     voice: voiceSummary(w),
@@ -1006,6 +1031,13 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     if (p === "/api/divergence") return send(res, 200, { events: divergence(session.world) });
     if (p === "/api/myths") return region ? send(res, 200, compareMyths(region)) : send(res, 404, { error: "Only a region has more than one town." });
     if (p === "/api/atlas") return send(res, 200, { beliefs: atlas(session.world) });
+    if (p === "/api/civ") {
+      // The watched town unless another is named.
+      const id = url.searchParams.get("town") || town;
+      const w = region?.region.towns.some((t) => t.id === id) ? region.world(id) : undefined;
+      const v = w && civView(w);
+      return v && region ? send(res, 200, { town: id, name: w.name, year: regionView(region).year, civ: v, region: regionCivView(region.region, (t) => region!.world(t)) }) : send(res, 404, { error: "The civilization systems run in a region of towns (and are off with PSYCHE_CIV=0)." });
+    }
     if (p === "/api/heresy") {
       const v = heresyLive();
       return v ? send(res, 200, v) : send(res, 404, { error: "The made world is switched off (PSYCHE_HERESY=0)." });

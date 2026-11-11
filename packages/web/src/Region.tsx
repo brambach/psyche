@@ -3,7 +3,7 @@ import type { MythComparison, RegionView, Timeline } from "@psyche/engine";
 import { api } from "./api";
 import { coastColors, drawCoast } from "./coastMap";
 
-const KIND: Record<string, string> = { founding: "founding", leader: "leader", law: "law", death: "death", trade: "trade", quarrel: "quarrel", peace: "peace", hunger: "hunger", craft: "craft", lost: "lost", work: "built", ruin: "ruin", money: "money" };
+const KIND: Record<string, string> = { founding: "founding", leader: "leader", law: "law", death: "death", trade: "trade", quarrel: "quarrel", peace: "peace", hunger: "hunger", craft: "craft", lost: "lost", work: "built", ruin: "ruin", money: "money", market: "market", faction: "sides", election: "election", plague: "sickness", migration: "moved", record: "written", war: "raid", truce: "truce" };
 
 /** The towns side by side: how many, who leads, how they regard each other, and the chronicle. */
 export function Towns({ r, current, onSwitch }: { r: RegionView; current?: string; onSwitch: (town: string) => void }) {

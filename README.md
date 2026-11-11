@@ -227,6 +227,27 @@ A region can now grow to thousands, because only the town you're looking at has 
 
 `npm run century -- 100` runs a century headless: the first two years live, the rest on rules, writing `digest.md` (a decade at a time), `timeline.json` and a save the server can open (`PSYCHE_DATA=out/century npm run dev`). With seed 11 it reaches about 1,800 people in 16 towns, in about 35 seconds, with no model calls.
 
+## Markets, sides and wars: the civilization systems
+
+Seven systems run on top of the towns (`packages/engine/src/world/civ/`, written up with screenshots in [docs/civ](docs/civ/README.md)). Each choice in them goes through a mind, and each event keeps its causes.
+
+- **Trades and markets.** Once someone knows how to fire clay or work a loom, a town that is big enough carries a potter or a weaver, and how many it carries follows what sells. On market day each deal is settled with amber, by barter, on credit, out of the household's claim on the common store, or it falls through. In a hungry season each seller chooses whether to ask more, and the buyers remember.
+- **Sides.** Nobody founds a faction. It is read off who likes whom, household by household, and named for what its members share. Sides hold wrongs against each other, vote together, come to blows, and sometimes leave to found a town.
+- **Leaders and laws.** Candidates stand on a promise that comes out of their own life (a debtor promises a clean slate), every grown person names one, and the winner puts the promise to a vote. Hungry years are held against whoever led through them.
+- **Sickness.** Three sicknesses pass from person to person and travel with traders, boats and raiders. The leader chooses whether to shut the landing, and the bereaved look for someone to blame.
+- **Writing.** A written law outlasts its leader, a written craft can be read back after its last knower dies, and a written founding story stops changing. The scribe leaves out what shames their own side, and what was left out is kept too.
+- **Moving, raids and truces.** A household weighs leaving through its head's own mind. A raid needs a grievance, a leader who calls it and people who choose to go; either side can ask for a truce.
+- **Later crafts.** Ten crafts that build on earlier ones, need a town big enough to keep them, and are worked out under pressure.
+
+In the game, the chip in the top bar ("25 in trades · 2 sides") opens a panel for the town you are watching: Market, Sides, Leaders and laws, Sickness, Records, Crafts, Between towns. The systems are on in a region; `PSYCHE_CIV=0` turns them off, and with them off a region runs exactly as it did before.
+
+```bash
+npm run civ -- 100 7 2 out/civ       # a century on the mock, a minute or two; writes civ-report.md and a save
+PSYCHE_DATA=$PWD/out/civ npm run dev
+```
+
+With seed 7 a century ends with 804 people in 11 towns, 8 raids, 2 written truces and 64 outbreaks ([the full report](docs/civ/century-seed7.md)). Centuries differ a good deal by seed.
+
 ## The made world: people come to suspect it
 
 People in Hollow Bay can come to suspect that their world is made, and that someone is watching (`world/heresy.ts`). Nothing in it is scripted. The suspicion is built from things they actually live through, it is held as an ordinary belief, it travels the way any story does, and every step of it opens in the ledger.
@@ -394,6 +415,18 @@ Every number is in `packages/engine/src/params.ts` with its source, or marked as
 | Reactance | Brehm 1966 |
 | Commitment after a failed prophecy | Festinger, Riecken & Schachter 1956 |
 | Illusory truth | Hasher, Goldstein & Toppino 1977 |
+| Division of labour, double coincidence of wants | Smith 1776; Jevons 1875 |
+| Redistribution through a common store | Polanyi 1957; Sahlins 1972 |
+| Fairness of raising prices in a shortage | Kahneman, Knetsch & Thaler 1986 |
+| In-group favour, realistic conflict, common enemies | Tajfel & Turner 1979; Sherif 1961 |
+| Voting: warmth and competence, interest, retrospection, rallying | Fiske, Cuddy & Glick 2007; Downs 1957; Fiorina 1981; Mueller 1970 |
+| Clean slates | Hudson 1993 |
+| Contact spread and immunity; trade routes as disease routes | Kermack & McKendrick 1927; McNeill 1976 |
+| Disease, strangers and blame | Schaller 2011; Girard 1982 |
+| What writing fixes in place | Goody & Watt 1963; Schmandt-Besserat 1992 |
+| Population size, pressure and the toolkit | Henrich 2004; Kline & Boyd 2010; Boserup 1965 |
+| Push, pull and exit | Lee 1966; Hirschman 1970 |
+| Parochial altruism and war | Choi & Bowles 2007 |
 
 ## What the tests show
 
@@ -403,4 +436,4 @@ On the island, the same seed always gives the same island, replay from the log i
 
 ## Not here yet
 
-There is no writing yet, so nothing outlives its authors except through being told. Inside a town there is no barter yet, only the common store, and roles are picked at coming of age from aptitude and what the town lacks. Rewind is off in a region (towns change each other, so one town's log can't replay it), and a region is saved as it stands rather than replayed. Conversations are still two people (group moments are the fire and the village meeting). The village is not yet on Founders' voxel grid. The mock faculties write plain language and extract little from free text; real perception and speech need Claude. Several parameters are engineering choices that M3's validation suite should calibrate.
+In towns on rules food is rarely short, so the civilization systems' hungry-season paths (asking more for food, the fair price law, raids out of hunger) fire far less often than the rest. Rewind is off in a region (towns change each other, so one town's log can't replay it), and a region is saved as it stands rather than replayed. Conversations are still two people (group moments are the fire and the village meeting). The village is not yet on Founders' voxel grid. The mock faculties write plain language and extract little from free text; real perception and speech need Claude. Several parameters are engineering choices that M3's validation suite should calibrate.
