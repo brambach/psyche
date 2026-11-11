@@ -24,6 +24,10 @@ import { carryKnowledge, craftBonus, knowledgeTurn, seedKnowledge, type Knowledg
 import { buildWork, civicSite, stands, worksDay, worksSeason, type Work } from "./works.js";
 import { intentionsSeason, steer, type Intention } from "./intentions.js";
 import { market, moneyDay, moneySeason, settle, type Money } from "./money.js";
+import { civOf, mark } from "./civ/base.js";
+import { spoilFactor, toolBonus } from "./civ/economy.js";
+import { civDay, civSeason } from "./civ/index.js";
+import { electCiv } from "./civ/polity.js";
 import { CROSSING, createSettlers, crossingMemory, other } from "./people.js";
 import type { Place, PlaceId, RoutineEntry } from "./places.js";
 import { claimFromEpisode, eventPercept, feed, hop, luck, isNight, personName, record, thirdPerson, type AgentState, type Sink, type WorldState } from "./world.js";
@@ -129,7 +133,7 @@ export const RATION = 1;
 export const SPOIL = 0.06;
 
 /** What each trade makes per working hour, before weather, season and tiredness. */
-export const JOBS: Record<string, { place: PlaceId; makes: "food" | Resource | "build" | "cook" | "keep"; rate: number }> = {
+export const JOBS: Record<string, { place: PlaceId; makes: "food" | Resource | "build" | "cook" | "keep" | "craft"; rate: number }> = {
   fisher: { place: "sea", makes: "food", rate: 0.9 },
   farmer: { place: "fields", makes: "food", rate: 0.55 },
   forager: { place: "woods", makes: "food", rate: 0.45 },
@@ -139,6 +143,13 @@ export const JOBS: Record<string, { place: PlaceId; makes: "food" | Resource | "
   builder: { place: "@build", makes: "build", rate: 1 },
   cook: { place: "tavern", makes: "cook", rate: 0 },
   keeper: { place: "store", makes: "keep", rate: 0 },
+  // Trades a town grows into (civ/economy.ts): what they make is made a season at a time, for the market.
+  potter: { place: "workshop", makes: "craft", rate: 0 },
+  weaver: { place: "workshop", makes: "craft", rate: 0 },
+  smith: { place: "workshop", makes: "craft", rate: 0 },
+  healer: { place: "workshop", makes: "craft", rate: 0 },
+  merchant: { place: "harbour", makes: "craft", rate: 0 },
+  scribe: { place: "store", makes: "craft", rate: 0 },
 };
 
 export const SEASON_YIELD: Record<Season, Partial<Record<string, number>>> = {
@@ -397,9 +408,14 @@ async function newDay(world: WorldState, faculties: Faculties, sink: Sink): Prom
     const ask = await intentionsSeason(world, faculties, sink);
     await lifeTurn(world, faculties, sink);
     knowledgeTurn(world, sink);
-    if (v.season === "spring") elect(world, sink);
+    // A town with sides contests the choosing (civ/polity.ts); a camp just asks whoever is best liked.
+    if (v.season === "spring") {
+      if (civOf(world)) await electCiv(world, faculties, sink, true);
+      else elect(world, sink);
+    }
     await worksSeason(world, faculties, sink, ask);
     moneySeason(world);
+    await civSeason(world, faculties, sink, true);
   }
   const r = luck(world, "weather");
   v.weather = r < GALE_CHANCE[v.season] ? "gale" : r < GALE_CHANCE[v.season] + 0.25 ? "rain" : "fair";
@@ -413,9 +429,10 @@ async function newDay(world: WorldState, faculties: Faculties, sink: Sink): Prom
   }
   // Food spoils in tents (half as fast with a granary to keep it in). What is in the store keeps.
   const spoil = SPOIL * (1 - craftBonus(world, "keep")) * (stands(world, "granary") ? 0.5 : 1);
-  for (const hh of Object.values(v.households)) hh.food = Number((hh.food * (1 - spoil)).toFixed(2));
+  for (const hh of Object.values(v.households)) hh.food = Number((hh.food * (1 - spoil * spoilFactor(world, hh))).toFixed(2));
   worksDay(world, sink);
   moneyDay(world, sink);
+  await civDay(world, faculties, sink);
 }
 
 const SEASON_TEXT: Record<Season, string> = {
@@ -434,7 +451,7 @@ function work(world: WorldState, dt: number, sink: Sink): void {
     const job = JOBS[a.role];
     if (!job || (a.talkingUntil ?? 0) > world.tick || a.override) continue;
     const m = world.minds[id]!;
-    const pace = hours * (0.5 + 0.5 * m.needs.energy);
+    const pace = hours * (0.5 + 0.5 * m.needs.energy) * (1 + toolBonus(world, id));
     const hh = householdOf(world, id);
     if (a.place === "harbour" || a.place === "tavern" || (a.place === a.home && job.makes !== "build")) continue;
     if (job.makes === "food") {
@@ -655,6 +672,7 @@ async function supper(world: WorldState, faculties: Faculties, sink: Sink): Prom
     record(world, sink, id, tr);
   }
   for (const id of world.order) if (!hungry.includes(id)) world.minds[id]!.needs.energy = clamp(world.minds[id]!.needs.energy + 0.08);
+  if (hungry.length >= Math.max(2, world.order.length * 0.12)) mark(world, "hunger");
   if (put.length || took.length || hungry.length) {
     feed(world, sink, {
       kind: "event",

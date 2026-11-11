@@ -29,6 +29,11 @@ import { ageOf, CHILDHOOD, hearStory, isChild, lifeTurn, normHeld, settleNorms, 
 import { CROSSING, other } from "./people.js";
 import { GALE_CHANCE, JOBS, RATE, RATION, SEASON_YIELD, SPOIL, seasonOf, type Pledge } from "./village.js";
 import { feed, thirdPerson, type Sink, type Why, type WorldState } from "./world.js";
+import { civOf, mark } from "./civ/base.js";
+import { spoilFactor, toolBonus } from "./civ/economy.js";
+import { civSeason } from "./civ/index.js";
+import { electCiv } from "./civ/polity.js";
+import { writtenFounding } from "./civ/records.js";
 
 const DAY = 1440;
 /** Hours of real work a day, once walking, meals and talk are taken out. */
@@ -215,10 +220,14 @@ export async function aggSeason(w: WorldState, faculties: Faculties, sink: Sink)
   acquaint(w);
   await lifeTurn(w, faculties, sink);
   knowledgeTurn(w, sink);
-  if (v.season === "spring") elect(w, sink);
+  if (v.season === "spring") {
+    if (civOf(w)) await electCiv(w, faculties, sink, false);
+    else elect(w, sink);
+  }
   aggWorks(w, sink);
   aggMoney(w, sink);
   moneySeason(w);
+  await civSeason(w, faculties, sink, false);
   await pledgeRound(w, faculties, sink);
   if (v.season === "summer" && yearOf(w) > 1) for (const f of [...new Set([v.founding ?? CROSSING, CROSSING])]) tellFounding(w, f);
   bedtimes(w);
@@ -241,7 +250,7 @@ function economy(w: WorldState, sink: Sink): void {
       const a = w.agents[id]!;
       const job = JOBS[a.role];
       if (!job || isChild(w, id)) continue;
-      const pace = WORK_HOURS * (0.5 + 0.5 * w.minds[id]!.needs.energy);
+      const pace = WORK_HOURS * (0.5 + 0.5 * w.minds[id]!.needs.energy) * (1 + toolBonus(w, id));
       if (job.makes === "food") {
         let y = SEASON_YIELD[v.season][a.role] ?? 1;
         if (a.role === "farmer" && v.blight) y *= 0.4;
@@ -251,6 +260,7 @@ function economy(w: WorldState, sink: Sink): void {
     }
     const need = ration * hh.members.reduce((n, m) => n + (isChild(w, m) ? 0.6 : 1), 0);
     let short = 0;
+    const rot = spoil * spoilFactor(w, hh);
     for (let d = 0; d < sd; d++) {
       hh.food += made;
       const surplus = hh.food - need * 3;
@@ -270,7 +280,7 @@ function economy(w: WorldState, sink: Sink): void {
         gap -= take;
         if (gap > 0.05) short += gap / need;
       }
-      hh.food *= 1 - spoil;
+      hh.food *= 1 - rot;
     }
     hh.food = Number(hh.food.toFixed(2));
     // Those who went short lose strength (the oldest and youngest last to be fed least).
@@ -288,6 +298,7 @@ function economy(w: WorldState, sink: Sink): void {
   v.store.food = Number(v.store.food.toFixed(1));
   build(w);
   if (hungry.size >= Math.max(3, w.order.length * 0.15)) {
+    mark(w, "hunger");
     const growers = w.order.filter((x) => JOBS[w.agents[x]!.role]?.makes === "food" && !isChild(w, x)).length;
     const adults = w.order.filter((x) => !isChild(w, x)).length;
     const why: Why[] = [
@@ -417,7 +428,8 @@ export function tellFounding(w: WorldState, founding: string): boolean {
   const told = teller.ep!;
   // Told again, a story drifts a little: this year's telling may level or sharpen it.
   const base = thirdPerson(render(told), T.name, T.pronouns);
-  const version = nextRandom(w) < 0.2 ? drift(base, w) : base;
+  // Once it is written down it is read, not told, and stops changing (civ/records.ts).
+  const version = writtenFounding(w, founding) ?? (nextRandom(w) < 0.2 ? drift(base, w) : base);
   c.foundingDays.push({ tick: w.tick, teller: teller.id, version });
   if (c.foundingDays.length > 60) c.foundingDays.splice(0, c.foundingDays.length - 60);
   const toldOn = toldFrom(w);

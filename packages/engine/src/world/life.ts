@@ -31,6 +31,10 @@ import { createSettlers, FIRST_NAMES, other, routineFor, uniqueId } from "./peop
 import type { RoutineEntry } from "./places.js";
 import { eventPercept, feed, luck, personName, record, thirdPerson, type Sink, type WorldState } from "./world.js";
 import type { Household, VillageState } from "./village.js";
+import { civOf } from "./civ/base.js";
+import { expose, SICKNESSES } from "./civ/disease.js";
+import { civTrade, PROFESSIONS, settleTrade } from "./civ/economy.js";
+import { landingClosed } from "./civ/polity.js";
 
 export interface Life {
   /** Tick of birth; founders were born long before the story starts. */
@@ -288,6 +292,15 @@ function comeOfAge(world: WorldState, id: AgentId, sink: Sink): void {
   const need = (r: string) => (["fisher", "farmer", "forager"].includes(r) ? (food / workers < 0.45 ? 1.5 : 1) : 1) / (1 + count(r));
   const role = Object.keys(fit).sort((a, b) => fit[b]! * need(b) - fit[a]! * need(a))[0]!;
   const a = world.agents[id]!;
+  // A child who was shown a craft that is a trade of its own follows it, where the town can carry another (civ/economy.ts).
+  const trade = civTrade(world, id);
+  if (trade) {
+    a.role = trade;
+    settleTrade(world, id);
+    world.minds[id]!.identity.voice = "Plain and direct, like the people who raised them.";
+    feed(world, sink, { kind: "event", agents: [id], title: `${a.name} comes of age and takes up a trade`, text: `${a.name} ${PROFESSIONS[trade]!.does}, as ${a.name} was taught.` });
+    return;
+  }
   a.role = role;
   a.routine = routineFor(role, a.home);
   world.minds[id]!.identity.voice = "Plain and direct, like the people who raised them.";
@@ -337,12 +350,17 @@ export async function die(world: WorldState, id: AgentId, cause: string, faculti
 async function newcomers(world: WorldState, faculties: Faculties, sink: Sink): Promise<void> {
   const v = world.village!;
   if (luck(world, "boat") > 0.6) return;
+  // A town that has closed its landing, by law or for a sickness, turns the boat away (civ/polity.ts).
+  if (landingClosed(world)) {
+    feed(world, sink, { kind: "event", place: "harbour", agents: [], title: `The spring boat is turned away from ${world.name}`, text: `The landing is closed to strangers${civOf(world)?.health.closed ? " while the sickness lasts" : " by law"}.` });
+    return;
+  }
   const n = 2 + Math.floor(luck(world, "boat-size") * 3);
   const year = yearOf(world);
   const known = world.order.map((id) => ({ id, name: world.minds[id]!.name, role: world.agents[id]!.role }));
   const taken = new Set([...Object.keys(world.minds), ...Object.keys(v.households), ...(v.reserved?.ids ?? [])]);
   const crossing = `ep_boat_y${year}`;
-  const { settlers, households } = createSettlers(world.seed * 31 + year * 977, n, world.minds[world.order[0]!]!.ablations, known, { taken, names: new Set([...Object.values(world.minds).map((m) => m.name), ...(v.reserved?.names ?? [])]), crossing, now: world.tick });
+  const { settlers, households } = createSettlers(world.seed * 31 + year * 977, n, (world.minds[world.order[0]!] ?? Object.values(world.minds)[0])?.ablations ?? {}, known, { taken, names: new Set([...Object.values(world.minds).map((m) => m.name), ...(v.reserved?.names ?? [])]), crossing, now: world.tick });
   const placeCount = Object.keys(v.households).length + Object.keys(world.places).filter((p) => p.startsWith("home_")).length;
   households.forEach((h, i) => {
     const home = `home_${h.id}`;
@@ -370,6 +388,8 @@ async function newcomers(world: WorldState, faculties: Faculties, sink: Sink): P
   }
   const names = settlers.map((s) => s.mind.name);
   feed(world, sink, { kind: "event", place: "harbour", agents: settlers.map((s) => s.mind.id), title: `A boat brings ${n} newcomers`, text: `${names.slice(0, -1).join(", ")} and ${names.at(-1)} come ashore at the landing, strangers to everyone.` });
+  // Now and then a boat brings more than people (civ/disease.ts).
+  if (civOf(world) && luck(world, "boat-sick") < 0.07) expose(world, SICKNESSES[Math.floor(luck(world, "boat-sickness") * SICKNESSES.length)]!.id, { kind: "boat", carrier: settlers[0]?.mind.id }, sink, 1);
   void faculties;
 }
 
