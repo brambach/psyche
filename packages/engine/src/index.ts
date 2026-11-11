@@ -207,3 +207,6 @@ export { parseWriting, quoteFound, worldTopics, shapeBelief, inWorldWords } from
 export { admitPersona, personaMind, personaLife, type PersonaOrigin, type PersonaLife } from "./persona/arrive.js";
 export { SAMPLE_PERSONA, SAMPLE_CHAT } from "./persona/sample.js";
 export { VALUES, PERSONA_TRADES, type RawReading, type PersonaReading, type PersonaReader, type WritingInput, type Quote, type PersonaTrait, type PersonaMemory, type PersonaBelief, type PersonaValue, type PersonaPerson, type ValueName, type PersonaTrade } from "./persona/types.js";
+export * as develop from "./develop/index.js";
+export { developmentView, rootsOf, deepestRoot, strongest, styleOf, STYLE_TEXT, STATUS_TEXT, FOUNDATIONS, FOUNDATION_TEXT, type DevelopmentView, type RootStep, type Development, type Morals, type Foundation, type AttachmentStyle, type IdentityStatus, type Root, type Adversity, type Stage } from "./develop/index.js";
+export { upbringingTurn, ensureDevelopment, householdStressors, grownText } from "./world/upbringing.js";

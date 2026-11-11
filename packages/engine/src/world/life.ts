@@ -23,6 +23,7 @@ import { TRAIT_NAMES, type AgentId, type Episode, type MindState, type Schema, t
 import { baseMind } from "./cast.js";
 import { inheritEdits } from "./edits.js";
 import { stands } from "./works.js";
+import { bornInto, ensureDevelopment, upbringingTurn } from "./upbringing.js";
 import { intentOf } from "./intentions.js";
 
 const courts = (world: WorldState, a: AgentId, b: AgentId) => intentOf(world, a)?.kind === "court" && intentOf(world, a)?.target === b;
@@ -78,6 +79,8 @@ export function initLife(world: WorldState): void {
     const age = Number(/, (\d+),/.exec(world.minds[id]!.identity.summary)?.[1] ?? 35);
     v.life[id] = { born: world.tick - age * yearTicks(v), parents: [], generation: 0 };
   }
+  // Everyone who starts the story grown gets a sketched childhood (develop/childhood.ts).
+  ensureDevelopment(world);
 }
 
 // ---------------------------------------------------------------- the turn of a season
@@ -135,6 +138,8 @@ export async function lifeTurn(world: WorldState, faculties: Faculties, sink: Si
     if (a.role === "child" && ageOf(world, id) >= CHILDHOOD) comeOfAge(world, id, sink);
   }
   if (v.season === "spring" && world.order.length < (v.popCap ?? POP_CAP) - 5) await newcomers(world, faculties, sink);
+  // A season of being raised, for the children; a season of adult development for everyone else.
+  upbringingTurn(world, sink);
 }
 
 const householdOf = (v: VillageState, id: AgentId): Household | undefined => Object.values(v.households).find((h) => h.members.includes(id));
@@ -231,6 +236,9 @@ async function birth(world: WorldState, parents: AgentId[], faculties: Faculties
     p1!.ablations,
   );
   mind.tick = world.tick;
+  // Temperament, and what the months before the birth were like. Attachment starts blank: it will
+  // come from the care they get, not from a copy of their parents'.
+  bornInto(world, mind, parents);
   inheritEdits(mind, [p1!, p2!]);
   mind.lastSleep = world.tick;
   // Children start out seeing people the way their parents do: grudges included.

@@ -1,4 +1,4 @@
-import type { VoiceSummary, VoiceLineage, Guise } from "@psyche/engine";
+import type { VoiceSummary, VoiceLineage, Guise, DevelopmentView } from "@psyche/engine";
 import type { HeresyView, Faction, Intention, Butterfly, EngineChain, NestedPersonView, NestedWorldView, EditRecord, MindEdit, TraitName, AwaySummary, Beat, ChronicleEntry, Notice, Scene3D, Timeline, Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
 
 export interface AgentSummary {
@@ -109,6 +109,8 @@ export interface AgentView {
   actual: Record<string, number>;
   intent?: Intention;
   past?: Intention[];
+  /** Where they come from: attachment, upbringing, identity, conscience, and why. */
+  roots?: DevelopmentView;
   purse?: { good: string; held: number; accept: number; owes: { to: string; name: string; amount: number; overdue: boolean }[]; owed: { by: string; name: string; amount: number; overdue: boolean }[] };
 }
 

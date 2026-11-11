@@ -197,10 +197,11 @@ $("#stats").innerHTML = [
   [orderAgree + "/" + orderPairs, "pairs of conditions that come out in the same order as in the human studies"],
   D.unspoken ? [pct(D.unspoken.meanHiddenShare), "of the push behind each decisive choice came from things the person never mentioned when asked"] : null,
   D.crossover ? [D.crossover.r[1].r.toFixed(2), "correlation between volts given and seconds before helping, in the same minds"] : null,
+  D.development ? [D.development.fit.within + "/" + D.development.fit.benchmarks, "published numbers on attachment and development matched within ten points, by " + (D.development.people.children + D.development.people.grandchildren).toLocaleString("en-US") + " children raised in the nursery"] : null,
 ].filter(Boolean).map(([b, s]) => '<div class="stat"><b>' + esc(b) + "</b><span>" + esc(s) + "</span></div>").join("");
 
 // ---- tabs
-const sections = D.experiments.map((e) => [e.id, SHORT[e.id] || e.title]).concat([["crossover", "One mind, four rooms"], ["method", "How it works"]]);
+const sections = D.experiments.map((e) => [e.id, SHORT[e.id] || e.title]).concat(D.development ? [["development", "Growing up"], ["trauma", "Three generations"]] : [], D.depth ? [["depth", "Deeper minds"]] : [], [["crossover", "One mind, four rooms"], ["method", "How it works"]]);
 $("#tabs").innerHTML = sections.map(([id, t]) => '<a class="chip" href="#' + id + '" data-id="' + id + '">' + esc(t) + "</a>").join("");
 
 // ---- pieces
@@ -230,7 +231,7 @@ function pasts(e) {
   return '<div class="figure"><p class="label">Their past decided it</p><p>' + esc(e.pasts.text) + "</p>" + (e.pasts.examples.length ? '<div class="scroll"><table><thead><tr><th>Volunteer</th><th>The memory removed</th><th>With it</th><th>Without it</th></tr></thead><tbody>' +
     e.pasts.examples.slice(0, 8).map((x) => "<tr><td>" + esc(x.name) + '</td><td class="muted">' + esc(x.past) + "</td><td>" + esc(x.before) + "</td><td>" + esc(x.after) + "</td></tr>").join("") + "</tbody></table></div>" : "") + "</div>";
 }
-const KIND_TEXT = { situation: "situation", "core belief": "core belief", trait: "trait", relation: "trust", feeling: "feeling", norm: "norm", memory: "memory", state: "state of mind", habit: "habit", chance: "chance" };
+const KIND_TEXT = { situation: "situation", "core belief": "core belief", trait: "trait", relation: "trust", feeling: "feeling", norm: "norm", memory: "memory", state: "state of mind", habit: "habit", chance: "chance", conscience: "conscience", attachment: "attachment" };
 function caseFile(s, e, cond, why) {
   const v = pool[s.id];
   const d = s.decisive;
@@ -361,6 +362,51 @@ for (const e of D.experiments) {
   html += '<div><p class="eyebrow">Case files</p><h3 style="margin-top:4px">Why they did it</h3></div>' + stories(e) + browser(e);
   html += "</section>";
 }
+if (D.development) {
+  const V = D.development;
+  const all = V.studies.flatMap((x) => x.findings);
+  const held = V.heldOut ? Object.fromEntries(V.heldOut.findings.map((f) => [f.id, f])) : {};
+  const tick = (ok) => '<span class="pill ' + (ok ? "n" : "y") + '" style="white-space:nowrap">' + (ok ? "holds" : "misses") + "</span>";
+  const kids = V.people.children + V.people.grandchildren;
+  html += '<section class="exp" id="development"><div><p class="eyebrow">The second wing · ' + V.people.founders + " founders, " + V.people.children + " children, " + V.people.grandchildren + ' grandchildren</p><h2>How a mind comes to be</h2><p class="q">The four experiments above test grown minds. This one raises them: ' + kids.toLocaleString("en-US") + " children, born to rolled settlers and cared for season by season by the same code that raises children in a town, then measured the way developmental psychologists measure children.</p></div>";
+  html += '<div class="figure"><p class="label">Published numbers, side by side</p><div class="legend"><span><i style="background:var(--human)"></i>humans</span><span><i style="background:var(--psyche)"></i>Psyche</span></div><div class="compare">' +
+    all.filter((f) => f.kind === "benchmark").map((f) => {
+      const show = (x) => (f.unit === "r" ? x.toFixed(2) : pct(x));
+      return '<div class="row"><div class="name">' + esc(f.what) + "<small>" + esc(f.source) + '</small></div><div class="bars"><div class="bar h"><span style="width:' + Math.min(100, f.human * 100) + '%"></span><em>' + esc(f.humanText) + '</em></div><div class="bar p"><span style="width:' + Math.min(100, Math.max(0, f.model) * 100) + '%"></span><em>' + show(f.model) + (held[f.id] ? " (held-out seeds: " + show(held[f.id].model) + ")" : "") + "</em></div></div></div>";
+    }).join("") + "</div>" +
+    '<p class="note">Mean gap ' + (V.fit.meanAbsError * 100).toFixed(1) + " points over " + V.fit.benchmarks + " numbers on the seeds the constants were tuned on" + (V.heldOut ? ", and " + (V.heldOut.fit.meanAbsError * 100).toFixed(1) + " points (" + V.heldOut.fit.within + " of " + V.heldOut.fit.benchmarks + " within ten) on three seeds that were kept aside" : "") + ". These constants were set by hand against these numbers, so the fit is calibration. The directions below were not tuned against.</p></div>";
+  html += '<div class="figure"><p class="label">Published directions: ' + V.fit.held + " of " + V.fit.directions + ' reproduced</p><div class="scroll"><table><thead><tr><th>Finding</th><th>In the literature</th><th>In Psyche</th><th></th></tr></thead><tbody>' +
+    all.filter((f) => f.kind === "direction").map((f) => "<tr><td>" + esc(f.what) + '</td><td class="muted">' + esc(f.humanText) + " (" + esc(f.source) + ")</td><td>" + esc(f.modelText) + "</td><td>" + tick(f.holds) + "</td></tr>").join("") + "</tbody></table></div></div>";
+  html += '<div class="cases">' + V.studies.map((st) => {
+    let extra = "";
+    const x = st.extra || {};
+    if (x.byGeneration) extra = "<table><thead><tr><th>Generation</th><th class=num>n</th><th class=num>Secure</th><th class=num>Avoidant</th><th class=num>Resistant</th></tr></thead><tbody>" + x.byGeneration.map((g) => "<tr><td>" + esc(g.generation) + '</td><td class="num">' + g.n + '</td><td class="num">' + pct(g.secure) + '</td><td class="num">' + pct(g.avoidant) + '</td><td class="num">' + pct(g.resistant) + "</td></tr>").join("") + "</tbody></table>";
+    if (x.table && st.id === "transmission") extra = "<table><thead><tr><th>Parent</th><th class=num>n</th><th class=num>Infant secure</th><th class=num>Avoidant</th><th class=num>Resistant</th></tr></thead><tbody>" + x.table.map((g) => "<tr><td>" + esc(g.parent) + '</td><td class="num">' + g.n + '</td><td class="num">' + pct(g.secure) + '</td><td class="num">' + pct(g.avoidant) + '</td><td class="num">' + pct(g.resistant) + "</td></tr>").join("") + "</tbody></table>";
+    if (x.table && st.id === "identity") extra = "<table><thead><tr><th>Age</th><th class=num>Diffused</th><th class=num>Foreclosed</th><th class=num>Moratorium</th><th class=num>Achieved</th></tr></thead><tbody>" + x.table.map((g) => "<tr><td>" + g.age + '</td><td class="num">' + pct(g.diffused) + '</td><td class="num">' + pct(g.foreclosed) + '</td><td class="num">' + pct(g.moratorium) + '</td><td class="num">' + pct(g.achieved) + "</td></tr>").join("") + "</tbody></table>";
+    if (x.groups) extra = "<table><thead><tr><th>Adversities before 17</th><th class=num>n</th><th class=num>Distress at 25</th><th class=num>In the most distressed quarter</th></tr></thead><tbody>" + x.groups.map((g) => "<tr><td>" + esc(g.adversities) + '</td><td class="num">' + g.n + '</td><td class="num">' + (g.distress === null ? "" : g.distress.toFixed(2)) + '</td><td class="num">' + pct(g.highShare) + "</td></tr>").join("") + "</tbody></table>";
+    return '<article class="case"><header><p class="eyebrow">' + esc(st.original) + "</p><h3>" + esc(st.title) + '</h3><p class="why">' + esc(st.question) + '</p></header><p class="note">' + esc(st.method) + "</p>" +
+      '<ul class="findings">' + st.findings.map((f) => "<li><b>" + esc(f.what) + ":</b> " + esc(f.modelText) + (f.kind === "benchmark" ? " (humans: " + esc(f.humanText) + ")" : "") + (f.note ? ' <span class="muted">' + esc(f.note) + "</span>" : "") + "</li>").join("") + "</ul>" +
+      (extra ? '<div class="scroll">' + extra + "</div>" : "") + st.notes.map((n) => '<p class="note">' + esc(n) + "</p>").join("") + "</article>";
+  }).join("") + "</div></section>";
+
+  const T = V.trauma;
+  const show = (r, x) => (r.unit === "share" ? pct(x) : x.toFixed(2));
+  html += '<section class="exp" id="trauma"><div><p class="eyebrow">An exact counterfactual · the same families, twice</p><h2>What the founders’ winters did to their grandchildren</h2><p class="q">' + esc(T.question) + "</p></div>";
+  html += '<ul class="findings">' + T.findings.map((f) => "<li>" + esc(f) + "</li>").join("") + "</ul>";
+  html += '<div class="figure"><div class="scroll"><table><thead><tr><th></th><th class="num">With the founders’ pasts</th><th class="num">Without them</th><th class="num">n</th></tr></thead><tbody>' + T.rows.map((r) => "<tr><td>" + esc(r.what) + '</td><td class="num">' + show(r, r.withPasts) + '</td><td class="num">' + show(r, r.without) + '</td><td class="num">' + r.n + "</td></tr>").join("") + '</tbody></table></div><p class="note">Both worlds are run from the same seeds with every hungry winter, death and draw of luck keyed to the same moments, so the only difference is what the founders carried. A founder’s past reaches a grandchild two ways: out loud, as a bedtime story that passes the belief on, and silently, through the care a strained parent could give.</p></div>';
+  if (T.cases.length) html += '<div><p class="eyebrow">Case files</p><h3 style="margin-top:4px">Following one grandchild’s roots back</h3></div><div class="cases">' + T.cases.map((c) => '<article class="case"><header><div class="who"><h3>' + esc(c.name) + '</h3><span class="pill y">' + esc(c.style) + " at seventeen</span><span class=\"pill n\">" + esc(c.without) + ' in the world without the founders’ pasts</span></div></header><ol class="ledger">' + c.chain.map((x) => '<li class="' + (x.kind === "belief" ? "schema" : x.kind === "memory" ? "origin" : "") + '"><span class="mech">' + (x.generation === 0 ? "their own childhood" : x.generation === 1 ? "a parent" : "a grandparent") + "</span>" + esc(x.text) + "</li>").join("") + "</ol></article>").join("") + "</div>";
+  html += "</section>";
+}
+if (D.depth) {
+  const P = D.depth;
+  const tick = (c) => (c.exploratory ? '<span class="pill" style="color:var(--muted);white-space:nowrap">observed</span>' : '<span class="pill ' + (c.holds ? "n" : "y") + '" style="white-space:nowrap">' + (c.holds ? "holds" : "misses") + "</span>");
+  const table = (rows, off) => '<div class="scroll"><table><thead><tr><th>Experiment</th><th>Finding</th><th>In Psyche</th>' + (off ? "<th>Mechanisms off</th>" : "") + "<th>In the literature</th><th></th></tr></thead><tbody>" + rows.map((c) => "<tr><td>" + esc(c.experiment) + "</td><td>" + esc(c.what) + "</td><td>" + esc(c.modelText) + "</td>" + (off ? '<td class="muted">' + esc(c.withoutText || "") + "</td>" : "") + '<td class="muted">' + esc(c.humanText) + " (" + esc(c.source) + ")</td><td>" + tick(c) + "</td></tr>").join("") + "</tbody></table></div>";
+  html += '<section class="exp" id="depth"><div><p class="eyebrow">Conscience, attachment and identity, back in the lab</p><h2>Who obeys, who conforms, who helps</h2><p class="q">The classic studies also found that it matters who walks in. Do the new parts of the mind predict it?</p></div>';
+  if (D.shallow) html += '<p class="note">With the deeper minds the classic scorecard above sits ' + (D.fit.meanAbsError * 100).toFixed(1) + " points from the human numbers, with " + orderAgree + " of " + orderPairs + " condition pairs in the human order. With conscience, the attachment system and identity switched off in the same people it is " + (D.shallow.meanAbsError * 100).toFixed(1) + " points and " + D.shallow.agree + " of " + D.shallow.pairs + ". The situational weights were touched up by hand after the new mechanisms went in (one condition, the shabby office), so the two are not a fair race; the point is that depth did not cost the fit.</p>";
+  html += '<div class="figure"><p class="label">' + P.volunteers[0].n + " ordinary volunteers</p>" + table(P.volunteers, true) + "</div>";
+  html += '<div class="figure"><p class="label">' + P.graduates[0].n + " people born and raised in the nursery, then brought to the lab as adults</p>" + table(P.graduates, false) + "</div>";
+  html += P.notes.map((n) => '<p class="note">' + esc(n) + "</p>").join("") + "</section>";
+}
 if (D.crossover) {
   const rows = [...D.crossover.rows].sort((a, b) => (b.milgram ?? 0) - (a.milgram ?? 0));
   html += '<section class="exp" id="crossover"><div><p class="eyebrow">Something no human study can do</p><h2>One mind, four rooms</h2><p class="q">The same forty people went through every experiment. Does the person who obeys also conform? Do they walk past an emergency?</p></div>';
@@ -380,7 +426,8 @@ html += '<section class="method" id="method"><p class="eyebrow">Method</p><h2>Ho
   "<li><b>The same people in every condition.</b> Human studies need new participants for each variant. Here the same forty minds go through all of them.</li>" +
   "<li><b>The debrief.</b> After the decisive moment each volunteer is asked why. The account is built from what was noticeable and voiced by the Speak faculty, then set beside the forces that actually moved the choice.</li>" +
   "<li><b>Run on the offline mock.</b> No language model was called for this report (" + esc(D.createdWith) + "). With an API key, deliberation and speech go to Claude and the numbers will move; that calibration run is still to do.</li></ul>" +
-  '<p class="note">Sources: Milgram (1963, 1974); Packer (2008); Burger (2009); Bègue et al. (2015); Asch (1951, 1955, 1956); Darley &amp; Latané (1968); Latané &amp; Darley (1968); Haney, Banks &amp; Zimbardo (1973); Zimbardo (2007); Reicher &amp; Haslam (2006); Le Texier (2019); Nisbett &amp; Wilson (1977). Human figures are as commonly reported from those papers; where a figure is approximate it says so.</p></section>';
+  (D.development ? "<p><b>Growing up.</b> Every villager now has a development record: the care they got each season of childhood, what it taught them about themselves and other people (attachment), which of Erikson’s stages went well, what adversity they met and whether anyone warm was there, how they settled who to be (identity), and what their conscience is about (six moral foundations). A parent’s own attachment, core beliefs and upbringing shape the care they give, which is how an old injury crosses a generation without anyone speaking of it. The nursery runs that code for families with no town around them. Its constants were tuned by hand on three seeds against the benchmark numbers; the directional findings, the held-out seeds, the counterfactual and the lab checks were not tuned against.</p>" : "") +
+  '<p class="note">Sources: Milgram (1963, 1974); Packer (2008); Burger (2009); Bègue et al. (2015); Asch (1951, 1955, 1956); Darley &amp; Latané (1968); Latané &amp; Darley (1968); Haney, Banks &amp; Zimbardo (1973); Zimbardo (2007); Reicher &amp; Haslam (2006); Le Texier (2019); Nisbett &amp; Wilson (1977). Development: Bowlby (1969); Ainsworth, Blehar, Waters &amp; Wall (1978); van IJzendoorn &amp; Kroonenberg (1988); van IJzendoorn (1995); De Wolff &amp; van IJzendoorn (1997); Verhage et al. (2016); Waters et al. (2000); Fraley (2002); Mickelson, Kessler &amp; Shaver (1997); Roisman et al. (2002); Erikson (1950, 1968); Marcia (1966); Kroger, Martinussen &amp; Marcia (2010); Felitti et al. (1998); Shonkoff et al. (2012); Seery, Holman &amp; Silver (2010); Kaufman &amp; Zigler (1987); Conger et al. (1994); Haidt &amp; Joseph (2004); Graham, Haidt &amp; Nosek (2009); Grusec &amp; Goodnow (1994); Elms &amp; Milgram (1966); Toder &amp; Marcia (1973); Mikulincer et al. (2005). Human figures are as commonly reported from those papers; where a figure is approximate it says so.</p></section>';
 $("#main").innerHTML = html;
 for (const e of D.experiments) wireBrowser(e);
 const me = D.experiments.find((e) => e.id === "milgram");

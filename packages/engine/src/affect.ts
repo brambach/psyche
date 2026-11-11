@@ -2,6 +2,7 @@
 // Appraisal theory (Lazarus 1991; Scherer 2001) turns event features into personal meaning;
 // the OCC model (Ortony, Clore & Collins 1988) maps that meaning to discrete emotions.
 
+import { depthAppraisal } from "./develop/behaviour.js";
 import { clamp } from "./memory.js";
 import { PARAMS } from "./params.js";
 import type { Percept } from "./ports.js";
@@ -44,6 +45,11 @@ export function appraise(mind: MindState, p: Percept): AppraisalTrace {
       adjustments.push({ name: `core belief: "${s.text}"`, value: s.blameBias * s.strength, ref: s.id });
     }
   }
+  // What their upbringing adds: outrage by the foundation offended, dread of losing someone depended on.
+  const depth = depthAppraisal(mind, p, desirability);
+  if (f.agency === "other") blame += depth.blame;
+  threat += depth.threat;
+  adjustments.push(...depth.adjustments);
   blame = clamp(blame);
 
   const coping = clamp(
@@ -72,6 +78,11 @@ export function appraise(mind: MindState, p: Percept): AppraisalTrace {
       if (f.normViolation > 0) e.reproach = f.normViolation * blame * negGain;
     }
     if (f.agency === "self") e.shame = m * 0.7;
+  }
+  // The avoidant hold distress and fear at arm's length; the stress still lands (see applyAppraisal).
+  if (depth.mute > 0) {
+    if (e.distress) e.distress *= 1 - depth.mute;
+    if (e.fear) e.fear *= 1 - depth.mute;
   }
   for (const k of Object.keys(e) as EmotionName[]) e[k] = clamp(e[k]!);
   return { features: f, relevance, desirability, blame, coping, threat, adjustments, emotions: e };

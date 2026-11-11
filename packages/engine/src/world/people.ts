@@ -5,6 +5,7 @@
 // hard choices (who shares, who holds back). The belief keeps a pointer to the memory, so the
 // analysis layer can trace a decision back to a winter years before the story starts.
 
+import { backfill } from "../develop/childhood.js";
 import { episode } from "../seed.js";
 import { nextRandom, type Rng } from "../rng.js";
 import type { Ablations, AgentId, Episode, Goal, MindState, OtherModel, Pronouns, Schema } from "../types.js";
@@ -270,6 +271,8 @@ export function createSettlers(
         ablations,
       );
       mind.episodes.push(crossingMemory(mind, r, opts.crossing, now + CROSSING_TICK));
+      // A sketched childhood to go with the rolled past. Keyed draws only: the roll above is untouched.
+      backfill(mind, { seed, now, age, role });
       settlers.push({ mind, role, household: hid, routine: routineFor(role, home), wants: [], home });
       members.push(id);
       made++;

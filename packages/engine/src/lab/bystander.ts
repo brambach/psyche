@@ -127,8 +127,8 @@ export async function runSeizureSubject(v: Volunteer, c: SeizureCondition, facul
     // As the minutes pass with no sound of anyone arriving, "someone else will" wears thin.
     if (others && s >= 60) help.push({ name: "nobody seems to have come", value: LATE * (s / SESSION) * (0.5 + m.traits.conscientiousness), ref: "lab:nobody" });
     const options: ActionOption[] = [
-      { id: "help", label: "Go for help", verb: "leave the booth to get help", description: "Leave the booth and find the experimenter.", prosocial: 0.75, assertive: 0.3, avoidant: 0, disclosure: 0.2, coping: "problem", situation: help, act: "leaves the booth to find the experimenter" },
-      { id: "wait", label: "Stay in the booth", verb: "stay put and listen", description: "Wait. Someone may already be dealing with it.", prosocial: -0.1, assertive: 0, avoidant: 0.55, disclosure: 0, coping: "avoid", situation: wait, act: "stays in the booth" },
+      { id: "help", label: "Go for help", verb: "leave the booth to get help", description: "Leave the booth and find the experimenter.", prosocial: 0.75, assertive: 0.3, avoidant: 0, disclosure: 0.2, coping: "problem", situation: help, moral: { care: 0.9 }, act: "leaves the booth to find the experimenter" },
+      { id: "wait", label: "Stay in the booth", verb: "stay put and listen", description: "Wait. Someone may already be dealing with it.", prosocial: -0.1, assertive: 0, avoidant: 0.55, disclosure: 0, coping: "avoid", situation: wait, moral: { care: -0.5 }, act: "stays in the booth" },
     ];
     const clock = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
     const t = await live(

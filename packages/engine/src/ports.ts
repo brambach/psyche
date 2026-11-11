@@ -3,6 +3,7 @@
 // built, and they must cite the item ids they used so the brain scan's links are real.
 
 import type { Blueprint } from "./founders/blueprint.js";
+import type { Foundation } from "./develop/types.js";
 import type { AgentId, Tick } from "./types.js";
 
 // ---------------------------------------------------------------- percepts
@@ -96,6 +97,11 @@ export interface ActionOption {
    * goal it serves, an intention made earlier. Each becomes a term in the option's score, with its ref.
    */
   pull?: { name: string; value: number; ref?: string }[];
+  /**
+   * How far taking this option upholds (+) or breaks (-) each moral foundation, -1 to 1. When absent
+   * it is read off what the option does and what the moment is about (develop/morals.ts).
+   */
+  moral?: Partial<Record<Foundation, number>>;
 }
 
 // ---------------------------------------------------------------- faculty requests

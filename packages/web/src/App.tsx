@@ -31,6 +31,9 @@ const MECHANISMS: { key: keyof Ablations; label: string }[] = [
   { key: "limitedWorkspace", label: "Only four things in mind at once" },
   { key: "sleepConsolidation", label: "Sleep consolidates" },
   { key: "traitDrift", label: "Traits drift nightly" },
+  { key: "attachmentSystem", label: "Attachment shapes closeness and fear of loss" },
+  { key: "moralFoundations", label: "Conscience differs from person to person" },
+  { key: "identityFormation", label: "A settled identity holds its own line" },
 ];
 
 export function App() {

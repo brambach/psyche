@@ -14,6 +14,8 @@
 import type { ActionOption, Faculties } from "../ports.js";
 import type { Trace } from "../trace.js";
 import type { MindState } from "../types.js";
+import { enabled } from "../develop/core.js";
+import { firmness } from "../develop/identity.js";
 import {
   ablate,
   clamp,
@@ -119,7 +121,9 @@ function sizeEffect(n: number): number {
 /** How strongly a unanimous group pulls on this mind. */
 export function susceptibility(m: MindState): number {
   const t = m.traits;
-  return clamp(0.5 + 0.5 * (t.agreeableness - 0.5) + 0.6 * (t.neuroticism - 0.5) + 0.5 * (m.attachment.anxiety - 0.45) - 0.6 * (m.self.selfEsteem - 0.5) - 0.3 * (t.openness - 0.5), 0.1, 1.2);
+  // Someone who has settled who they are holds their own line better (Toder & Marcia 1973).
+  const settled = enabled(m, "identityFormation") ? -0.25 * (firmness(m) - 0.5) : 0;
+  return clamp(0.5 + 0.5 * (t.agreeableness - 0.5) + 0.6 * (t.neuroticism - 0.5) + 0.5 * (m.attachment.anxiety - 0.45) - 0.6 * (m.self.selfEsteem - 0.5) - 0.3 * (t.openness - 0.5) + settled, 0.1, 1.2);
 }
 
 const MAJORITY_WEIGHT = 0.55;
@@ -160,8 +164,8 @@ export async function runAschSubject(v: Volunteer, c: AschCondition, faculties: 
     const loud = !c.written;
     const options: ActionOption[] = critical
       ? [
-          { id: "honest", label: `Say line ${tr.correct}`, verb: `say line ${tr.correct}, what they see`, description: `Give the answer their eyes give: line ${tr.correct}.`, prosocial: loud ? -0.05 : 0, assertive: loud ? 0.45 : 0.1, avoidant: 0, disclosure: 0.3, situation: honest, act: `says line ${tr.correct}` },
-          { id: "conform", label: `Say line ${said}`, verb: `go along and say line ${said}`, description: `Give the same answer as everyone else: line ${said}.`, prosocial: loud ? 0.15 : 0.03, assertive: 0, avoidant: 0.15, disclosure: 0, comply: true, situation: yieldTo, act: `says line ${said}` },
+          { id: "honest", label: `Say line ${tr.correct}`, verb: `say line ${tr.correct}, what they see`, description: `Give the answer their eyes give: line ${tr.correct}.`, prosocial: loud ? -0.05 : 0, assertive: loud ? 0.45 : 0.1, avoidant: 0, disclosure: 0.3, situation: honest, moral: { liberty: 0.35 }, act: `says line ${tr.correct}` },
+          { id: "conform", label: `Say line ${said}`, verb: `go along and say line ${said}`, description: `Give the same answer as everyone else: line ${said}.`, prosocial: loud ? 0.15 : 0.03, assertive: 0, avoidant: 0.15, disclosure: 0, comply: true, situation: yieldTo, moral: { loyalty: 0.35, liberty: -0.2 }, act: `says line ${said}` },
         ]
       : [
           { id: "honest", label: `Say line ${tr.correct}`, verb: `say line ${tr.correct}`, description: `Give the obvious answer: line ${tr.correct}.`, prosocial: 0.2, assertive: 0, avoidant: 0, disclosure: 0.2, situation: honest, act: `says line ${tr.correct}` },

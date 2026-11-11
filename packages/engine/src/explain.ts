@@ -3,6 +3,7 @@
 
 import type { BiasFlag, Trace } from "./trace.js";
 import { nameOf, type OptionSpec } from "./decide.js";
+import { describeDevRef } from "./develop/behaviour.js";
 import type { MindState } from "./types.js";
 
 export function detectBiases(mind: MindState, t: Trace): BiasFlag[] {
@@ -102,6 +103,7 @@ function describeRef(mind: MindState, ref: string): string | undefined {
     const o = mind.others[ref.slice(6)];
     return o ? `${s} ${o.trust.benevolence < 0.5 ? "doesn't fully trust" : "trusts"} ${o.name}` : undefined;
   }
+  if (ref.startsWith("dev:")) return describeDevRef(mind, ref);
   const ep = mind.episodes.find((e) => e.id === ref);
   if (ep) return `it brought back "${ep.gist.replace(/\.$/, "")}"`;
   const b = mind.beliefs.find((x) => x.id === ref);

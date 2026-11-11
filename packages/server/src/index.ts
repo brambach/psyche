@@ -11,6 +11,7 @@ import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildLedger,
+  developmentView,
   BUILDERS,
   concerns,
   genealogy,
@@ -953,7 +954,7 @@ function agentView(id: AgentId) {
   const M = w.village?.money;
   const nm = (x: string) => w.agents[x]?.name ?? x;
   const purse = M ? { good: M.good, held: M.held[id] ?? 0, accept: M.accept[id] ?? 0, owes: openDebts(w, id).filter((d) => d.debtor === id).map((d) => ({ to: d.creditor, name: nm(d.creditor), amount: d.amount, overdue: !!d.overdue })), owed: openDebts(w, id).filter((d) => d.creditor === id).map((d) => ({ by: d.debtor, name: nm(d.debtor), amount: d.amount, overdue: !!d.overdue })) } : undefined;
-  return { mind, agent: w.agents[id], traces, actual, intent, past, purse };
+  return { mind, agent: w.agents[id], traces, actual, intent, past, purse, roots: developmentView(w.minds, id) };
 }
 
 function traceView(agent: AgentId, traceId: string) {
