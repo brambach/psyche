@@ -100,7 +100,8 @@ import {
   acceptedShare,
   openDebts,
 } from "@psyche/engine";
-import { createClaudeReader, createFaculties, createMockFaculties } from "@psyche/faculties";
+import { createClaudeHistorian, createClaudeReader, createFaculties, createMockFaculties, OPUS } from "@psyche/faculties";
+import { HistoryKeeper } from "./history.js";
 
 // Your key and settings can live in a .env file at the top of the repo (git ignores it), e.g.
 //   ANTHROPIC_API_KEY=sk-ant-...
@@ -134,6 +135,21 @@ const MAX_SPEED = 400;
 const { kind, faculties, governor } = createFaculties();
 /** Reads a person from their writing: Claude when it's connected and under the cap, else the free offline reader. */
 const personaReader = createClaudeReader({ governor });
+/**
+ * The causal history: what the live ledger knew, kept after the session has let it go, so a choice can
+ * be walked back across decades. The Historian answers questions over it (Opus when connected and
+ * under the cap, else the free offline reader).
+ */
+const keeper = new HistoryKeeper(process.env.PSYCHE_HISTORY === "0" ? undefined : join(DATA_DIR, "history"), createClaudeHistorian({ governor }), () => ({
+  method: governor.mode === "claude" && governor.level() !== "offline" ? "claude" : "offline",
+  model: process.env.PSYCHE_MODEL_HISTORIAN ?? OPUS,
+}));
+/** Read every live town's ledger into the history, if enough has happened (or now, when forced). */
+function keepHistory(force = false) {
+  if (region) {
+    for (const [id, s] of Object.entries(region.towns)) keeper.keep({ session: s, town: id, townName: s.world.name, chronicle: region.region.chronicle, bends: voiceBends(s.world) }, force);
+  } else keeper.keep({ session, feed: session.feed, bends: voiceBends(session.world) }, force);
+}
 
 type Scenario = "island" | "village" | "region";
 const SEEDS: Record<Scenario, number> = { island: 7, village: 11, region: 11 };
@@ -274,6 +290,7 @@ function save(force = false) {
   lastSaved = Date.now();
   const saved = snapshot();
   writeJson(SAVE, saved);
+  keeper.save({ scenario, seed }, force);
   // An hourly copy, the last day of them kept, so a long unattended run can be wound back.
   if (Date.now() - lastSnapshot >= 3_600_000) {
     lastSnapshot = Date.now();
@@ -288,7 +305,7 @@ async function restore() {
   await restoreFrom(JSON.parse(readFileSync(SAVE, "utf8")) as Saved);
 }
 
-async function restoreFrom(saved: Saved) {
+async function restoreFrom(saved: Saved, slot?: string) {
   resetGame();
   scenario = saved.scenario ?? "island";
   seed = saved.seed;
@@ -305,6 +322,7 @@ async function restoreFrom(saved: Saved) {
     seen = saved.seen ?? region.region.tick;
     heresyOn();
     civOn();
+    keeper.load({ scenario, seed }, region.region.tick, slot);
     console.log(`Restored a region of ${region.region.towns.length} towns.`);
     return;
   }
@@ -313,6 +331,9 @@ async function restoreFrom(saved: Saved) {
   session = r.session;
   seen = saved.seen ?? session.world.tick;
   heresyOn();
+  keeper.load({ scenario, seed }, session.world.tick, slot);
+  // The replay rebuilt traces the history has already read; only what comes after is new.
+  keeper.caughtUp(session);
   console.log(`Restored ${saved.inputs.length} inputs${r.divergedAt !== undefined ? ` (diverged at call ${r.divergedAt})` : ""}.`);
 }
 
@@ -438,6 +459,7 @@ async function passYears(years: number) {
           governor.quiet = false;
         }
         if (session.frames.length > 4 * yearDays) region ? region.rebase() : session.rebase();
+        keepHistory();
         collectNotices();
       });
       broadcast();
@@ -510,6 +532,7 @@ async function tickClock() {
       } finally {
         governor.quiet = false;
       }
+      keepHistory();
       save();
       collectNotices();
     }).catch((e) => console.error(e));
@@ -878,6 +901,8 @@ function saveSlot(name: string) {
   const rv = region && regionView(region);
   const summary = { world: w.name, tick: w.tick, year: rv?.year ?? villageView(w)?.year, towns: rv?.towns.length ?? 1, people: rv ? rv.towns.reduce((n, t) => n + t.people, 0) : w.order.length };
   writeJson(slotFile(name), { ...snapshot(), name, savedAt: Date.now(), summary });
+  keepHistory(true);
+  keeper.saveSlot({ scenario, seed }, name);
 }
 
 /** People in this town who came from their own writing. */
@@ -1094,6 +1119,19 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       const v = editable(session.world, ed[1]!);
       return v ? send(res, 200, { ...v, fears: FEARS, presets: PRESETS }) : send(res, 404, { error: "No such person here." });
     }
+    if (p === "/api/history") {
+      keepHistory(true);
+      return send(res, 200, keeper.overview());
+    }
+    if (p === "/api/history/why") {
+      keepHistory(true);
+      const v = keeper.why(url.searchParams.get("node") ?? "", session);
+      return v ? send(res, 200, v) : send(res, 404, { error: "The history has nothing by that name." });
+    }
+    if (p === "/api/history/find") {
+      const at = url.searchParams.get("at");
+      return send(res, 200, { found: keeper.search(url.searchParams.get("q") ?? "", at ? Number(at) : undefined) });
+    }
     if (p === "/api/why") {
       const v = whyView(url.searchParams.get("node"), url.searchParams.get("agent"), url.searchParams.get("trace"));
       return v ? send(res, 200, v) : send(res, 404, { error: "Nothing in the ledger for that yet." });
@@ -1141,6 +1179,13 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       saveFounders(true);
       return send(res, 200, foundersView());
     }
+    if (p === "/api/history/ask") {
+      // A question over the causal history. Opus reads the brief when connected; otherwise the free offline reader does.
+      const b = await body<{ question?: string; focus?: string[]; at?: number }>(req);
+      if (!b.question?.trim()) return send(res, 400, { error: "Ask something." });
+      keepHistory(true);
+      return send(res, 200, await keeper.ask(b.question.trim(), b.focus, b.at));
+    }
     if (p === "/api/years") {
       const b = await body<{ years?: number }>(req);
       if (!session.world.village) return send(res, 400, { error: "Only a village can pass years." });
@@ -1161,6 +1206,8 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
       // Looking at a town brings it back to the hourly loop; the one you left drops to the aggregate tier.
       await exclusive(async () => {
+        // The town being left may drop to the aggregate tier and lose its traces: read them first.
+        keepHistory(true);
         town = b.town!;
         session = region!.focus(town);
         // The town you arrive in has its own feed; notice what happens from now on.
@@ -1192,7 +1239,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       if (!name || !existsSync(slotFile(name))) return send(res, 404, { error: "No save by that name." });
       if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
       await exclusive(async () => {
-        await restoreFrom(JSON.parse(readFileSync(slotFile(name), "utf8")) as Saved);
+        await restoreFrom(JSON.parse(readFileSync(slotFile(name), "utf8")) as Saved, name);
         governor.resetSession();
       });
       save(true);
@@ -1201,6 +1248,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     if (p === "/api/slots/delete") {
       const name = slotName((await body<{ name?: string }>(req)).name);
       if (name && existsSync(slotFile(name))) unlinkSync(slotFile(name));
+      if (name) keeper.deleteSlot(name);
       return send(res, 200, { slots: listSlots() });
     }
     if (p === "/api/voice/speak" || p === "/api/voice/fulfil") {
@@ -1314,7 +1362,10 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
       if (region) return send(res, 409, { error: "Rewinding isn't available across towns yet." });
       const { index } = await body<{ index: number }>(req);
-      await exclusive(async () => session.rewind(index));
+      await exclusive(async () => {
+        session.rewind(index);
+        keeper.rewound(session);
+      });
       running = false;
       save(true);
       return send(res, 200, view());
@@ -1329,6 +1380,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
         } else seed = b.seed ?? seed;
         ablations = b.ablations ?? ablations;
         start();
+        keeper.reset();
         resetGame();
         seen = session.world.tick;
         base = false;

@@ -171,6 +171,7 @@ export function AgentPanel({ id, tick, names, trace, onTrace, onOpen }: { id: st
             <div className="scan-tools">
               <button className="btn" onClick={() => trace_({ agent: id, trace: scan.trace.id })}>Why? Trace this moment back</button>
               {scan.trace.decision && <button className={`btn ${account ? "on" : ""}`} onClick={() => setAccount(!account)}>What {m.name} would say vs what drove it</button>}
+              {scan.trace.decision && <a className="btn" href={`#/history?node=${encodeURIComponent(`${id}/dec@${scan.trace.id}`)}`} title="Open this choice in the causal history, which remembers further back than the town does">Walk it back through the years</a>}
             </div>
           )}
           {account && scan?.trace.decision && <Account key={scan.trace.id} agent={id} trace={scan.trace.id} names={names} onOpen={(a, t) => (a === id ? onTrace(t) : onOpen(a, t))} />}

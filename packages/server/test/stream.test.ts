@@ -2,7 +2,7 @@
 // save a world under a name and load it back.
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -122,5 +122,32 @@ describe("the live game", () => {
     expect((await post("/api/slots/load", { name: "No such world" })).status).toBe(404);
     const gone = await post("/api/slots/delete", { name: "Before the storm" });
     expect(gone.body.slots).toEqual([]);
+  });
+
+  it("keeps the causal history, walks a choice back, and answers a question about it offline", async () => {
+    const get = async (path: string) => {
+      const r = await fetch(`${base}${path}`);
+      return { status: r.status, body: (await r.json()) as Record<string, unknown> };
+    };
+    const ov = (await get("/api/history")).body as { size: { moments: number }; moments: [string, number, string][]; people: { id: string }[]; historian: { method: string } };
+    expect(ov.size.moments).toBeGreaterThan(0);
+    expect(ov.people.length).toBeGreaterThan(5);
+    expect(ov.historian.method).toBe("offline");
+    const id = ov.moments[ov.moments.length - 1]![0];
+    const why = (await get(`/api/history/why?node=${encodeURIComponent(id)}`)).body as { node: { id: string }; tree: { causes: unknown[] }; longest: unknown[]; origins: { causes: number } };
+    expect(why.node.id).toBe(id);
+    expect(why.tree.causes.length).toBeGreaterThan(0);
+    expect(why.longest.length).toBeGreaterThan(1);
+    expect(why.origins.causes).toBeGreaterThan(0);
+    expect((await get("/api/history/why?node=nobody/nothing")).status).toBe(404);
+    const ans = await post("/api/history/ask", { question: "Why did they do this?", focus: [id] });
+    expect(ans.status).toBe(200);
+    expect(ans.body.method).toBe("offline");
+    expect((ans.body.cites as string[]).length).toBeGreaterThan(0);
+    expect((await post("/api/history/ask", { question: " " })).status).toBe(400);
+    // It is saved beside the world.
+    await post("/api/slots/save", { name: "With its past" });
+    expect(existsSync(join(data, "history", "current.json"))).toBe(true);
+    expect(existsSync(join(data, "history", "slot-With its past.json")) || readdirSync(join(data, "history")).some((f) => f.startsWith("slot-"))).toBe(true);
   });
 });
