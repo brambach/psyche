@@ -109,6 +109,7 @@ export function weigh(e: RealmEvent): number {
 const num = (n: number) => n.toLocaleString("en-US");
 const change = (now: number, before: number) => (now === before ? "no change" : `${now > before ? "up" : "down"} ${num(Math.abs(now - before))}`);
 const where = (e: RealmEvent) => [e.townName, e.regionName].filter(Boolean).join(", ");
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** The digest of a stretch of the realm's life, as markdown. */
 export function realmDigest(d: DigestInput): string {
@@ -136,8 +137,8 @@ export function realmDigest(d: DigestInput): string {
   if (top.length) {
     out.push("## What mattered", "");
     for (const e of top.sort((a, b) => a.tick - b.tick)) {
-      out.push(`- **Year ${num(e.year)}, ${where(e)}.** ${e.text}`);
-      for (const w of (e.why ?? []).slice(0, 4)) out.push(`  - ${w.text}`);
+      out.push(`- **Year ${num(e.year)}, ${where(e)}.** ${cap(e.text)}`);
+      for (const w of (e.why ?? []).slice(0, 4)) out.push(`  - ${cap(w.text)}`);
     }
     out.push("");
   }
@@ -147,7 +148,7 @@ export function realmDigest(d: DigestInput): string {
     out.push("## New shores", "");
     for (const r of shores) {
       const parent = d.regions.find((x) => x.id === r.from);
-      out.push(`- **${r.name}**, first settled in year ${num(r.foundedYear)}${parent ? ` from ${parent.name}` : ""}: now ${num(r.people)} people in ${r.towns} ${r.towns === 1 ? "town" : "towns"}.`);
+      out.push(`- **${cap(r.name)}**, first settled in year ${num(r.foundedYear)}${parent ? ` from ${parent.name}` : ""}: now ${num(r.people)} people in ${r.towns} ${r.towns === 1 ? "town" : "towns"}.`);
     }
     out.push("");
   }
@@ -156,7 +157,7 @@ export function realmDigest(d: DigestInput): string {
   if (sea.boats + sea.quarrels + sea.gifts > 0) {
     out.push("## Between the coasts", "");
     out.push(`${num(sea.boats)} ${sea.boats === 1 ? "boat" : "boats"} crossed with food and timber${sea.boats ? `; ${num(sea.short)} ${sea.short === 1 ? "load was" : "loads were"} found short, and ${num(sea.crafts)} carried a craft to a shore that lacked it` : ""}. ${sea.quarrels ? `${sea.quarrels} ${sea.quarrels === 1 ? "time a coast" : "times a coast"} turned against another` : "No coast turned against another"}, and ${sea.gifts ? `${sea.gifts} peace ${sea.gifts === 1 ? "gift was" : "gifts were"} sent` : "no peace gifts were sent"}.`, "");
-    for (const e of t.quarrels.slice(-5)) out.push(`- Year ${num(e.year)}: ${e.text}`);
+    for (const e of t.quarrels.slice(-5)) out.push(`- Year ${num(e.year)}: ${cap(e.text)}`);
     if (t.quarrels.length) out.push("");
   }
 
@@ -164,7 +165,7 @@ export function realmDigest(d: DigestInput): string {
   for (const r of [...d.regions].sort((a, b) => b.people - a.people || a.index - b.index)) {
     const before = from.byRegion[r.id];
     const parent = d.regions.find((x) => x.id === r.from);
-    out.push(`| ${r.name} | ${num(r.people)} | ${before === undefined ? "new" : r.people === before ? "0" : `${r.people > before ? "+" : "-"}${num(Math.abs(r.people - before))}`} | ${r.towns} | year ${num(r.foundedYear)}${parent ? `, from ${parent.name}` : ""} | ${num(t.byRegion[r.id] ?? 0)} |`);
+    out.push(`| ${cap(r.name)} | ${num(r.people)} | ${before === undefined ? "new" : r.people === before ? "0" : `${r.people > before ? "+" : "-"}${num(Math.abs(r.people - before))}`} | ${r.towns} | year ${num(r.foundedYear)}${parent ? `, from ${parent.name}` : ""} | ${num(t.byRegion[r.id] ?? 0)} |`);
   }
   out.push("");
 
@@ -180,7 +181,10 @@ export function realmDigest(d: DigestInput): string {
   const myths = (d.myths ?? []).filter((m) => m.text);
   if (myths.length) {
     out.push("## The oldest story, as it is told now", "");
-    for (const m of myths) out.push(`- **${m.town}** (${m.region}; ${m.holders} of ${m.of} tell it this way${m.root ? `, from ${m.root}, ${m.tellings} ${m.tellings === 1 ? "telling" : "tellings"} on` : ""}): “${m.text}”`);
+    const same = myths.length > 1 && myths.every((m) => m.text === myths[0]!.text);
+    // When every coast asked has worn it down to the same words, say so once.
+    if (same) out.push(`Every coast asked tells it in the same words now: “${myths[0]!.text}”`, "");
+    for (const m of myths) out.push(`- **${m.town}** (${m.region}; ${m.holders} of ${m.of} tell it this way${m.root ? `, from ${m.root}, ${m.tellings} ${m.tellings === 1 ? "telling" : "tellings"} on` : ""})${same ? "" : `: “${m.text}”`}`);
     const gone = (d.myths ?? []).filter((m) => !m.text);
     if (gone.length) out.push(`- Nobody tells it any more in ${gone.map((m) => m.town).join(", ")}.`);
     out.push("");

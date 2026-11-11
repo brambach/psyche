@@ -130,6 +130,8 @@ export interface RunnerOps {
 export type RunnerOp = keyof RunnerOps;
 
 const DAY = 1440;
+const MOVES_KEPT_YEARS = 80;
+const ROUTES_KEPT_YEARS = 120;
 
 export class RegionRunner {
   readonly spec: RegionSpec;
@@ -199,7 +201,21 @@ export class RegionRunner {
     const step = live ? 360 : DAY;
     for (let m = 0; m < days * DAY; m += step) await rs.advance(step, { snapshot: false });
     rs.rebase();
+    this.letGo();
     return this.report(Date.now() - start);
+  }
+
+  /** A region that lives for thousands of years keeps its books to the last few lifetimes: who moved where, and which boats ran in which year. */
+  private letGo(): void {
+    const r = this.rs.region;
+    const year = this.rs.world(r.towns[0]!.id).village!.seasonDays * 4 * DAY;
+    const since = r.tick - MOVES_KEPT_YEARS * year;
+    for (const [id, d] of Object.entries(r.departed)) if (d.tick < since) delete r.departed[id];
+    const from = Math.floor(r.tick / year) - ROUTES_KEPT_YEARS;
+    for (const [key, years] of Object.entries(r.routes ?? {})) {
+      for (const y of Object.keys(years)) if (Number(y) < from) delete years[Number(y)];
+      if (Object.keys(years).length === 0) delete r.routes![key];
+    }
   }
 
   report(ms = 0): RegionReport {
@@ -316,7 +332,7 @@ export class RegionRunner {
   /** How each town here tells its oldest story now, and whose memory that telling goes back to. */
   private myths(): RunnerOps["myths"]["out"] {
     const m = compareMyths(this.rs, CROSSING);
-    return m.towns.map((t) => ({ town: t.town, name: t.name, text: t.dominant?.text, holders: t.dominant?.holders.length ?? 0, of: this.rs.world(t.town).order.length, root: t.dominant?.root.name, tellings: Math.max(0, (t.dominant?.chain.length ?? 1) - 1) }));
+    return m.towns.map((t) => ({ town: t.town, name: t.name, text: t.dominant?.text, holders: t.dominant?.holders.length ?? 0, of: this.rs.world(t.town).order.length, root: t.dominant?.root.name, tellings: t.dominant?.tellings ?? 0 }));
   }
 
   private town(id: string): RunnerOps["town"]["out"] {

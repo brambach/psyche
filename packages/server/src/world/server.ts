@@ -18,6 +18,7 @@
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, statSync, truncateSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 import { realm as R } from "@psyche/engine";
 import type { RegionFile } from "./files.js";
 import { createHost, type WorldHost } from "./pool.js";
@@ -44,11 +45,24 @@ export interface WorldConfig {
   heapMB?: number;
   /** Stop by itself at this sim year (for tests and timed runs). */
   untilYear?: number;
+  /** Once the event log passes this size it is put away under events/ at the next save, and a new one begun. Default 128. */
+  eventsMB?: number;
   log?: (line: string) => void;
   now?: () => number;
 }
 
 export const WORLD_DEFAULTS: WorldConfig = { dir: "data/world", threads: 4, port: 8790, realm: {}, pace: 60, growTo: 50_000, checkpointMinutes: 10, digestHour: 7 };
+
+/** The first few hundred bytes of a file, as text. */
+function readHead(file: string): string {
+  const fd = openSync(file, "r");
+  try {
+    const buf = Buffer.alloc(400);
+    return buf.toString("utf8", 0, readSync(fd, buf, 0, 400, 0));
+  } finally {
+    closeSync(fd);
+  }
+}
 
 interface Manifest {
   v: 1;
@@ -147,6 +161,7 @@ export class WorldServer {
     const s = new WorldServer({ ...WORLD_DEFAULTS, ...config });
     mkdirSync(s.path("regions"), { recursive: true });
     mkdirSync(s.path("digests"), { recursive: true });
+    mkdirSync(s.path("events"), { recursive: true });
     s.lock();
     await s.load();
     return s;
@@ -188,7 +203,10 @@ export class WorldServer {
       this.lastDigestAt = m.lastDigestAt;
       this.lastCheckpointAt = this.now();
       // Whatever was logged after that save belongs to seasons that will now be lived again.
-      for (const [name, bytes] of [["events.jsonl", m.eventsBytes], ["timeline.jsonl", m.timelineBytes]] as const) if (existsSync(this.path(name)) && statSync(this.path(name)).size > bytes) truncateSync(this.path(name), bytes);
+      for (const [name, bytes] of [["events.jsonl", m.eventsBytes], ["timeline.jsonl", m.timelineBytes]] as const) {
+        if (!existsSync(this.path(name))) writeFileSync(this.path(name), "");
+        else if (statSync(this.path(name)).size > bytes) truncateSync(this.path(name), bytes);
+      }
       this.log(`Picked up the world at year ${m.realm.year}: ${this.realm.people.toLocaleString()} people on ${m.realm.regions.length} coasts (save ${m.gen}).`);
     } else {
       this.realm = await R.Realm.create(this.host, this.config.realm);
@@ -329,8 +347,20 @@ export class WorldServer {
       lastDigestAt: this.lastDigestAt,
     };
     // The manifest is what makes a save real: written whole beside the old one, then swapped in.
-    writeFileSync(this.path("realm.json.tmp"), JSON.stringify(m));
-    renameSync(this.path("realm.json.tmp"), this.path("realm.json"));
+    const commit = () => {
+      writeFileSync(this.path("realm.json.tmp"), JSON.stringify(m));
+      renameSync(this.path("realm.json.tmp"), this.path("realm.json"));
+    };
+    commit();
+    // A long life writes a long log. Everything in it so far belongs to this save, so a full one
+    // can be put away whole (events/, gzipped, named for the years it covers) and a new one begun.
+    if (m.eventsBytes > (this.config.eventsMB ?? 128) * 1e6) {
+      const first = /"year":(\d+)/.exec(readHead(this.path("events.jsonl")))?.[1] ?? "0";
+      writeFileSync(this.path("events", `years-${first.padStart(6, "0")}-${String(this.realm.state.year).padStart(6, "0")}.jsonl.gz`), gzipSync(readFileSync(this.path("events.jsonl"))));
+      writeFileSync(this.path("events.jsonl"), "");
+      m.eventsBytes = 0;
+      commit();
+    }
     const keep = new Set([...files, ...this.files].map((f) => f.file.split("/").pop()!));
     for (const f of readdirSync(this.path("regions"))) if (!keep.has(f)) unlinkSync(this.path("regions", f));
     this.gen = gen;
@@ -387,7 +417,10 @@ export class WorldServer {
     const myths: R.DigestMyth[] = [];
     for (const r of [first, ...far]) {
       const all = await this.host.call(r.id, "myths", undefined);
-      const m = [...all].sort((a, b) => b.of - a.of)[0];
+      // The biggest town there, or the biggest that tells it differently from those already picked.
+      const told = new Set(myths.map((x) => x.text));
+      const bySize = [...all].sort((a, b) => b.of - a.of);
+      const m = bySize.find((x) => x.text && !told.has(x.text)) ?? bySize[0];
       if (m) myths.push({ region: r.name, town: m.name, text: m.text, root: m.root, tellings: m.tellings, holders: m.holders, of: m.of });
     }
     const eldest = [...this.realm.reports.values()]

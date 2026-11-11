@@ -43,6 +43,8 @@ export interface Know {
   how: "worked out" | "taught" | "brought";
   /** Who showed them. */
   from?: AgentId;
+  /** Teachers between this person and `from` who are no longer on the town's books (aggregate.ts forget). */
+  elided?: number;
   /** For a craft brought from elsewhere: the town it came from. */
   town?: string;
 }

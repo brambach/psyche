@@ -947,7 +947,15 @@ export interface MythVersion {
   text: string;
   holders: number;
   /** All versions in the town, most held first. */
-  versions: { text: string; holders: AgentId[]; root: { agent: AgentId; name: string; text: string }; chain: { agent: AgentId; name: string; text: string }[] }[];
+  versions: {
+    text: string;
+    holders: AgentId[];
+    root: { agent: AgentId; name: string; text: string };
+    /** The tellers still remembered, from a holder back to the root. */
+    chain: { agent: AgentId; name: string; text: string }[];
+    /** How many tellings the version took to reach that holder, counting tellers no longer remembered (Source.elided). */
+    tellings: number;
+  }[];
 }
 
 export interface MythComparison {
@@ -983,10 +991,13 @@ export function compareMyths(rs: RegionSession, founding = CROSSING): MythCompar
         at = next ? { agent: src.from!, ep: next } : undefined;
       }
       const root = rootOf(minds, id, ep);
-      const v = by.get(text) ?? { text, holders: [], root: { agent: root.agent, name: minds[root.agent]!.name, text: chain.at(-1)!.text }, chain };
+      const v = by.get(text) ?? { text, holders: [], root: { agent: root.agent, name: minds[root.agent]!.name, text: chain.at(-1)!.text }, chain, tellings: root.hops };
       v.holders.push(id);
       // Show the longest road the version took to reach someone.
-      if (chain.length > v.chain.length) v.chain = chain;
+      if (root.hops > v.tellings || (root.hops === v.tellings && chain.length > v.chain.length)) {
+        v.chain = chain;
+        v.tellings = root.hops;
+      }
       by.set(text, v);
     }
     const versions = [...by.values()].sort((a, b) => b.holders.length - a.holders.length || a.text.localeCompare(b.text));

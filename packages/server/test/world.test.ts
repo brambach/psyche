@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gunzipSync } from "node:zlib";
 import { afterAll, describe, expect, it } from "vitest";
 import { realm as R } from "@psyche/engine";
 import { readRegion } from "../src/world/files.js";
@@ -66,7 +67,8 @@ describe("the world server", () => {
     const broken = tmp();
     const a = await WorldServer.open({ ...quiet, dir: straight, threads: 2, untilYear: 22 });
     await a.run();
-    const b1 = await WorldServer.open({ ...quiet, dir: broken, threads: 2, untilYear: 11 });
+    // The first stretch is given almost no room for its log, so the save puts it away and begins another.
+    const b1 = await WorldServer.open({ ...quiet, dir: broken, threads: 2, untilYear: 11, eventsMB: 0.001 });
     await b1.run();
     expect(JSON.parse(readFileSync(join(broken, "status.json"), "utf8")).state).toBe("stopped");
     // A different number of threads the second time: it makes no difference.
@@ -75,7 +77,12 @@ describe("the world server", () => {
     await b2.run();
     expect(hashDir(broken)).toBe(hashDir(straight));
     // The log of events and the timeline carry on without a gap or a repeat.
-    expect(readFileSync(join(broken, "events.jsonl"), "utf8")).toBe(readFileSync(join(straight, "events.jsonl"), "utf8"));
+    const put = readdirSync(join(broken, "events")).sort();
+    expect(put.length).toBe(1);
+    expect(put[0]).toMatch(/^years-\d{6}-000011\.jsonl\.gz$/);
+    const whole = put.map((f) => gunzipSync(readFileSync(join(broken, "events", f))).toString("utf8")).join("") + readFileSync(join(broken, "events.jsonl"), "utf8");
+    expect(whole).toBe(readFileSync(join(straight, "events.jsonl"), "utf8"));
+    expect(readdirSync(join(straight, "events"))).toEqual([]);
     const years = readFileSync(join(broken, "timeline.jsonl"), "utf8").trim().split("\n").map((l) => (JSON.parse(l) as { year: number }).year);
     expect(years).toEqual(Array.from({ length: years.length }, (_, i) => years[0]! + i));
     // Two saves are kept, no more.

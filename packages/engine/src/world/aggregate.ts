@@ -126,22 +126,50 @@ export function tidy(w: WorldState): void {
   for (const r of Object.values(w.rumors)) if (r.hops.length > 40) r.hops.splice(0, r.hops.length - 40);
 }
 
-/** Strip the minds of the dead (all who aren't living, or only those in `only`) to what the living's memories need. */
+/** A story keeps this many of its nearest tellers; past that it points straight at whoever it began with. */
+const TELLINGS_KEPT = 8;
+
+/**
+ * Strip the minds of the dead (all who aren't living, or only those in `only`) to what the living's
+ * memories need: the memories their stories were told from, teller by teller, back to someone who
+ * lived it. A chain many generations long is shortened in the middle (see Source.elided), so what
+ * a town has to remember of its dead does not grow for ever.
+ */
 function pruneDead(w: WorldState, only?: Set<AgentId>): void {
   const living = new Set(w.order);
-  // Follow every kept memory's told-by pointer, so the chains stay whole.
+  const find = (agent: AgentId, id: string) => w.minds[agent]?.episodes.find((e) => e.id === id);
+  // Follow every kept memory's told-by pointer, nearest tellings first, so the chains stay whole.
   const needed = new Map<AgentId, Set<string>>();
-  const queue: { agent: AgentId; ep: Episode }[] = w.order.flatMap((id) => w.minds[id]!.episodes.map((ep) => ({ agent: id, ep })));
-  while (queue.length) {
-    const { ep } = queue.pop()!;
-    const s = ep.source;
-    if (s.kind !== "told" || !s.from || !s.ref) continue;
-    const set = needed.get(s.from) ?? new Set<string>();
-    if (set.has(s.ref)) continue;
-    set.add(s.ref);
-    needed.set(s.from, set);
-    const next = w.minds[s.from]?.episodes.find((e) => e.id === s.ref);
-    if (next) queue.push({ agent: s.from, ep: next });
+  let level: Episode[] = w.order.flatMap((id) => w.minds[id]!.episodes);
+  for (let depth = 0; level.length; depth++) {
+    const next: Episode[] = [];
+    for (const ep of level) {
+      const s = ep.source;
+      if (s.kind !== "told" || !s.from || !s.ref) continue;
+      if (depth >= TELLINGS_KEPT && !living.has(s.from)) {
+        // Far enough back: point this telling at where the story began, and let the ones between go.
+        let at = { agent: s.from, ep: find(s.from, s.ref) };
+        let skipped = 0;
+        const seen = new Set<string>();
+        while (at.ep && at.ep.source.kind === "told" && at.ep.source.from && at.ep.source.ref && !seen.has(`${at.agent}/${at.ep.id}`)) {
+          seen.add(`${at.agent}/${at.ep.id}`);
+          const on = find(at.ep.source.from, at.ep.source.ref);
+          if (!on) break;
+          skipped += 1 + (at.ep.source.elided ?? 0);
+          at = { agent: at.ep.source.from, ep: on };
+        }
+        if (at.ep && skipped > 0) ep.source = { kind: "told", from: at.agent, ref: at.ep.id, elided: (s.elided ?? 0) + skipped };
+      }
+      const from = ep.source.from!;
+      const ref = ep.source.ref!;
+      const set = needed.get(from) ?? new Set<string>();
+      if (set.has(ref)) continue;
+      set.add(ref);
+      needed.set(from, set);
+      const told = find(from, ref);
+      if (told) next.push(told);
+    }
+    level = next;
   }
   for (const [id, m] of Object.entries(w.minds)) {
     if (living.has(id) || (only && !only.has(id))) continue;
@@ -157,6 +185,80 @@ function pruneDead(w: WorldState, only?: Set<AgentId>): void {
     m.expressions = [];
     m.others = {};
   }
+}
+
+/** Years the dead stay on a town's books after nobody's memories need them. */
+const REMEMBERED_YEARS = 30;
+/** A craft's line keeps this many of its nearest teachers; past that it points straight at whoever it began with. */
+const TEACHERS_KEPT = 8;
+
+/**
+ * A town on rules for centuries would otherwise keep a line for everyone who ever lived in it.
+ * Once a year, let go of the long gone: people who are not alive here, whom no kept memory points
+ * to, who are nobody living's parent or partner, and whose craft nobody living learned down a line
+ * through them. What they did is in the chronicle; what they said is in the memories of the living.
+ */
+export function forget(w: WorldState): number {
+  const v = w.village!;
+  const living = new Set(w.order);
+  const keep = new Set<AgentId>();
+  for (const id of w.order) {
+    const l = v.life[id];
+    for (const p of l?.parents ?? []) keep.add(p);
+    if (l?.partner) keep.add(l.partner);
+  }
+  // Who taught whom: the line behind each craft someone living knows, nearest teachers first. A
+  // line many generations long is shortened in the middle (see Know.elided), as stories are.
+  const K = v.knowledge;
+  if (K) {
+    const has = (id: AgentId, craft: string) => K.known[id]?.find((k) => k.craft === craft);
+    let level: { id: AgentId; craft: string }[] = w.order.flatMap((id) => (K.known[id] ?? []).map((k) => ({ id, craft: k.craft })));
+    const seen = new Set<string>();
+    for (let depth = 0; level.length; depth++) {
+      const next: { id: AgentId; craft: string }[] = [];
+      for (const { id, craft } of level) {
+        if (seen.has(`${id}/${craft}`)) continue;
+        seen.add(`${id}/${craft}`);
+        keep.add(id);
+        const k = has(id, craft);
+        if (!k || k.how !== "taught" || !k.from) continue;
+        if (depth >= TEACHERS_KEPT && !living.has(k.from)) {
+          let at = k.from;
+          let skipped = 0;
+          const walked = new Set<AgentId>([id]);
+          for (let on = has(at, craft); on && on.how === "taught" && on.from && has(on.from, craft) && !walked.has(at); on = has(at, craft)) {
+            walked.add(at);
+            skipped += 1 + (on.elided ?? 0);
+            at = on.from;
+          }
+          if (skipped > 0) {
+            k.from = at;
+            k.elided = (k.elided ?? 0) + skipped;
+          }
+        }
+        next.push({ id: k.from, craft });
+      }
+      level = next;
+    }
+  }
+  const since = w.tick - REMEMBERED_YEARS * v.seasonDays * 4 * DAY;
+  let gone = 0;
+  const ids = new Set([...Object.keys(w.agents), ...Object.keys(v.life), ...Object.keys(K?.known ?? {})]);
+  for (const id of ids) {
+    if (living.has(id) || keep.has(id) || w.minds[id]) continue;
+    const died = v.life[id]?.died;
+    if (died !== undefined && died > since) continue;
+    delete w.agents[id];
+    delete v.life[id];
+    if (K) delete K.known[id];
+    if (v.money) {
+      delete v.money.held[id];
+      delete v.money.accept[id];
+    }
+    gone++;
+  }
+  if (w.events.length > 200) w.events.splice(0, w.events.length - 200);
+  return gone;
 }
 
 const charge = (e: Episode) => Math.abs(e.valence) * (0.3 + e.arousal);
@@ -236,7 +338,10 @@ export async function aggSeason(w: WorldState, faculties: Faculties, sink: Sink)
   await pledgeRound(w, faculties, sink);
   if (v.season === "summer" && yearOf(w) > 1) for (const f of [...new Set([v.founding ?? CROSSING, CROSSING])]) tellFounding(w, f);
   bedtimes(w);
-  if (v.season === "spring") compactMinds(w);
+  if (v.season === "spring") {
+    compactMinds(w);
+    forget(w);
+  }
 }
 
 /** A season of work and meals, household by household, a day at a time. */

@@ -2,6 +2,7 @@
 // pool is a RegionHost, so the realm above it runs exactly as it would on one thread; the only
 // difference is that a season's regions run side by side.
 
+import { totalmem } from "node:os";
 import { Worker } from "node:worker_threads";
 import { realm as R, type TownPacket } from "@psyche/engine";
 import { createMockFaculties } from "@psyche/faculties";
@@ -207,6 +208,19 @@ export class InlineHost extends R.LocalHost implements WorldHost {
   }
 
   async close(): Promise<void> {}
+}
+
+/**
+ * How many coasts a world of this many people needs. A full coast of twelve towns settles at about
+ * 1,700 people, so this leaves room to pass the target and not much more.
+ */
+export function regionsFor(people: number): number {
+  return Math.max(8, Math.ceil(people / 1400));
+}
+
+/** A heap limit for each thread, in MB: three quarters of the machine's memory shared out, within reason. */
+export function heapFor(threads: number): number {
+  return Math.max(1024, Math.min(8192, Math.floor((totalmem() / 1e6) * 0.75 / Math.max(1, threads))));
 }
 
 export function createHost(threads: number, opts: { heapMB?: number } = {}): WorldHost {

@@ -5,7 +5,7 @@
 //
 // Settings (environment, or the repo's .env):
 //   PSYCHE_WORLD_DIR             where the world lives on disk (default data/world)
-//   PSYCHE_WORLD_PEOPLE          grow flat out until this many people (default 50000)
+//   PSYCHE_WORLD_PEOPLE          grow flat out until this many people (default 50000); it settles a little above
 //   PSYCHE_WORLD_PACE            sim years a real hour after that, or "max" (default 60)
 //   PSYCHE_WORLD_THREADS         worker threads (default: cores less one, at most 8)
 //   PSYCHE_WORLD_REGIONS         how many coasts the sea has room for (default: enough for the people)
@@ -13,12 +13,13 @@
 //   PSYCHE_WORLD_PORT            status page and API (default 8790; 0 for none)
 //   PSYCHE_WORLD_CHECKPOINT_MIN  real minutes between saves (default 10)
 //   PSYCHE_WORLD_DIGEST_HOUR     local hour of the morning digest (default 7)
-//   PSYCHE_WORLD_HEAP_MB         memory limit for each thread (default 6144)
+//   PSYCHE_WORLD_HEAP_MB         memory limit for each thread (default: three quarters of the machine's memory, shared out)
 
 import { existsSync, readFileSync } from "node:fs";
 import { availableParallelism } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { heapFor, regionsFor } from "./pool.js";
 import { WorldServer, type WorldStatus } from "./server.js";
 
 {
@@ -76,9 +77,9 @@ if (cmd === "status") {
     growTo: people,
     checkpointMinutes: Number(env.PSYCHE_WORLD_CHECKPOINT_MIN ?? 10),
     digestHour: Number(env.PSYCHE_WORLD_DIGEST_HOUR ?? 7),
-    heapMB: Number(env.PSYCHE_WORLD_HEAP_MB ?? 6144),
+    heapMB: Number(env.PSYCHE_WORLD_HEAP_MB ?? heapFor(threads)),
     untilYear: env.PSYCHE_WORLD_UNTIL_YEAR ? Number(env.PSYCHE_WORLD_UNTIL_YEAR) : undefined,
-    realm: { seed: Number(env.PSYCHE_WORLD_SEED ?? 11), maxRegions: Number(env.PSYCHE_WORLD_REGIONS ?? Math.max(8, Math.ceil(people / 1100))) },
+    realm: { seed: Number(env.PSYCHE_WORLD_SEED ?? 11), maxRegions: Number(env.PSYCHE_WORLD_REGIONS ?? regionsFor(people)) },
     log: (line) => console.log(`${new Date().toLocaleTimeString()}  ${line}`),
   });
   let asked = false;

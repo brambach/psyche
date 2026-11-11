@@ -4,16 +4,16 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { availableParallelism } from "node:os";
 import { realm as R } from "@psyche/engine";
-import { createHost } from "../packages/server/src/world/pool.ts";
+import { createHost, heapFor, regionsFor } from "../packages/server/src/world/pool.ts";
 
 const target = Number(process.argv[2] ?? 50000);
 const threads = Number(process.argv[3] ?? Math.max(1, Math.min(8, availableParallelism() - 1)));
 const maxYears = Number(process.argv[4] ?? 1200);
 const out = process.argv[5] ?? "out/scale";
-const maxRegions = Number(process.env.PSYCHE_WORLD_REGIONS ?? Math.max(8, Math.ceil(target / 1100)));
+const maxRegions = Number(process.env.PSYCHE_WORLD_REGIONS ?? regionsFor(target));
 mkdirSync(out, { recursive: true });
 
-const host = createHost(threads, { heapMB: Number(process.env.PSYCHE_WORLD_HEAP_MB ?? 6144) });
+const host = createHost(threads, { heapMB: Number(process.env.PSYCHE_WORLD_HEAP_MB ?? heapFor(threads)) });
 const realm = await R.Realm.create(host, { seed: Number(process.env.PSYCHE_WORLD_SEED ?? 11), maxRegions });
 const start = Date.now();
 const rows: { year: number; people: number; minds: number; regions: number; towns: number; seconds: number; secPerYear: number }[] = [];

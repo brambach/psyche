@@ -492,8 +492,8 @@ export async function bedtime(world: WorldState, faculties: Faculties, sink: Sin
 }
 
 /** Where a core belief came from, hop by hop through who told whom, back to a first-hand memory. */
-export function schemaLineage(world: WorldState, agent: AgentId, schema: Schema): { agent: AgentId; episode: string; gist: string; firstHand: boolean }[] {
-  const out: { agent: AgentId; episode: string; gist: string; firstHand: boolean }[] = [];
+export function schemaLineage(world: WorldState, agent: AgentId, schema: Schema): { agent: AgentId; episode: string; gist: string; firstHand: boolean; elided?: number }[] {
+  const out: { agent: AgentId; episode: string; gist: string; firstHand: boolean; elided?: number }[] = [];
   let at: { agent: AgentId; id: string } | undefined = schema.origin?.[0] ? { agent, id: schema.origin[0] } : undefined;
   const seen = new Set<string>();
   while (at && !seen.has(`${at.agent}/${at.id}`)) {
@@ -501,7 +501,8 @@ export function schemaLineage(world: WorldState, agent: AgentId, schema: Schema)
     const ep = world.minds[at.agent]?.episodes.find((e) => e.id === at!.id);
     if (!ep) break;
     const told = ep.source.kind === "told" && ep.source.from && ep.source.ref;
-    out.push({ agent: at.agent, episode: ep.id, gist: ep.gist, firstHand: !told });
+    // `elided`: tellers between this one and the next who are no longer remembered (Source.elided).
+    out.push({ agent: at.agent, episode: ep.id, gist: ep.gist, firstHand: !told, ...(told && ep.source.elided ? { elided: ep.source.elided } : {}) });
     at = told ? { agent: ep.source.from!, id: ep.source.ref! } : undefined;
   }
   return out;
