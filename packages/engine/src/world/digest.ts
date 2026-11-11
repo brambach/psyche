@@ -76,7 +76,7 @@ export function digest(rs: RegionSession, from: number, to: number): string {
   lines.push("", "### The crossing, as each town tells it now", "");
   for (const t of m.towns) {
     const d = t.dominant;
-    lines.push(d ? `- **${t.name}** (${d.holders.length} of ${t.holders} tell it this way, from ${d.root.name}, ${d.chain.length - 1} ${d.chain.length === 2 ? "telling" : "tellings"} on): “${d.text}”` : `- **${t.name}**: nobody tells it any more.`);
+    lines.push(d ? `- **${t.name}** (${d.holders.length} of ${t.holders} tell it this way, from ${d.root.name}, ${d.tellings} ${d.tellings === 1 ? "telling" : "tellings"} on): “${d.text}”` : `- **${t.name}**: nobody tells it any more.`);
   }
   return lines.join("\n") + "\n";
 }

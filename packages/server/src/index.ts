@@ -11,6 +11,7 @@ import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildLedger,
+  developmentView,
   BUILDERS,
   concerns,
   genealogy,
@@ -36,6 +37,9 @@ import {
   chronicleNotices,
   awaySummary,
   enableHeresy,
+  enableCiv,
+  civView,
+  regionCivView,
   heresyView,
   heresyNotices,
   voiceSummary,
@@ -95,8 +99,13 @@ import {
   WORKS,
   acceptedShare,
   openDebts,
+  youView,
 } from "@psyche/engine";
-import { createClaudeReader, createFaculties, createMockFaculties } from "@psyche/faculties";
+import { createClaudeHistorian, createClaudeReader, createFaculties, createMockFaculties, OPUS } from "@psyche/faculties";
+import { checkWorldFile, cleanThumb, cleanWorldName, type WorldSummary } from "@psyche/engine";
+import { HistoryKeeper } from "./history.js";
+import { packWorld, readRaw, TooLarge, unpackWorld } from "./worldfile.js";
+import { youRoutes } from "./you.js";
 
 // Your key and settings can live in a .env file at the top of the repo (git ignores it), e.g.
 //   ANTHROPIC_API_KEY=sk-ant-...
@@ -130,6 +139,21 @@ const MAX_SPEED = 400;
 const { kind, faculties, governor } = createFaculties();
 /** Reads a person from their writing: Claude when it's connected and under the cap, else the free offline reader. */
 const personaReader = createClaudeReader({ governor });
+/**
+ * The causal history: what the live ledger knew, kept after the session has let it go, so a choice can
+ * be walked back across decades. The Historian answers questions over it (Opus when connected and
+ * under the cap, else the free offline reader).
+ */
+const keeper = new HistoryKeeper(process.env.PSYCHE_HISTORY === "0" ? undefined : join(DATA_DIR, "history"), createClaudeHistorian({ governor }), () => ({
+  method: governor.mode === "claude" && governor.level() !== "offline" ? "claude" : "offline",
+  model: process.env.PSYCHE_MODEL_HISTORIAN ?? OPUS,
+}));
+/** Read every live town's ledger into the history, if enough has happened (or now, when forced). */
+function keepHistory(force = false) {
+  if (region) {
+    for (const [id, s] of Object.entries(region.towns)) keeper.keep({ session: s, town: id, townName: s.world.name, chronicle: region.region.chronicle, bends: voiceBends(s.world) }, force);
+  } else keeper.keep({ session, feed: session.feed, bends: voiceBends(session.world) }, force);
+}
 
 type Scenario = "island" | "village" | "region";
 const SEEDS: Record<Scenario, number> = { island: 7, village: 11, region: 11 };
@@ -163,6 +187,17 @@ function heresyOn() {
   if (session.inputs.length === 0) enableHeresy(session.initial);
 }
 
+/**
+ * The civilization systems (world/civ): trades and markets, sides, contested elections and laws,
+ * sickness, records, migration, raids and truces. On in a region; PSYCHE_CIV=0 turns them off.
+ */
+const CIV = process.env.PSYCHE_CIV !== "0";
+/** Switch them on in every town (a region saved before they existed gets them from now on). */
+function civOn() {
+  if (!CIV || !region) return;
+  for (const t of region.region.towns) enableCiv(region.world(t.id));
+}
+
 const envScenario = process.env.PSYCHE_SCENARIO;
 // The game is a civilization: a region of towns unless asked otherwise.
 let scenario: Scenario = envScenario === "village" || envScenario === "island" ? envScenario : "region";
@@ -185,7 +220,7 @@ const sessionOpts = (): WorldSessionOptions =>
  * Towns run live (hour by hour, on Claude) only while watched: by default one at a time, the rest on
  * the aggregate tier, on rules. PSYCHE_LIVE_TOWNS raises it.
  */
-const regionOpts = () => ({ session: sessionOpts(), live: Number(process.env.PSYCHE_LIVE_TOWNS) || 1, cheap: createMockFaculties(), maxTowns: Number(process.env.PSYCHE_MAX_TOWNS) || 16 });
+const regionOpts = () => ({ session: sessionOpts(), live: Number(process.env.PSYCHE_LIVE_TOWNS) || 1, cheap: createMockFaculties(), maxTowns: Number(process.env.PSYCHE_MAX_TOWNS) || 16, civ: CIV });
 /** In a region, the towns; `session` is the one being watched. */
 let region: RegionSession | undefined;
 let town = "hollow";
@@ -259,6 +294,7 @@ function save(force = false) {
   lastSaved = Date.now();
   const saved = snapshot();
   writeJson(SAVE, saved);
+  keeper.save({ scenario, seed }, force);
   // An hourly copy, the last day of them kept, so a long unattended run can be wound back.
   if (Date.now() - lastSnapshot >= 3_600_000) {
     lastSnapshot = Date.now();
@@ -273,14 +309,20 @@ async function restore() {
   await restoreFrom(JSON.parse(readFileSync(SAVE, "utf8")) as Saved);
 }
 
-async function restoreFrom(saved: Saved) {
+/**
+ * Build the world from a save. `slot` names the save it came from, so its history is loaded with it.
+ * `free`, when given, stands in for the live faculties wherever rebuilding would otherwise call
+ * them: a region runs on it (for a trial run that is thrown away), and an island's history falls
+ * back to it where the recorded calls don't match, so opening a save never buys anything.
+ */
+async function restoreFrom(saved: Saved, { slot, free }: { slot?: string; free?: typeof faculties } = {}) {
   resetGame();
   scenario = saved.scenario ?? "island";
   seed = saved.seed;
   ablations = saved.ablations;
   const world = makeWorld();
   if (saved.region) {
-    region = new RegionSession(saved.region.state, saved.region.worlds, faculties, regionOpts());
+    region = new RegionSession(saved.region.state, saved.region.worlds, free ?? faculties, regionOpts());
     for (const [id, s] of Object.entries(region.towns)) {
       s.feed = saved.region.feeds[id] ?? [];
       region.region.last.feed[id] = s.feed.length;
@@ -289,14 +331,20 @@ async function restoreFrom(saved: Saved) {
     session = region.focus(town);
     seen = saved.seen ?? region.region.tick;
     heresyOn();
+    civOn();
+    keeper.load({ scenario, seed }, region.region.tick, slot);
     console.log(`Restored a region of ${region.region.towns.length} towns.`);
     return;
   }
   base = !!saved.base;
-  const r = await WorldSession.replay(saved.base ?? world, saved.inputs, saved.log, faculties, sessionOpts());
+  const r = await WorldSession.replay(saved.base ?? world, saved.inputs, saved.log, free ?? faculties, sessionOpts());
   session = r.session;
+  if (free) session.setFaculties(faculties);
   seen = saved.seen ?? session.world.tick;
   heresyOn();
+  keeper.load({ scenario, seed }, session.world.tick, slot);
+  // The replay rebuilt traces the history has already read; only what comes after is new.
+  keeper.caughtUp(session);
   console.log(`Restored ${saved.inputs.length} inputs${r.divergedAt !== undefined ? ` (diverged at call ${r.divergedAt})` : ""}.`);
 }
 
@@ -422,6 +470,7 @@ async function passYears(years: number) {
           governor.quiet = false;
         }
         if (session.frames.length > 4 * yearDays) region ? region.rebase() : session.rebase();
+        keepHistory();
         collectNotices();
       });
       broadcast();
@@ -494,6 +543,7 @@ async function tickClock() {
       } finally {
         governor.quiet = false;
       }
+      keepHistory();
       save();
       collectNotices();
     }).catch((e) => console.error(e));
@@ -685,6 +735,15 @@ function heresyLive() {
   return { ...v, events: v.events.map(keep), anomalies: v.anomalies.map(keep), people: v.people.map((p) => ({ ...p, chain: p.chain.map(keep) })) };
 }
 
+/** The civilization systems at a glance, for the chip in the game's top bar. */
+function civSummary() {
+  if (!region) return undefined;
+  const rc = regionCivView(region.region, (t) => region!.world(t));
+  const here = rc?.towns.find((t) => t.id === town);
+  if (!rc || !here) return undefined;
+  return { specialists: here.specialists, factions: here.factions, literate: here.literate, sick: here.sick, closed: here.closed, raids: rc.raids.length, treaties: rc.treaties.filter((t) => t.inForce).length };
+}
+
 function heresySummary() {
   const v = heresyView(session.world);
   if (!v) return undefined;
@@ -738,9 +797,12 @@ function gameFrame(): GameFrame {
     beats: beats(session.feed.slice(-200), w.tick),
     notices,
     heresy: heresySummary(),
+    civ: civSummary(),
     engines: region ? engineChips() : undefined,
     // Your words in this town: who heard them, who believes, what they have become (voice.ts).
     voice: voiceSummary(w),
+    // You, in this town in person: your pack, who is with you, what people made of what you did (you.ts).
+    you: youView(w),
   };
   if (w.village) {
     const scene = townScene(w, session.feed.slice(-120), session.feed.filter((f) => f.kind === "event" || f.kind === "insight").slice(-12));
@@ -827,8 +889,19 @@ function openStream(req: IncomingMessage, res: ServerResponse) {
 
 // ------------------------------------------------------------------ save slots
 
-const slotName = (n: unknown) => (typeof n === "string" ? n.trim().replace(/[^\w \-]/g, "").replace(/\s+/g, " ").slice(0, 40) : "");
+const slotName = cleanWorldName;
 const slotFile = (name: string) => join(SLOTS_DIR, `${name.toLowerCase().replace(/ /g, "_")}.json`);
+/** Beside each save, a small file with its name, summary and picture, so listing saves never has to read whole worlds. */
+const headFile = (file: string) => file.replace(/\.json$/, ".head");
+
+interface SlotHead {
+  name: string;
+  savedAt: number;
+  scenario: Scenario;
+  seed?: number;
+  summary?: WorldSummary;
+  thumb?: string;
+}
 
 function listSlots() {
   if (!existsSync(SLOTS_DIR)) return [];
@@ -837,8 +910,8 @@ function listSlots() {
     .map((f) => {
       const file = join(SLOTS_DIR, f);
       try {
-        const head = JSON.parse(readFileSync(file, "utf8")) as Saved & { name?: string; summary?: { world: string; tick: number; year?: number; towns: number; people: number } };
-        return { name: head.name ?? f.replace(/\.json$/, ""), savedAt: head.savedAt ?? statSync(file).mtimeMs, scenario: head.scenario ?? "island", ...head.summary };
+        const head = JSON.parse(readFileSync(existsSync(headFile(file)) ? headFile(file) : file, "utf8")) as Partial<SlotHead>;
+        return { name: head.name ?? f.replace(/\.json$/, ""), savedAt: head.savedAt ?? statSync(file).mtimeMs, scenario: head.scenario ?? "island", seed: head.seed, size: statSync(file).size, thumb: cleanThumb(head.thumb), ...head.summary };
       } catch {
         return undefined;
       }
@@ -847,11 +920,78 @@ function listSlots() {
     .sort((a, b) => b!.savedAt - a!.savedAt);
 }
 
-function saveSlot(name: string) {
+function summaryNow(): WorldSummary {
   const w = session.world;
   const rv = region && regionView(region);
-  const summary = { world: w.name, tick: w.tick, year: rv?.year ?? villageView(w)?.year, towns: rv?.towns.length ?? 1, people: rv ? rv.towns.reduce((n, t) => n + t.people, 0) : w.order.length };
-  writeJson(slotFile(name), { ...snapshot(), name, savedAt: Date.now(), summary });
+  return { world: w.name, tick: w.tick, year: rv?.year ?? villageView(w)?.year, towns: rv?.towns.length ?? 1, people: rv ? rv.towns.reduce((n, t) => n + t.people, 0) : w.order.length };
+}
+
+/** Write a save and its header. `saved` is a world as `snapshot()` gives it (or one that came in from a file). */
+function writeSlot(name: string, saved: Record<string, unknown>, head: Omit<SlotHead, "name">) {
+  const file = slotFile(name);
+  writeJson(file, { ...saved, name, savedAt: head.savedAt, summary: head.summary, thumb: head.thumb });
+  writeJson(headFile(file), { name, ...head });
+}
+
+function saveSlot(name: string, thumb?: string) {
+  writeSlot(name, snapshot() as unknown as Record<string, unknown>, { savedAt: Date.now(), scenario, seed, summary: summaryNow(), thumb: cleanThumb(thumb) });
+  keepHistory(true);
+  keeper.saveSlot({ scenario, seed }, name);
+}
+
+/** A name no save has yet: "Hollow Bay", then "Hollow Bay 2", and so on. */
+function freeSlotName(want: string) {
+  const base = slotName(want) || "A shared world";
+  for (let n = 1; n < 500; n++) {
+    const name = n === 1 ? base : `${base.slice(0, 36)} ${n}`;
+    if (!existsSync(slotFile(name))) return name;
+  }
+  return `${base.slice(0, 26)} ${Date.now()}`;
+}
+
+/**
+ * Replace the running world with a saved one. The file is checked first. Then it is proved: a region
+ * is built from a copy and run for a minute, an island's whole history is replayed, and everything a
+ * viewer would be sent is drawn. All of that runs on the free mock, so opening a world (above all one
+ * from someone else) never spends anything. If any of it fails, the world that was running is put
+ * back, so a bad file never costs you a town. A world that passes loads exactly as it was saved.
+ */
+async function loadWorld(data: unknown, slot?: string): Promise<string | undefined> {
+  const check = checkWorldFile(data);
+  if (!check.ok) return check.error;
+  const saved = data as Saved;
+  const before = snapshot();
+  // The running world's past goes to disk first, so it comes back with the world if this fails.
+  keepHistory(true);
+  keeper.save({ scenario, seed }, true);
+  const free = createMockFaculties() as typeof faculties;
+  try {
+    if (saved.region) {
+      await restoreFrom(structuredClone(saved), { free });
+      view();
+      gameFrame();
+      await region!.advance(1, { snapshot: false });
+      gameFrame();
+      await restoreFrom(saved, { slot });
+    } else await restoreFrom(saved, { slot, free });
+    view();
+    gameFrame();
+    governor.resetSession();
+    return undefined;
+  } catch (e) {
+    console.error("Loading a world failed; putting the old one back.", e);
+    await restoreFrom(before);
+    return "That world could not be loaded (it may come from a different version). The world you had is still running.";
+  }
+}
+
+/** The hourly copies, newest first. */
+function listSnapshots() {
+  if (!existsSync(SNAP_DIR)) return [];
+  return readdirSync(SNAP_DIR)
+    .filter((f) => /^auto-[\w-]+\.json$/.test(f))
+    .map((f) => ({ file: f, savedAt: statSync(join(SNAP_DIR, f)).mtimeMs, size: statSync(join(SNAP_DIR, f)).size }))
+    .sort((a, b) => b.savedAt - a.savedAt);
 }
 
 /** People in this town who came from their own writing. */
@@ -953,7 +1093,7 @@ function agentView(id: AgentId) {
   const M = w.village?.money;
   const nm = (x: string) => w.agents[x]?.name ?? x;
   const purse = M ? { good: M.good, held: M.held[id] ?? 0, accept: M.accept[id] ?? 0, owes: openDebts(w, id).filter((d) => d.debtor === id).map((d) => ({ to: d.creditor, name: nm(d.creditor), amount: d.amount, overdue: !!d.overdue })), owed: openDebts(w, id).filter((d) => d.creditor === id).map((d) => ({ by: d.debtor, name: nm(d.debtor), amount: d.amount, overdue: !!d.overdue })) } : undefined;
-  return { mind, agent: w.agents[id], traces, actual, intent, past, purse };
+  return { mind, agent: w.agents[id], traces, actual, intent, past, purse, roots: developmentView(w.minds, id) };
 }
 
 function traceView(agent: AgentId, traceId: string) {
@@ -986,9 +1126,22 @@ function send(res: ServerResponse, status: number, data: unknown) {
 
 const MIME: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json" };
 
+/** You, walking in the watched town: /api/you (see you.ts). */
+const you = youRoutes({
+  session: () => session,
+  exclusive,
+  save,
+  busy: () => (fastForward ? "Years are passing. Wait for them to finish." : undefined),
+  speed: () => speed,
+  body,
+  send,
+  broadcast,
+});
+
 async function route(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? "/", "http://localhost");
   const p = url.pathname;
+  if (p.startsWith("/api/you")) return void (await you(p, req, res));
   if (!p.startsWith("/api/")) {
     const file = join(WEB_DIST, p === "/" ? "index.html" : p);
     if (file.startsWith(WEB_DIST) && existsSync(file)) {
@@ -1003,9 +1156,34 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   if (req.method === "GET") {
     if (p === "/api/stream") return openStream(req, res);
     if (p === "/api/slots") return send(res, 200, { slots: listSlots() });
+    if (p === "/api/snapshots") return send(res, 200, { snapshots: listSnapshots() });
+    if (p === "/api/worlds/export") {
+      // A world file to hand to someone: a named save, or (with no name) the world as it stands now.
+      const name = slotName(url.searchParams.get("name"));
+      let packed: Buffer, title: string;
+      if (name) {
+        if (!existsSync(slotFile(name))) return send(res, 404, { error: "No save by that name." });
+        const saved = JSON.parse(readFileSync(slotFile(name), "utf8")) as Record<string, unknown>;
+        packed = packWorld(saved, { name, savedAt: (saved.savedAt as number) ?? Date.now(), summary: saved.summary as WorldSummary | undefined, thumb: saved.thumb as string | undefined });
+        title = name;
+      } else {
+        title = slotName(`${session.world.name} year ${summaryNow().year ?? 1}`) || "world";
+        packed = await exclusive(async () => packWorld(snapshot() as unknown as Record<string, unknown>, { name: title, savedAt: Date.now(), summary: summaryNow() }));
+      }
+      res.writeHead(200, { "content-type": "application/gzip", "content-length": packed.length, "content-disposition": `attachment; filename="${title.toLowerCase().replace(/ /g, "-")}.psyche"` });
+      res.end(packed);
+      return;
+    }
     if (p === "/api/divergence") return send(res, 200, { events: divergence(session.world) });
     if (p === "/api/myths") return region ? send(res, 200, compareMyths(region)) : send(res, 404, { error: "Only a region has more than one town." });
     if (p === "/api/atlas") return send(res, 200, { beliefs: atlas(session.world) });
+    if (p === "/api/civ") {
+      // The watched town unless another is named.
+      const id = url.searchParams.get("town") || town;
+      const w = region?.region.towns.some((t) => t.id === id) ? region.world(id) : undefined;
+      const v = w && civView(w);
+      return v && region ? send(res, 200, { town: id, name: w.name, year: regionView(region).year, civ: v, region: regionCivView(region.region, (t) => region!.world(t)) }) : send(res, 404, { error: "The civilization systems run in a region of towns (and are off with PSYCHE_CIV=0)." });
+    }
     if (p === "/api/heresy") {
       const v = heresyLive();
       return v ? send(res, 200, v) : send(res, 404, { error: "The made world is switched off (PSYCHE_HERESY=0)." });
@@ -1061,6 +1239,19 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       const v = editable(session.world, ed[1]!);
       return v ? send(res, 200, { ...v, fears: FEARS, presets: PRESETS }) : send(res, 404, { error: "No such person here." });
     }
+    if (p === "/api/history") {
+      keepHistory(true);
+      return send(res, 200, keeper.overview());
+    }
+    if (p === "/api/history/why") {
+      keepHistory(true);
+      const v = keeper.why(url.searchParams.get("node") ?? "", session);
+      return v ? send(res, 200, v) : send(res, 404, { error: "The history has nothing by that name." });
+    }
+    if (p === "/api/history/find") {
+      const at = url.searchParams.get("at");
+      return send(res, 200, { found: keeper.search(url.searchParams.get("q") ?? "", at ? Number(at) : undefined) });
+    }
     if (p === "/api/why") {
       const v = whyView(url.searchParams.get("node"), url.searchParams.get("agent"), url.searchParams.get("trace"));
       return v ? send(res, 200, v) : send(res, 404, { error: "Nothing in the ledger for that yet." });
@@ -1108,6 +1299,13 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       saveFounders(true);
       return send(res, 200, foundersView());
     }
+    if (p === "/api/history/ask") {
+      // A question over the causal history. Opus reads the brief when connected; otherwise the free offline reader does.
+      const b = await body<{ question?: string; focus?: string[]; at?: number }>(req);
+      if (!b.question?.trim()) return send(res, 400, { error: "Ask something." });
+      keepHistory(true);
+      return send(res, 200, await keeper.ask(b.question.trim(), b.focus, b.at));
+    }
     if (p === "/api/years") {
       const b = await body<{ years?: number }>(req);
       if (!session.world.village) return send(res, 400, { error: "Only a village can pass years." });
@@ -1128,6 +1326,10 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
       // Looking at a town brings it back to the hourly loop; the one you left drops to the aggregate tier.
       await exclusive(async () => {
+        // The town being left may drop to the aggregate tier and lose its traces: read them first.
+        keepHistory(true);
+        // If you were walking in the town you are leaving, your body rests there until you come back.
+        if (session.world.you?.here) await session.apply({ type: "you", act: { act: "rest" } }, { snapshot: false });
         town = b.town!;
         session = region!.focus(town);
         // The town you arrive in has its own feed; notice what happens from now on.
@@ -1149,25 +1351,51 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       return send(res, 200, view());
     }
     if (p === "/api/slots/save") {
-      const name = slotName((await body<{ name?: string }>(req)).name);
+      const b = await body<{ name?: string; thumb?: string }>(req);
+      const name = slotName(b.name);
       if (!name) return send(res, 400, { error: "Give the save a name." });
-      await exclusive(async () => saveSlot(name));
+      await exclusive(async () => saveSlot(name, b.thumb));
       return send(res, 200, { slots: listSlots() });
     }
     if (p === "/api/slots/load") {
       const name = slotName((await body<{ name?: string }>(req)).name);
       if (!name || !existsSync(slotFile(name))) return send(res, 404, { error: "No save by that name." });
       if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
-      await exclusive(async () => {
-        await restoreFrom(JSON.parse(readFileSync(slotFile(name), "utf8")) as Saved);
-        governor.resetSession();
-      });
+      const error = await exclusive(async () => loadWorld(JSON.parse(readFileSync(slotFile(name), "utf8")), name));
+      if (error) return send(res, 422, { error });
       save(true);
       return send(res, 200, { slots: listSlots() });
+    }
+    if (p === "/api/snapshots/load") {
+      const file = (await body<{ file?: string }>(req)).file ?? "";
+      if (!/^auto-[\w-]+\.json$/.test(file) || !existsSync(join(SNAP_DIR, file))) return send(res, 404, { error: "No copy by that name." });
+      if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
+      const error = await exclusive(async () => loadWorld(JSON.parse(readFileSync(join(SNAP_DIR, file), "utf8"))));
+      if (error) return send(res, 422, { error });
+      save(true);
+      return send(res, 200, { snapshots: listSnapshots() });
+    }
+    if (p === "/api/worlds/import") {
+      // A world file from someone else. It is checked and kept as a save; nothing runs until you load it.
+      let raw: Buffer;
+      try {
+        raw = await readRaw(req);
+      } catch (e) {
+        if (e instanceof TooLarge) return send(res, 413, { error: e.message });
+        throw e;
+      }
+      const un = unpackWorld(raw);
+      if (!un.ok) return send(res, 422, { error: un.error });
+      const name = freeSlotName(un.head.name);
+      const { format: _f, version: _v, ...saved } = un.saved;
+      writeSlot(name, saved, { savedAt: un.head.savedAt || Date.now(), scenario: un.head.scenario, seed: un.head.seed, summary: un.head.summary, thumb: un.head.thumb });
+      return send(res, 200, { slots: listSlots(), name });
     }
     if (p === "/api/slots/delete") {
       const name = slotName((await body<{ name?: string }>(req)).name);
       if (name && existsSync(slotFile(name))) unlinkSync(slotFile(name));
+      if (name) keeper.deleteSlot(name);
+      if (name && existsSync(headFile(slotFile(name)))) unlinkSync(headFile(slotFile(name)));
       return send(res, 200, { slots: listSlots() });
     }
     if (p === "/api/voice/speak" || p === "/api/voice/fulfil") {
@@ -1281,7 +1509,10 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       if (fastForward) return send(res, 409, { error: "Years are passing. Wait for them to finish." });
       if (region) return send(res, 409, { error: "Rewinding isn't available across towns yet." });
       const { index } = await body<{ index: number }>(req);
-      await exclusive(async () => session.rewind(index));
+      await exclusive(async () => {
+        session.rewind(index);
+        keeper.rewound(session);
+      });
       running = false;
       save(true);
       return send(res, 200, view());
@@ -1296,6 +1527,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
         } else seed = b.seed ?? seed;
         ablations = b.ablations ?? ablations;
         start();
+        keeper.reset();
         resetGame();
         seen = session.world.tick;
         base = false;
@@ -1311,10 +1543,36 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   }
 }
 
-await restore();
+// A save that will not load must not keep the server from starting: set it aside and begin again.
+try {
+  await restore();
+  view();
+  gameFrame();
+} catch (e) {
+  console.error("The saved world could not be restored; it has been set aside and a new one started.", e);
+  if (existsSync(SAVE)) renameSync(SAVE, join(DATA_DIR, `island.unreadable-${Date.now()}.json`));
+  start();
+  resetGame();
+}
 await restoreFounders();
 // Anything a player does shows on every screen at once.
-createServer((req, res) => void route(req, res).finally(() => req.method === "POST" && broadcast())).listen(PORT, () => {
+createServer(
+  (req, res) =>
+    void route(req, res)
+      .catch((e) => {
+        // A request that fails must never take the world down with it.
+        console.error(e);
+        if (!res.headersSent) send(res, 500, { error: e instanceof Error ? e.message : String(e) });
+        else res.end();
+      })
+      .finally(() => {
+        try {
+          if (req.method === "POST") broadcast();
+        } catch (e) {
+          console.error(e);
+        }
+      }),
+).listen(PORT, () => {
   console.log(`Psyche (${session.world.name}) on http://localhost:${PORT} (faculties: ${kind}, ${running ? "playing" : "paused"})`);
   console.log(kind === "claude" ? `Daily cap $${governor.capUsd} (PSYCHE_DAILY_CAP). Spend so far today: $${governor.todayUsd().toFixed(4)}.` : "Offline mock: the cost meter shows what the same run would cost on Claude.");
 });

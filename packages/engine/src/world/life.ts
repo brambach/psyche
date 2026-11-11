@@ -23,14 +23,19 @@ import { TRAIT_NAMES, type AgentId, type Episode, type MindState, type Schema, t
 import { baseMind } from "./cast.js";
 import { inheritEdits } from "./edits.js";
 import { stands } from "./works.js";
+import { bornInto, ensureDevelopment, upbringingTurn } from "./upbringing.js";
 import { intentOf } from "./intentions.js";
 
 const courts = (world: WorldState, a: AgentId, b: AgentId) => intentOf(world, a)?.kind === "court" && intentOf(world, a)?.target === b;
 import { craftBonus, learn, CRAFTS } from "./knowledge.js";
-import { createSettlers, FIRST_NAMES, other, routineFor, uniqueId } from "./people.js";
+import { createSettlers, FIRST_NAMES, mintBase, other, routineFor, uniqueId } from "./people.js";
 import type { RoutineEntry } from "./places.js";
 import { eventPercept, feed, luck, personName, record, thirdPerson, type Sink, type WorldState } from "./world.js";
 import type { Household, VillageState } from "./village.js";
+import { civOf } from "./civ/base.js";
+import { expose, SICKNESSES } from "./civ/disease.js";
+import { civTrade, PROFESSIONS, settleTrade } from "./civ/economy.js";
+import { landingClosed } from "./civ/polity.js";
 
 export interface Life {
   /** Tick of birth; founders were born long before the story starts. */
@@ -78,6 +83,8 @@ export function initLife(world: WorldState): void {
     const age = Number(/, (\d+),/.exec(world.minds[id]!.identity.summary)?.[1] ?? 35);
     v.life[id] = { born: world.tick - age * yearTicks(v), parents: [], generation: 0 };
   }
+  // Everyone who starts the story grown gets a sketched childhood (develop/childhood.ts).
+  ensureDevelopment(world);
 }
 
 // ---------------------------------------------------------------- the turn of a season
@@ -135,6 +142,8 @@ export async function lifeTurn(world: WorldState, faculties: Faculties, sink: Si
     if (a.role === "child" && ageOf(world, id) >= CHILDHOOD) comeOfAge(world, id, sink);
   }
   if (v.season === "spring" && world.order.length < (v.popCap ?? POP_CAP) - 5) await newcomers(world, faculties, sink);
+  // A season of being raised, for the children; a season of adult development for everyone else.
+  upbringingTurn(world, sink);
 }
 
 const householdOf = (v: VillageState, id: AgentId): Household | undefined => Object.values(v.households).find((h) => h.members.includes(id));
@@ -196,7 +205,7 @@ async function birth(world: WorldState, parents: AgentId[], faculties: Faculties
   const free = FIRST_NAMES.filter(([n]) => !used.has(n));
   const pool = free.length ? free : FIRST_NAMES;
   const [first, pronouns] = pool[Math.floor(luck(world, "name", ...parents) * pool.length)]!;
-  const id = uniqueId(first.toLowerCase(), taken);
+  const id = uniqueId(mintBase(v, first.toLowerCase()), taken);
   const hh = householdOf(v, parents[0]!)!;
   const surname = /^(\S+) (\S+)/.exec(p1!.identity.summary)?.[2]?.replace(/,$/, "") ?? hh.name.replace(/^the /, "");
   const rng = { rng: (world.rng ^ Math.imul(world.idCounter + 1, 2654435761)) >>> 0 };
@@ -231,6 +240,9 @@ async function birth(world: WorldState, parents: AgentId[], faculties: Faculties
     p1!.ablations,
   );
   mind.tick = world.tick;
+  // Temperament, and what the months before the birth were like. Attachment starts blank: it will
+  // come from the care they get, not from a copy of their parents'.
+  bornInto(world, mind, parents);
   inheritEdits(mind, [p1!, p2!]);
   mind.lastSleep = world.tick;
   // Children start out seeing people the way their parents do: grudges included.
@@ -288,6 +300,15 @@ function comeOfAge(world: WorldState, id: AgentId, sink: Sink): void {
   const need = (r: string) => (["fisher", "farmer", "forager"].includes(r) ? (food / workers < 0.45 ? 1.5 : 1) : 1) / (1 + count(r));
   const role = Object.keys(fit).sort((a, b) => fit[b]! * need(b) - fit[a]! * need(a))[0]!;
   const a = world.agents[id]!;
+  // A child who was shown a craft that is a trade of its own follows it, where the town can carry another (civ/economy.ts).
+  const trade = civTrade(world, id);
+  if (trade) {
+    a.role = trade;
+    settleTrade(world, id);
+    world.minds[id]!.identity.voice = "Plain and direct, like the people who raised them.";
+    feed(world, sink, { kind: "event", agents: [id], title: `${a.name} comes of age and takes up a trade`, text: `${a.name} ${PROFESSIONS[trade]!.does}, as ${a.name} was taught.` });
+    return;
+  }
   a.role = role;
   a.routine = routineFor(role, a.home);
   world.minds[id]!.identity.voice = "Plain and direct, like the people who raised them.";
@@ -337,12 +358,17 @@ export async function die(world: WorldState, id: AgentId, cause: string, faculti
 async function newcomers(world: WorldState, faculties: Faculties, sink: Sink): Promise<void> {
   const v = world.village!;
   if (luck(world, "boat") > 0.6) return;
+  // A town that has closed its landing, by law or for a sickness, turns the boat away (civ/polity.ts).
+  if (landingClosed(world)) {
+    feed(world, sink, { kind: "event", place: "harbour", agents: [], title: `The spring boat is turned away from ${world.name}`, text: `The landing is closed to strangers${civOf(world)?.health.closed ? " while the sickness lasts" : " by law"}.` });
+    return;
+  }
   const n = 2 + Math.floor(luck(world, "boat-size") * 3);
   const year = yearOf(world);
   const known = world.order.map((id) => ({ id, name: world.minds[id]!.name, role: world.agents[id]!.role }));
   const taken = new Set([...Object.keys(world.minds), ...Object.keys(v.households), ...(v.reserved?.ids ?? [])]);
   const crossing = `ep_boat_y${year}`;
-  const { settlers, households } = createSettlers(world.seed * 31 + year * 977, n, world.minds[world.order[0]!]!.ablations, known, { taken, names: new Set([...Object.values(world.minds).map((m) => m.name), ...(v.reserved?.names ?? [])]), crossing, now: world.tick });
+  const { settlers, households } = createSettlers(world.seed * 31 + year * 977, n, (world.minds[world.order[0]!] ?? Object.values(world.minds)[0])?.ablations ?? {}, known, { taken, names: new Set([...Object.values(world.minds).map((m) => m.name), ...(v.reserved?.names ?? [])]), crossing, now: world.tick, mint: (name) => mintBase(v, name) });
   const placeCount = Object.keys(v.households).length + Object.keys(world.places).filter((p) => p.startsWith("home_")).length;
   households.forEach((h, i) => {
     const home = `home_${h.id}`;
@@ -370,6 +396,8 @@ async function newcomers(world: WorldState, faculties: Faculties, sink: Sink): P
   }
   const names = settlers.map((s) => s.mind.name);
   feed(world, sink, { kind: "event", place: "harbour", agents: settlers.map((s) => s.mind.id), title: `A boat brings ${n} newcomers`, text: `${names.slice(0, -1).join(", ")} and ${names.at(-1)} come ashore at the landing, strangers to everyone.` });
+  // Now and then a boat brings more than people (civ/disease.ts).
+  if (civOf(world) && luck(world, "boat-sick") < 0.07) expose(world, SICKNESSES[Math.floor(luck(world, "boat-sickness") * SICKNESSES.length)]!.id, { kind: "boat", carrier: settlers[0]?.mind.id }, sink, 1);
   void faculties;
 }
 
@@ -492,8 +520,8 @@ export async function bedtime(world: WorldState, faculties: Faculties, sink: Sin
 }
 
 /** Where a core belief came from, hop by hop through who told whom, back to a first-hand memory. */
-export function schemaLineage(world: WorldState, agent: AgentId, schema: Schema): { agent: AgentId; episode: string; gist: string; firstHand: boolean }[] {
-  const out: { agent: AgentId; episode: string; gist: string; firstHand: boolean }[] = [];
+export function schemaLineage(world: WorldState, agent: AgentId, schema: Schema): { agent: AgentId; episode: string; gist: string; firstHand: boolean; elided?: number }[] {
+  const out: { agent: AgentId; episode: string; gist: string; firstHand: boolean; elided?: number }[] = [];
   let at: { agent: AgentId; id: string } | undefined = schema.origin?.[0] ? { agent, id: schema.origin[0] } : undefined;
   const seen = new Set<string>();
   while (at && !seen.has(`${at.agent}/${at.id}`)) {
@@ -501,7 +529,8 @@ export function schemaLineage(world: WorldState, agent: AgentId, schema: Schema)
     const ep = world.minds[at.agent]?.episodes.find((e) => e.id === at!.id);
     if (!ep) break;
     const told = ep.source.kind === "told" && ep.source.from && ep.source.ref;
-    out.push({ agent: at.agent, episode: ep.id, gist: ep.gist, firstHand: !told });
+    // `elided`: tellers between this one and the next who are no longer remembered (Source.elided).
+    out.push({ agent: at.agent, episode: ep.id, gist: ep.gist, firstHand: !told, ...(told && ep.source.elided ? { elided: ep.source.elided } : {}) });
     at = told ? { agent: ep.source.from!, id: ep.source.ref! } : undefined;
   }
   return out;

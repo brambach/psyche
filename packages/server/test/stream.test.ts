@@ -2,8 +2,9 @@
 // save a world under a name and load it back.
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { applyDelta, type FrameDelta, type GameFrame } from "@psyche/engine";
@@ -122,5 +123,120 @@ describe("the live game", () => {
     expect((await post("/api/slots/load", { name: "No such world" })).status).toBe(404);
     const gone = await post("/api/slots/delete", { name: "Before the storm" });
     expect(gone.body.slots).toEqual([]);
+  });
+
+  it("keeps the causal history, walks a choice back, and answers a question about it offline", async () => {
+    const get = async (path: string) => {
+      const r = await fetch(`${base}${path}`);
+      return { status: r.status, body: (await r.json()) as Record<string, unknown> };
+    };
+    const ov = (await get("/api/history")).body as { size: { moments: number }; moments: [string, number, string][]; people: { id: string }[]; historian: { method: string } };
+    expect(ov.size.moments).toBeGreaterThan(0);
+    expect(ov.people.length).toBeGreaterThan(5);
+    expect(ov.historian.method).toBe("offline");
+    const id = ov.moments[ov.moments.length - 1]![0];
+    const why = (await get(`/api/history/why?node=${encodeURIComponent(id)}`)).body as { node: { id: string }; tree: { causes: unknown[] }; longest: unknown[]; origins: { causes: number } };
+    expect(why.node.id).toBe(id);
+    expect(why.tree.causes.length).toBeGreaterThan(0);
+    expect(why.longest.length).toBeGreaterThan(1);
+    expect(why.origins.causes).toBeGreaterThan(0);
+    expect((await get("/api/history/why?node=nobody/nothing")).status).toBe(404);
+    const ans = await post("/api/history/ask", { question: "Why did they do this?", focus: [id] });
+    expect(ans.status).toBe(200);
+    expect(ans.body.method).toBe("offline");
+    expect((ans.body.cites as string[]).length).toBeGreaterThan(0);
+    expect((await post("/api/history/ask", { question: " " })).status).toBe(400);
+    // It is saved beside the world.
+    await post("/api/slots/save", { name: "With its past" });
+    expect(existsSync(join(data, "history", "current.json"))).toBe(true);
+    expect(existsSync(join(data, "history", "slot-With its past.json")) || readdirSync(join(data, "history")).some((f) => f.startsWith("slot-"))).toBe(true);
+  });
+  it("hands a world to someone else as a file, and takes one back with care", async () => {
+    const send = async (bytes: Uint8Array | string) => {
+      const r = await fetch(`${base}/api/worlds/import`, { method: "POST", headers: { "content-type": "application/octet-stream" }, body: bytes });
+      return { status: r.status, body: (await r.json()) as { name?: string; error?: string; slots?: { name: string; seed?: number; people?: number }[] } };
+    };
+    await post("/api/control", { running: false });
+    const before = (await watch(300)).frame.tick as number;
+
+    // Out: a gzipped file with a header saying what it is.
+    const out = await fetch(`${base}/api/worlds/export`);
+    expect(out.status).toBe(200);
+    expect(out.headers.get("content-disposition")).toMatch(/\.psyche"$/);
+    const file = new Uint8Array(await out.arrayBuffer());
+    expect([file[0], file[1]]).toEqual([0x1f, 0x8b]);
+    const world = JSON.parse(gunzipSync(file).toString("utf8")) as Record<string, any>;
+    expect(world).toMatchObject({ format: "psyche-world", version: 1, scenario: "region" });
+
+    // In: kept as a save under a free name, and nothing is loaded by it.
+    const first = await send(file), second = await send(file);
+    expect(first.status).toBe(200);
+    expect(second.body.name).toBe(`${first.body.name} 2`);
+    expect(second.body.slots!.find((s) => s.name === first.body.name)).toMatchObject({ seed: world.seed, people: world.summary.people });
+    expect((await watch(300)).frame.tick).toBe(before);
+
+    // Things that are not worlds are turned away with a reason.
+    for (const bad of ["hello", JSON.stringify({ seed: 1 }), gzipSync("not json"), file.subarray(0, 60)]) {
+      const r = await send(bad);
+      expect(r.status).toBe(422);
+      expect(r.body.error).toBeTruthy();
+    }
+
+    // A file that looks right and isn't: it gets past the checks, fails when the world is built and
+    // run, and the world that was running is put back exactly.
+    const town = world.region.state.towns[0].id as string;
+    const person = world.region.worlds[town].order[0] as string;
+    world.region.worlds[town].agents[person] = { broken: true };
+    world.region.worlds[town].minds[person] = { broken: true };
+    world.name = "Sneaky";
+    const sneaky = await send(gzipSync(JSON.stringify(world)));
+    expect(sneaky.status).toBe(200);
+    const refused = await post("/api/slots/load", { name: sneaky.body.name });
+    expect(refused.status).toBe(422);
+    expect(refused.body.error).toMatch(/still running/);
+    expect((await watch(300)).frame.tick).toBe(before);
+
+    // A good one loads, and the game carries on from it.
+    await post("/api/control", { running: true, speed: 400 });
+    await new Promise((r) => setTimeout(r, 1500));
+    await post("/api/control", { running: false });
+    expect((await post("/api/slots/load", { name: first.body.name })).status).toBe(200);
+    expect((await watch(300)).frame.tick).toBe(before);
+    await post("/api/control", { running: true, speed: 400 });
+    await new Promise((r) => setTimeout(r, 1500));
+    expect((await watch(300)).frame.tick as number).toBeGreaterThan(before);
+    await post("/api/control", { running: false });
+  }, 60_000);
+  it("lets you walk in: what you do comes back with how they took it, and rides the stream", async () => {
+    type You = { name: string; here: boolean; place: string; deeds: { id: string; reactions: { agent: string; trace: string; liking: number[] }[] }[] };
+    expect((await post("/api/you/act", { act: { act: "fly" } })).status).toBe(400);
+    expect((await post("/api/you/act", { act: { act: "greet", to: "mara" } })).body.error).toMatch(/not in this world/);
+    const arrived = await post("/api/you/act", { act: { act: "arrive", name: "Bryce" } });
+    expect(arrived.status).toBe(200);
+    expect(arrived.body.you).toMatchObject({ name: "Bryce", here: true, food: 6 });
+
+    // Say hello to whoever is awake (letting the night pass if it is one).
+    let hello: Awaited<ReturnType<typeof post>> | undefined;
+    for (let tries = 0; tries < 12 && hello?.status !== 200; tries++) {
+      const people = (await watch(300)).frame["scene.people"] as { id: string; asleep?: boolean; child?: boolean }[];
+      const up = people.find((p) => !p.asleep && !p.child);
+      if (up) hello = await post("/api/you/act", { act: { act: "greet", to: up.id } });
+      else {
+        await post("/api/control", { running: true, speed: 400 });
+        await new Promise((r) => setTimeout(r, 700));
+        await post("/api/control", { running: false, speed: 4 });
+      }
+    }
+    expect(hello?.status).toBe(200);
+    const deed = hello!.body.deed as You["deeds"][number];
+    expect(deed.reactions[0]!.trace).toBeTruthy();
+    expect(deed.reactions[0]!.liking).toHaveLength(2);
+    // The same deed is in the frame everyone watching gets.
+    const you = (await watch(300)).frame.you as You;
+    expect(you.deeds[0]!.id).toBe(deed.id);
+    // The heartbeat says where you are standing.
+    const beat = await post("/api/you/beat", { place: "store" });
+    expect((beat.body.you as You).place).toBe("store");
+    expect((beat.body.you as You).here).toBe(true);
   });
 });

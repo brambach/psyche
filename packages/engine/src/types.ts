@@ -2,6 +2,8 @@
 // Text (memories, speech, monologue) is rendered from this state, never the other way round.
 
 /** Simulated minutes since Day 1, 00:00. Negative ticks are backstory. */
+import type { Development } from "./develop/types.js";
+
 export type Tick = number;
 export type AgentId = string;
 
@@ -100,6 +102,12 @@ export interface Source {
   from?: AgentId;
   /** Which belief or episode the content came from, if known. */
   ref?: string;
+  /**
+   * Tellings between this memory and the one it points to that are no longer kept. A story many
+   * generations old keeps its nearest tellers and the person it began with; the long-dead in
+   * between are let go, and counted here.
+   */
+  elided?: number;
 }
 
 /**
@@ -298,6 +306,12 @@ export interface Ablations {
   traitDrift: boolean;
   /** "auto", or force one system. */
   systemTwo: "auto" | "always" | "never";
+  /** Attachment switches on under threat and colours how closeness is read (Mikulincer & Shaver 2007). */
+  attachmentSystem: boolean;
+  /** Conscience differs from person to person in what it is about (Graham, Haidt & Nosek 2009). */
+  moralFoundations: boolean;
+  /** A settled identity makes a person's own values count for more (Marcia 1966). */
+  identityFormation: boolean;
 }
 
 export const DEFAULT_ABLATIONS: Ablations = {
@@ -313,6 +327,9 @@ export const DEFAULT_ABLATIONS: Ablations = {
   sleepConsolidation: true,
   traitDrift: true,
   systemTwo: "auto",
+  attachmentSystem: true,
+  moralFoundations: true,
+  identityFormation: true,
 };
 
 export interface Pronouns {
@@ -347,6 +364,11 @@ export interface MindState {
   expressions: StateExpression[];
   lastSleep: Tick;
   ablations: Ablations;
+  /**
+   * How they came to be who they are: upbringing, attachment history, conscience, identity (develop/).
+   * Absent on minds made before this existed, which then behave exactly as they did.
+   */
+  dev?: Development;
   /** Traits the player has locked: nightly drift can't move them. */
   locks?: { trait: TraitName; value: number; heritable?: boolean; edit: string }[];
 }

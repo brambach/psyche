@@ -39,7 +39,8 @@ export interface TownTerrain {
   trees: Tree[];
 }
 
-const shoreAt = (z: number) => 26 + 5 * Math.sin(z / 17) + 3 * Math.sin(z / 7 + 1);
+/** Where the waterline runs (the x of the shore at each z): sea to the west of it, land to the east. */
+export const shoreAt = (z: number) => 26 + 5 * Math.sin(z / 17) + 3 * Math.sin(z / 7 + 1);
 
 /** Smooth value noise in [0, 1). */
 function noise(seed: number, x: number, z: number, scale: number): number {
@@ -56,6 +57,24 @@ function noise(seed: number, x: number, z: number, scale: number): number {
   const b = h(i, j + 1) + (h(i + 1, j + 1) - h(i, j + 1)) * s(u);
   return a + (b - a) * s(v);
 }
+
+/**
+ * The height of the land at a column before anything is levelled or built: the top solid block. It
+ * is defined everywhere, not only on the town's grid, so a view can carry the coast and the hills
+ * on past the edge of the town.
+ */
+export function naturalHeight(seed: number, x: number, z: number): number {
+  const { h, sea } = TOWN;
+  const xs = shoreAt(z);
+  if (x < xs) return sea - 1 - Math.min(3, Math.floor((xs - x) / 3));
+  const rise = (x - xs) / 26;
+  const hill = Math.max(0, 8 - Math.hypot(x - 176, z - 28) / 4.5);
+  const roll = noise(seed, x, z, 22) * 1.8 + noise(seed + 1, x, z, 9) * 0.5;
+  return Math.min(h - 8, Math.floor(sea + 1 + rise + hill + roll - 0.6));
+}
+
+/** Smooth noise in [0, 1) at a scale, for views that dress the land (the same noise the terrain uses). */
+export const landNoise = noise;
 
 /** The plot for home number `k` (in the order homes were added). */
 export function homePlot(k: number, ground?: number[]): Plot {
@@ -75,16 +94,7 @@ export function townTerrain(seed: number): TownTerrain {
 
   for (let z = 0; z < d; z++)
     for (let x = 0; x < w; x++) {
-      const xs = shoreAt(z);
-      let top: number;
-      if (x < xs) top = sea - 1 - Math.min(3, Math.floor((xs - x) / 3));
-      else {
-        const rise = (x - xs) / 26;
-        const hill = Math.max(0, 8 - Math.hypot(x - 176, z - 28) / 4.5);
-        const roll = noise(seed, x, z, 22) * 1.8 + noise(seed + 1, x, z, 9) * 0.5;
-        top = Math.min(h - 8, Math.floor(sea + 1 + rise + hill + roll - 0.6));
-      }
-      ground[x + z * w] = top;
+      ground[x + z * w] = naturalHeight(seed, x, z);
     }
 
   const level = (x0: number, z0: number, x1: number, z1: number, to?: number) => {

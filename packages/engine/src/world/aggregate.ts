@@ -29,6 +29,11 @@ import { ageOf, CHILDHOOD, hearStory, isChild, lifeTurn, normHeld, settleNorms, 
 import { CROSSING, other } from "./people.js";
 import { GALE_CHANCE, JOBS, RATE, RATION, SEASON_YIELD, SPOIL, seasonOf, type Pledge } from "./village.js";
 import { feed, thirdPerson, type Sink, type Why, type WorldState } from "./world.js";
+import { civOf, mark } from "./civ/base.js";
+import { spoilFactor, toolBonus } from "./civ/economy.js";
+import { civSeason } from "./civ/index.js";
+import { electCiv } from "./civ/polity.js";
+import { writtenFounding } from "./civ/records.js";
 
 const DAY = 1440;
 /** Hours of real work a day, once walking, meals and talk are taken out. */
@@ -92,7 +97,20 @@ export function materialize(agg: WorldState): WorldState {
  * remembered only the memories someone living still traces a story back to.
  */
 export function compactMinds(w: WorldState): void {
-  for (const id of w.order) compactMind(w, w.minds[id]!);
+  // A memory someone else was told a story from is kept, so the story can always be followed back.
+  const told = toldFrom(w);
+  // Who lives with whom and whose children are whose, worked out once for the whole town.
+  const v = w.village!;
+  const kin = new Map<AgentId, AgentId[]>();
+  const push = (id: AgentId, other: AgentId) => {
+    const xs = kin.get(id);
+    if (xs) xs.push(other);
+    else kin.set(id, [other]);
+  };
+  for (const x of w.order) for (const p of v.life[x]?.parents ?? []) push(p, x);
+  const homes = new Map<AgentId, AgentId[]>();
+  for (const h of Object.values(v.households)) for (const m of h.members) if (!homes.has(m)) homes.set(m, h.members);
+  for (const id of w.order) compactMind(w, w.minds[id]!, told, kin.get(id) ?? [], homes.get(id) ?? []);
   pruneDead(w);
 }
 
@@ -113,22 +131,50 @@ export function tidy(w: WorldState): void {
   for (const r of Object.values(w.rumors)) if (r.hops.length > 40) r.hops.splice(0, r.hops.length - 40);
 }
 
-/** Strip the minds of the dead (all who aren't living, or only those in `only`) to what the living's memories need. */
+/** A story keeps this many of its nearest tellers; past that it points straight at whoever it began with. */
+const TELLINGS_KEPT = 8;
+
+/**
+ * Strip the minds of the dead (all who aren't living, or only those in `only`) to what the living's
+ * memories need: the memories their stories were told from, teller by teller, back to someone who
+ * lived it. A chain many generations long is shortened in the middle (see Source.elided), so what
+ * a town has to remember of its dead does not grow for ever.
+ */
 function pruneDead(w: WorldState, only?: Set<AgentId>): void {
   const living = new Set(w.order);
-  // Follow every kept memory's told-by pointer, so the chains stay whole.
+  const find = (agent: AgentId, id: string) => w.minds[agent]?.episodes.find((e) => e.id === id);
+  // Follow every kept memory's told-by pointer, nearest tellings first, so the chains stay whole.
   const needed = new Map<AgentId, Set<string>>();
-  const queue: { agent: AgentId; ep: Episode }[] = w.order.flatMap((id) => w.minds[id]!.episodes.map((ep) => ({ agent: id, ep })));
-  while (queue.length) {
-    const { ep } = queue.pop()!;
-    const s = ep.source;
-    if (s.kind !== "told" || !s.from || !s.ref) continue;
-    const set = needed.get(s.from) ?? new Set<string>();
-    if (set.has(s.ref)) continue;
-    set.add(s.ref);
-    needed.set(s.from, set);
-    const next = w.minds[s.from]?.episodes.find((e) => e.id === s.ref);
-    if (next) queue.push({ agent: s.from, ep: next });
+  let level: Episode[] = w.order.flatMap((id) => w.minds[id]!.episodes);
+  for (let depth = 0; level.length; depth++) {
+    const next: Episode[] = [];
+    for (const ep of level) {
+      const s = ep.source;
+      if (s.kind !== "told" || !s.from || !s.ref) continue;
+      if (depth >= TELLINGS_KEPT && !living.has(s.from)) {
+        // Far enough back: point this telling at where the story began, and let the ones between go.
+        let at = { agent: s.from, ep: find(s.from, s.ref) };
+        let skipped = 0;
+        const seen = new Set<string>();
+        while (at.ep && at.ep.source.kind === "told" && at.ep.source.from && at.ep.source.ref && !seen.has(`${at.agent}/${at.ep.id}`)) {
+          seen.add(`${at.agent}/${at.ep.id}`);
+          const on = find(at.ep.source.from, at.ep.source.ref);
+          if (!on) break;
+          skipped += 1 + (at.ep.source.elided ?? 0);
+          at = { agent: at.ep.source.from, ep: on };
+        }
+        if (at.ep && skipped > 0) ep.source = { kind: "told", from: at.agent, ref: at.ep.id, elided: (s.elided ?? 0) + skipped };
+      }
+      const from = ep.source.from!;
+      const ref = ep.source.ref!;
+      const set = needed.get(from) ?? new Set<string>();
+      if (set.has(ref)) continue;
+      set.add(ref);
+      needed.set(from, set);
+      const told = find(from, ref);
+      if (told) next.push(told);
+    }
+    level = next;
   }
   for (const [id, m] of Object.entries(w.minds)) {
     if (living.has(id) || (only && !only.has(id))) continue;
@@ -146,16 +192,91 @@ function pruneDead(w: WorldState, only?: Set<AgentId>): void {
   }
 }
 
+/** Years the dead stay on a town's books after nobody's memories need them. */
+const REMEMBERED_YEARS = 30;
+/** A craft's line keeps this many of its nearest teachers; past that it points straight at whoever it began with. */
+const TEACHERS_KEPT = 8;
+
+/**
+ * A town on rules for centuries would otherwise keep a line for everyone who ever lived in it.
+ * Once a year, let go of the long gone: people who are not alive here, whom no kept memory points
+ * to, who are nobody living's parent or partner, and whose craft nobody living learned down a line
+ * through them. What they did is in the chronicle; what they said is in the memories of the living.
+ */
+export function forget(w: WorldState): number {
+  const v = w.village!;
+  const living = new Set(w.order);
+  const keep = new Set<AgentId>();
+  for (const id of w.order) {
+    const l = v.life[id];
+    for (const p of l?.parents ?? []) keep.add(p);
+    if (l?.partner) keep.add(l.partner);
+  }
+  // Who taught whom: the line behind each craft someone living knows, nearest teachers first. A
+  // line many generations long is shortened in the middle (see Know.elided), as stories are.
+  const K = v.knowledge;
+  if (K) {
+    const has = (id: AgentId, craft: string) => K.known[id]?.find((k) => k.craft === craft);
+    let level: { id: AgentId; craft: string }[] = w.order.flatMap((id) => (K.known[id] ?? []).map((k) => ({ id, craft: k.craft })));
+    const seen = new Set<string>();
+    for (let depth = 0; level.length; depth++) {
+      const next: { id: AgentId; craft: string }[] = [];
+      for (const { id, craft } of level) {
+        if (seen.has(`${id}/${craft}`)) continue;
+        seen.add(`${id}/${craft}`);
+        keep.add(id);
+        const k = has(id, craft);
+        if (!k || k.how !== "taught" || !k.from) continue;
+        if (depth >= TEACHERS_KEPT && !living.has(k.from)) {
+          let at = k.from;
+          let skipped = 0;
+          const walked = new Set<AgentId>([id]);
+          for (let on = has(at, craft); on && on.how === "taught" && on.from && has(on.from, craft) && !walked.has(at); on = has(at, craft)) {
+            walked.add(at);
+            skipped += 1 + (on.elided ?? 0);
+            at = on.from;
+          }
+          if (skipped > 0) {
+            k.from = at;
+            k.elided = (k.elided ?? 0) + skipped;
+          }
+        }
+        next.push({ id: k.from, craft });
+      }
+      level = next;
+    }
+  }
+  const since = w.tick - REMEMBERED_YEARS * v.seasonDays * 4 * DAY;
+  let gone = 0;
+  const ids = new Set([...Object.keys(w.agents), ...Object.keys(v.life), ...Object.keys(K?.known ?? {})]);
+  for (const id of ids) {
+    if (living.has(id) || keep.has(id) || w.minds[id]) continue;
+    const died = v.life[id]?.died;
+    if (died !== undefined && died > since) continue;
+    delete w.agents[id];
+    delete v.life[id];
+    if (K) delete K.known[id];
+    if (v.money) {
+      delete v.money.held[id];
+      delete v.money.accept[id];
+    }
+    gone++;
+  }
+  if (w.events.length > 200) w.events.splice(0, w.events.length - 200);
+  return gone;
+}
+
 const charge = (e: Episode) => Math.abs(e.valence) * (0.3 + e.arousal);
 const FOUNDING_TOPICS = ["founding", "crossing", "leaving"];
 
-function compactMind(w: WorldState, m: MindState): void {
+function compactMind(w: WorldState, m: MindState, told: Set<string>, children: AgentId[], home: AgentId[]): void {
   const v = w.village!;
   const l = v.life[m.id];
   for (const s of m.schemas) if (s.deepenedBy && s.deepenedBy.length > 4) s.deepenedBy.splice(0, s.deepenedBy.length - 4);
   // Beliefs: everything about the town and the other towns, and the most confident of the rest.
-  const civic = m.beliefs.filter((b) => b.about === "village" || b.about === "faith" || b.about.startsWith("town:"));
-  const rest = m.beliefs.filter((b) => !civic.includes(b)).sort((a, b) => b.confidence - a.confidence).slice(0, 15);
+  const isCivic = (b: MindState["beliefs"][number]) => b.about === "village" || b.about === "faith" || b.about.startsWith("town:");
+  const civic = m.beliefs.filter(isCivic);
+  const rest = m.beliefs.filter((b) => !isCivic(b)).sort((a, b) => b.confidence - a.confidence).slice(0, 15);
   m.beliefs = [...civic, ...rest];
   for (const b of m.beliefs) {
     b.evidence = b.evidence.slice(-4);
@@ -166,7 +287,7 @@ function compactMind(w: WorldState, m: MindState): void {
   const keep = new Set<string>([
     ...m.schemas.flatMap((s) => [...(s.origin ?? []), ...(s.deepenedBy ?? []).map((d) => d.episode)]),
     ...m.beliefs.flatMap((b) => b.evidence.slice(-2)),
-    ...m.episodes.filter((e) => e.topics.some((t) => FOUNDING_TOPICS.includes(t))).map((e) => e.id),
+    ...m.episodes.filter((e) => e.topics.some((t) => FOUNDING_TOPICS.includes(t)) || told.has(`${m.id}/${e.id}`)).map((e) => e.id),
   ]);
   const others = m.episodes.filter((e) => !keep.has(e.id)).sort((a, b) => charge(b) - charge(a) || b.tick - a.tick);
   for (const e of others.slice(0, 10)) keep.add(e.id);
@@ -177,7 +298,7 @@ function compactMind(w: WorldState, m: MindState): void {
     e.versions = e.versions.slice(-2);
   }
   // The people they are closest to, or feel most strongly about, and family.
-  const kin = new Set<AgentId>([...(l?.parents ?? []), ...(l?.partner ? [l.partner] : []), ...w.order.filter((x) => v.life[x]?.parents.includes(m.id)), ...(Object.values(v.households).find((h) => h.members.includes(m.id))?.members ?? [])]);
+  const kin = new Set<AgentId>([...(l?.parents ?? []), ...(l?.partner ? [l.partner] : []), ...children, ...home]);
   const ranked = Object.entries(m.others)
     .filter(([id]) => id !== "visitor")
     .sort((a, b) => b[1].bond + Math.abs(b[1].liking - 0.5) - (a[1].bond + Math.abs(a[1].liking - 0.5)));
@@ -215,14 +336,21 @@ export async function aggSeason(w: WorldState, faculties: Faculties, sink: Sink)
   acquaint(w);
   await lifeTurn(w, faculties, sink);
   knowledgeTurn(w, sink);
-  if (v.season === "spring") elect(w, sink);
+  if (v.season === "spring") {
+    if (civOf(w)) await electCiv(w, faculties, sink, false);
+    else elect(w, sink);
+  }
   aggWorks(w, sink);
   aggMoney(w, sink);
   moneySeason(w);
+  await civSeason(w, faculties, sink, false);
   await pledgeRound(w, faculties, sink);
   if (v.season === "summer" && yearOf(w) > 1) for (const f of [...new Set([v.founding ?? CROSSING, CROSSING])]) tellFounding(w, f);
   bedtimes(w);
-  if (v.season === "spring") compactMinds(w);
+  if (v.season === "spring") {
+    compactMinds(w);
+    forget(w);
+  }
 }
 
 /** A season of work and meals, household by household, a day at a time. */
@@ -241,7 +369,7 @@ function economy(w: WorldState, sink: Sink): void {
       const a = w.agents[id]!;
       const job = JOBS[a.role];
       if (!job || isChild(w, id)) continue;
-      const pace = WORK_HOURS * (0.5 + 0.5 * w.minds[id]!.needs.energy);
+      const pace = WORK_HOURS * (0.5 + 0.5 * w.minds[id]!.needs.energy) * (1 + toolBonus(w, id));
       if (job.makes === "food") {
         let y = SEASON_YIELD[v.season][a.role] ?? 1;
         if (a.role === "farmer" && v.blight) y *= 0.4;
@@ -251,6 +379,7 @@ function economy(w: WorldState, sink: Sink): void {
     }
     const need = ration * hh.members.reduce((n, m) => n + (isChild(w, m) ? 0.6 : 1), 0);
     let short = 0;
+    const rot = spoil * spoilFactor(w, hh);
     for (let d = 0; d < sd; d++) {
       hh.food += made;
       const surplus = hh.food - need * 3;
@@ -270,7 +399,7 @@ function economy(w: WorldState, sink: Sink): void {
         gap -= take;
         if (gap > 0.05) short += gap / need;
       }
-      hh.food *= 1 - spoil;
+      hh.food *= 1 - rot;
     }
     hh.food = Number(hh.food.toFixed(2));
     // Those who went short lose strength (the oldest and youngest last to be fed least).
@@ -288,6 +417,7 @@ function economy(w: WorldState, sink: Sink): void {
   v.store.food = Number(v.store.food.toFixed(1));
   build(w);
   if (hungry.size >= Math.max(3, w.order.length * 0.15)) {
+    mark(w, "hunger");
     const growers = w.order.filter((x) => JOBS[w.agents[x]!.role]?.makes === "food" && !isChild(w, x)).length;
     const adults = w.order.filter((x) => !isChild(w, x)).length;
     const why: Why[] = [
@@ -312,9 +442,10 @@ function acquaint(w: WorldState): void {
   const ids = w.order.filter((x) => ageOf(w, x) >= 10);
   // The unpartnered young seek each other out (at the fire, at the harvest, at the landing).
   const single = ids.filter((x) => !v.life[x]?.partner && ageOf(w, x) >= 16 && ageOf(w, x) < 40);
+  const isSingle = new Set(single);
   for (const a of ids) {
     const A = w.minds[a]!;
-    const pool = single.includes(a) && single.length > 1 ? single : ids;
+    const pool = isSingle.has(a) && single.length > 1 ? single : ids;
     for (let k = 0; k < 4; k++) {
       const b = pool[Math.floor(nextRandom(w) * pool.length)]!;
       if (b === a) continue;
@@ -417,7 +548,8 @@ export function tellFounding(w: WorldState, founding: string): boolean {
   const told = teller.ep!;
   // Told again, a story drifts a little: this year's telling may level or sharpen it.
   const base = thirdPerson(render(told), T.name, T.pronouns);
-  const version = nextRandom(w) < 0.2 ? drift(base, w) : base;
+  // Once it is written down it is read, not told, and stops changing (civ/records.ts).
+  const version = writtenFounding(w, founding) ?? (nextRandom(w) < 0.2 ? drift(base, w) : base);
   c.foundingDays.push({ tick: w.tick, teller: teller.id, version });
   if (c.foundingDays.length > 60) c.foundingDays.splice(0, c.foundingDays.length - 60);
   const toldOn = toldFrom(w);
@@ -440,6 +572,14 @@ function bedtimes(w: WorldState): void {
     const kids = hh.members.filter((m) => ageOf(w, m) >= 3 && ageOf(w, m) < CHILDHOOD);
     const adults = hh.members.filter((m) => !isChild(w, m));
     if (!kids.length || !adults.length) continue;
+    // What each child has already been told, and by whom, looked up once.
+    const heard = new Map<AgentId, Set<string>>();
+    for (const k of kids) {
+      const set = new Set<string>();
+      for (const e of w.minds[k]!.episodes) if (e.source.kind === "told") set.add(`${e.source.from}/${e.source.ref}`);
+      heard.set(k, set);
+    }
+    const heardFrom = (k: AgentId, teller: AgentId, ref: string) => heard.get(k)!.has(`${teller}/${ref}`);
     for (let night = 0; night < 2; night++) {
       if (nextRandom(w) > 0.55) continue;
       let best: { teller: AgentId; ep: Episode; score: number } | undefined;
@@ -447,18 +587,20 @@ function bedtimes(w: WorldState): void {
         const m = w.minds[t]!;
         for (const ep of m.episodes) {
           if (/^(talk_|pc_|ev_pledge|ev_hungry|ev_tent|ev_gale|ev_design|ev_birth|ev_pair)/.test(ep.id)) continue;
-          if (kids.every((k) => heardFrom(w, k, t, ep.id))) continue;
+          if (kids.every((k) => heardFrom(k, t, ep.id))) continue;
           const score = charge(ep) * (0.5 + m.traits.extraversion) + (m.schemas.some((s) => s.origin?.includes(ep.id)) ? 0.6 : 0);
           if (!best || score > best.score) best = { teller: t, ep, score };
         }
       }
       if (!best || best.score < 0.2) continue;
-      for (const k of kids) if (!heardFrom(w, k, best.teller, best.ep.id)) implant(w, best.teller, best.ep, k, 0.35);
+      for (const k of kids)
+        if (!heardFrom(k, best.teller, best.ep.id)) {
+          implant(w, best.teller, best.ep, k, 0.35);
+          heard.get(k)!.add(`${best.teller}/${best.ep.id}`);
+        }
     }
   }
 }
-
-const heardFrom = (w: WorldState, listener: AgentId, teller: AgentId, ref: string) => w.minds[listener]!.episodes.some((e) => e.source.kind === "told" && e.source.from === teller && e.source.ref === ref);
 
 const SHARPEN: [RegExp, string][] = [
   [/\bthe storm\b/, "the great storm"],

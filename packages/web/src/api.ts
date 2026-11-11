@@ -1,4 +1,4 @@
-import type { VoiceSummary, VoiceLineage, Guise } from "@psyche/engine";
+import type { VoiceSummary, VoiceLineage, Guise, DevelopmentView, CivView, RegionCivView, YouView } from "@psyche/engine";
 import type { HeresyView, Faction, Intention, Butterfly, EngineChain, NestedPersonView, NestedWorldView, EditRecord, MindEdit, TraitName, AwaySummary, Beat, ChronicleEntry, Notice, Scene3D, Timeline, Ablations, AgentState, AtlasEntry, MythComparison, RegionView, Concern, Counterfactual, CounterfactualEdit, DivergenceEntry, FeedItem, LedgerNode, MindState, Place, PlaceId, Rumor, SaysVsWas, Trace, VillageView, WhyTree, WorldInput } from "@psyche/engine";
 
 export interface AgentSummary {
@@ -109,6 +109,8 @@ export interface AgentView {
   actual: Record<string, number>;
   intent?: Intention;
   past?: Intention[];
+  /** Where they come from: attachment, upbringing, identity, conscience, and why. */
+  roots?: DevelopmentView;
   purse?: { good: string; held: number; accept: number; owes: { to: string; name: string; amount: number; overdue: boolean }[]; owed: { by: string; name: string; amount: number; overdue: boolean }[] };
 }
 
@@ -173,10 +175,22 @@ export const api = {
   years: (years: number) => call<WorldView>("/api/years", { years }),
   counterfactual: (edit: CounterfactualEdit & { days?: number }) => call<Counterfactual>("/api/counterfactual", edit),
   account: (agent: string, trace: string) => call<SaysVsWas>(`/api/account?${new URLSearchParams({ agent, trace })}`),
+  civ: (town?: string) => call<CivData>(`/api/civ${town ? `?town=${encodeURIComponent(town)}` : ""}`),
   heresy: () => call<HeresyView>("/api/heresy"),
   heresyAnswer: (agent: string, text: string) => call<HeresyView>("/api/heresy/answer", { agent, text }),
   slots: () => call<{ slots: Slot[] }>("/api/slots"),
-  saveSlot: (name: string) => call<{ slots: Slot[] }>("/api/slots/save", { name }),
+  saveSlot: (name: string, thumb?: string) => call<{ slots: Slot[] }>("/api/slots/save", { name, thumb }),
+  snapshots: () => call<{ snapshots: SnapshotFile[] }>("/api/snapshots"),
+  loadSnapshot: (file: string) => call<{ snapshots: SnapshotFile[] }>("/api/snapshots/load", { file }),
+  /** Send a world file someone shared. It is checked and kept as a save; it does not replace the running world. */
+  importWorld: async (file: Blob): Promise<{ slots: Slot[]; name: string }> => {
+    const res = await fetch("/api/worlds/import", { method: "POST", headers: { "content-type": "application/octet-stream" }, body: file });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+    return data;
+  },
+  /** Where a world file downloads from: a named save, or the world as it stands now. */
+  exportUrl: (name?: string) => `/api/worlds/export${name ? `?${new URLSearchParams({ name })}` : ""}`,
   loadSlot: (name: string) => call<{ slots: Slot[] }>("/api/slots/load", { name }),
   deleteSlot: (name: string) => call<{ slots: Slot[] }>("/api/slots/delete", { name }),
   speak: (b: { guise: Guise; text: string; to?: string; place?: string }) => call<{ summary: VoiceSummary }>("/api/voice/speak", b),
@@ -200,6 +214,18 @@ export interface Slot {
   year?: number;
   towns?: number;
   people?: number;
+  seed?: number;
+  /** Bytes on disk. */
+  size?: number;
+  /** A small picture of the world when it was saved. */
+  thumb?: string;
+}
+
+/** One of the hourly copies the server keeps. */
+export interface SnapshotFile {
+  file: string;
+  savedAt: number;
+  size: number;
 }
 
 /** One frame of the live game, as the stream builds it (see the server's gameFrame). */
@@ -249,12 +275,25 @@ export interface GameView {
   notices?: Notice[];
   /** Your words in this town, once you have spoken. */
   voice?: VoiceSummary;
+  /** You, in this town in person, once you have walked in (you/Walk.tsx). */
+  you?: YouView | null;
   /** The town's 3D scene, put back together from its `scene.*` keys. */
   scene?: Scene3D;
   /** The made world at a glance (absent when it is switched off). */
   heresy?: { factions: Record<Faction, number>; open: { who: string; name: string; tick: number }[]; anomalies: number; leader?: HeresyView["leader"] };
+  /** The civilization systems in the watched town at a glance (absent when they are off). */
+  civ?: { specialists: number; factions: number; literate: boolean; sick?: string; closed: boolean; raids: number; treaties: number };
   /** Towns that have started counting, and the worlds inside their engines. */
   engines?: EngineChip[];
+}
+
+/** The civilization panel: one town's systems, and what has passed between the towns. */
+export interface CivData {
+  town: string;
+  name: string;
+  year: number;
+  civ: CivView;
+  region?: RegionCivView;
 }
 
 export interface EngineChip {

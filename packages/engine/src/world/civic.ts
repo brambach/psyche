@@ -19,15 +19,17 @@ import type { Faculties, Percept } from "../ports.js";
 import { nextId } from "../rng.js";
 import type { AgentId, Episode, MindState } from "../types.js";
 import { ageOf, hearStory, isChild, normHeld, storeNorm } from "./life.js";
-import { eventPercept, feed, personName, record, thirdPerson, type Sink, type WorldState } from "./world.js";
+import { eventPercept, feed, personName, record, thirdPerson, type Sink, type Why, type WorldState } from "./world.js";
 import type { Pledge, VillageState } from "./village.js";
+import { writtenFounding } from "./civ/records.js";
 
 export interface Law {
   id: string;
   /** The words, as written by whoever proposed it. */
   text: string;
-  kind: "store_minimum";
-  /** Share of the household's surplus that must go into the store each evening. */
+  /** The store law is the first kind; the others come with the civilization systems (civ/polity.ts). */
+  kind: "store_minimum" | "fair_price" | "jubilee" | "closed_landing";
+  /** Share of the household's surplus that must go into the store each evening (the store law only). */
   rate: number;
   author: AgentId;
   tick: number;
@@ -37,6 +39,10 @@ export interface Law {
   because: { norm: string; round: number; held: AgentId[] };
   /** Households made to give under it, with when. */
   compelled: { agent: AgentId; tick: number }[];
+  /** When it was struck down or let drop (it then no longer counts as passed). */
+  repealed?: number;
+  /** What led to it, for laws that come out of an election or a hard season. */
+  why?: Why[];
 }
 
 export interface Election {
@@ -197,8 +203,8 @@ export function rootOf(minds: Record<AgentId, MindState>, agent: AgentId, ep: Ep
     seen.add(`${at.agent}/${at.episode.id}`);
     const next = minds[at.episode.source.from]?.episodes.find((e) => e.id === at.episode.source.ref);
     if (!next) break;
+    hops += 1 + (at.episode.source.elided ?? 0);
     at = { agent: at.episode.source.from, episode: next };
-    hops++;
   }
   return { ...at, hops };
 }
@@ -227,7 +233,8 @@ export async function foundingDay(world: WorldState, founding: string, faculties
   const teller = holders.sort((a, b) => ageOf(world, b.id) - ageOf(world, a.id) || a.id.localeCompare(b.id))[0]!;
   const T = world.minds[teller.id]!;
   const told = teller.ep!;
-  const version = thirdPerson(render(told), T.name, T.pronouns);
+  // Once it is written down it is read out, not told, and stops changing (civ/records.ts).
+  const version = writtenFounding(world, founding) ?? thirdPerson(render(told), T.name, T.pronouns);
   const line = (await faculties.speak({
     self: identityOf(T),
     listener: { id: "everyone", name: "everyone at the fire" },

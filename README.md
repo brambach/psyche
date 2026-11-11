@@ -17,6 +17,7 @@ npm run island -- 3 7 --storm   # three days of island life in the terminal (see
 npm run village -- 8 11         # eight days of Hollow Bay, the village, in the terminal
 npm run generations -- 10       # ten years of Hollow Bay on the mock: lives, norms, inherited fears
 npm run region -- 22            # a region of towns: splits, trade, laws, and the crossing told differently
+npm run world                   # a realm of 50,000 minds on worker threads that runs for days (docs/world-server.md)
 npm test           # engine and world tests
 npm run demo       # the original single-mind demo (M0)
 ```
@@ -37,6 +38,7 @@ Every model call goes through a budget governor (`packages/faculties/src/governo
 - **Tiers.** Speech, perception, memory reconstruction and dreams run on `claude-haiku-5-5`; deliberation and the Architect on `claude-sonnet-5-5`. Override any faculty with `PSYCHE_MODEL_PERCEIVE`, `PSYCHE_MODEL_SPEAK`, `PSYCHE_MODEL_RECONSTRUCT`, `PSYCHE_MODEL_DELIBERATE`, `PSYCHE_MODEL_DREAM` or `PSYCHE_MODEL_ARCHITECT`.
 - **Templates for small moments.** The engine scores how much each line matters. Greetings and small talk come from templates; replies that tell a memory, answer you, or follow deliberation go to the model. Whoever you are looking inside always speaks with the model.
 - **A daily cap**, default $10 (`PSYCHE_DAILY_CAP`), shared by every run on the machine and kept in `~/.psyche/usage.json` (every call is logged beside it in `usage.log`). At 80% of the cap Sonnet calls drop to Haiku, at 90% only the most salient lines use the model, and at 100% everything falls back to the mock until the next UTC day. The world keeps running throughout.
+- **One Opus call per question to the Historian** (`claude-opus-5-5`, `PSYCHE_MODEL_HISTORIAN`), only when you ask one. Nothing else uses Opus.
 - **A live meter.** The `$` chip in the island header opens a breakdown by faculty and model. `npm run island` and `npm run why` print it too. On the mock, the meter shows what the same run would have cost on Claude.
 
 - **Two tiers of attention (L0 and L1).** In the village, the Kettle five and whoever you are watching are L0: Sonnet deliberation and model speech for anything that matters. The settlers are L1: Haiku only, and only their more salient lines go to the model. Set the named characters with `governor.core`.
@@ -52,7 +54,7 @@ On the mock, five islanders come to about $0.07 per sim day, almost all of it So
 - **The director.** Every recent moment is scored by what kind of moment it is (a death over a birth over a house finished over small talk; `beats`). The director cuts to the best one not yet shown, glides the camera there, holds it for a few seconds with a caption, and moves on. With nothing new it follows someone at work or takes in the town from above. Touch the camera and it's yours; leave it alone for 20 seconds and the director takes it back (key D turns it off).
 - **Notices.** History (from the region's chronicle: foundings, leaders, laws, quarrels, lost crafts), big moments in the town you're watching, and warnings about what is coming: a craft whose last keeper is old ("Only Greta (71) still knows herb lore in Saltmarsh"), a town big enough to split in spring with the person who would lead the leavers (the same test the split itself runs), a thin store going into winter. Click one to fly there, switching towns if need be.
 - **While you were away.** With nobody watching for two minutes, speech goes on the mock (`PSYCHE_AWAY_AFTER` in seconds), so an unattended world costs nothing. When you come back after at least a sim day, you get what changed: years passed, each town's population then and now, new towns, and the dozen most significant chronicle entries.
-- **Saves.** The world saves itself every minute and keeps an hourly copy for the last day (`data/snapshots`). Name a world in the menu (☰) to keep it (`data/slots`); load it later to play it out differently. Loading replaces the running world.
+- **Saves.** The world saves itself every minute and keeps an hourly copy for the last day (`data/snapshots`). Name a world in the menu (☰) to keep it (`data/slots`); load it later to play it out differently. Loading replaces the running world. Saves carry a picture, can be wound back to an hourly copy, and can be handed to someone else (see **Sky, weather, sound and worlds to share**).
 - **Cost.** The chip in the corner shows today's spend against the cap and what an hour costs at the current speed, measured only over time when speech was on the model. On the mock it shows what 1x would cost on Claude.
 - **The mind drawer.** Click anyone, or "mind" beside any line, and their head opens on the right: the brain scan, what weighs on them, **Why?**, What if not. The lab (`#/lab`) keeps every analysis view.
 
@@ -147,6 +149,29 @@ Each piece of the mind keeps its provenance (an edit record with `source: "writi
 
 The reading runs on a free offline reader (word patterns) by default. With Claude connected it is one Sonnet call per import (`packages/faculties/src/persona.ts`, a few cents, metered and capped like every other call; `PSYCHE_MODEL_PERSONA` overrides the model). The writing itself is not saved; the reading and the short quotes it cites are kept with the world. **Try a made-up sample person** loads Juniper Vale, an invented person for testing.
 
+## Walk in: be there yourself
+
+Press **🚶 Walk in** in the game header, give yourself a name, and you step off the boat at the landing with 6 food and 3 pieces of amber. **WASD** (or a click on the ground) walks you round the town in 3D, **Shift** runs, and the camera stays on you. Walk up to anyone and press **E**, or click them, and a menu opens with what you can do to them:
+
+- **Talk**: say hello (which tells them your name), say anything in your own words, ask what people make of you, ask what they think of someone else.
+- **Be kind**: compliment them, ask what's wrong, give food or amber, put in two hours on their work, say sorry (which pays back what you took, if you can), repay a loan.
+- **Trade**: buy or sell food for amber (whether they take amber depends on whether they think anyone else will), or ask for food, which they may give, lend, sell or refuse.
+- **Make trouble**: insult them where everyone can hear, tell them a story about a neighbour (true or not), take from the common store or from a house while its people are out.
+
+Nothing a villager does back is scripted. Each thing you do goes into their mind as something that happened to them, through the same cognitive cycle as everything else, and they choose among ways to take it: welcome you, stay guarded, smell flattery, snap back, refuse the gift. The card that comes back shows **what they felt, what they chose and the terms that tipped it, how far their liking and trust of you moved, and the memory they will keep**, and **mind** opens their head at that moment. Whoever was close enough to see it gets a smaller version, and the card lists them too. First impressions weigh more than later ones.
+
+What you do stays done (`packages/engine/src/world/you.ts`):
+
+- **It travels.** Each deed is an event in the world, so people talk about it, and **Why?** on something a villager does later can lead back to the afternoon you called them a fool. People who were never there hold a view of you from what they heard.
+- **People come to you.** Someone sizes you up, asks for food on a hungry night, has it out with you over something you did, calls in a loan, thanks you, tells you what they can't tell a neighbour, asks you to the fire, or warns you that people are talking. The world waits while you answer, and the answer goes through their mind too.
+- **Theft is noticed.** Seen, and it is remembered against you on the spot. Unseen, and whoever keeps that food finds it gone later and decides who took it, which means the person they trust least: you, or a neighbour who had nothing to do with it.
+- **Stories get back.** A story you start about someone can reach its subject, with your name on it.
+- **The town decides about you.** When enough people hold something against you, someone stands up at the fire and asks the town to send you away, everyone present votes from their own mind (the box shows who voted which way, and you can open any vote), and a town that votes you out puts you on a boat for three days. A town that has come to like you asks you to stay, and you stop being a stranger.
+
+Time runs at a quarter speed while you are on foot (a day in 24 minutes), and at night you can sleep until morning. Leave the page, or go back to watching from above, and your body rests at its camp where nobody comes looking for it. You are one person per town, and everything you do is a recorded input (`{ type: "you" }`), so a town you walked through replays exactly.
+
+On the offline mock all of this is free. With Claude connected, each thing you do to someone is one short call for their reply (two when you type your own words), on the same meter and daily cap as every other call. What people decide is the engine's doing either way; the model only writes the words.
+
 ## Why: the causal ledger
 
 The brain scan shows one moment. The ledger (`packages/engine/src/ledger.ts`) joins every moment into one graph of what caused what, across time and across people: the event a memory came from, the beliefs and trust it moved, what was in mind at each choice, who told whom, which belief rewrote which memory, and the formative night behind a core belief. Nothing in it causes behaviour; it is built from the traces after the fact.
@@ -157,11 +182,29 @@ In the island UI, open anyone's head. **What weighs on them** lists their core b
 npm run why -- mara 3 7 --storm   # what weighs on Mara after three days, and where each thing came from
 ```
 
+## History: walk any choice back through the years
+
+The ledger is rebuilt from the traces a running town still holds, and a town lets its oldest traces go after about a year and a half. The causal history (`packages/engine/src/history.ts`) is what outlasts them. As the world runs, the server reads each live town's ledger into it before those traces go: every choice that was not routine, with everything behind it (what was in mind, the memory behind that, who told it to them, the core belief it was read through, the night that installed the belief), what weighs on each person, and the chronicle. It is saved beside the world in `data/history` and follows named saves, loads and rewinds. Twelve years of a region come to about 4,700 choices and 8 MB; thirty-six years to about 15,800 choices and 27 MB.
+
+Open **History →** from the game (`#/history`):
+
+- **The timeline** is the whole run: choices kept each season, coloured by what they were about, with the chronicle above. Drag it (or use ← →) to move through time; the list beside it shows that season's choices. The legend filters, and you can narrow to one person or search for a choice, a memory or a belief.
+- **Click any choice** and the trail walks back from it. The graph has one lane per mind the trail passes through and a time axis that fits the last hour and the last thirty years in one picture. **Walk it back** lists the thread step by step, furthest back or strongest: "Rhys chose: Tell the whole story ← he felt reproach ← Milo held back from the common store ← read through the core belief “When food runs short, people look after their own” (21 years earlier) ← installed by the hungry winter in Marrow". A cause only counts if it had already happened. Any step can become the question (**walk back from here**), and where the live town still holds the moment, **Open the brain scan** shows it.
+- **Fears and beliefs** lists every core belief and dark belief by how many later choices it has shaped. Open one to see where it came from, whose choices it has bent, and in which years.
+- **Ask the Historian** anything about what is open, or about the record at large. The engine cuts a brief (the piece of the record the question is about, every line tagged), one Claude Opus call reads it and answers with citations, and only tags that are really in the brief count; click a citation to open that record (`packages/faculties/src/historian.ts`). A question costs about three to five cents, metered and held to the daily cap like every other call; `PSYCHE_MODEL_HISTORIAN` overrides the model. With no key, or once the cap is spent, a free offline reader answers from the same brief and says what Opus would have cost.
+
+In the game, **Walk it back through the years** above any brain scan opens that choice here. Towns you are not watching run on rules and keep no traces, so the history holds the choices of the towns that were live, and the chronicle for the rest. `PSYCHE_HISTORY=0` keeps the history in memory only.
+
+```bash
+npm run history -- 12 11                                   # twelve years on the mock: a late choice walked back, a fear followed forward
+npm run history -- 12 11 "Why does Fen hold back?" --brief  # ask the offline Historian, and print the brief Opus would read
+```
+
 ## The experiments: Milgram, Asch, Darley & Latané, Stanford
 
 ```bash
-npm run lab                         # seed 11, 40 volunteers, offline mock, about 5 s; writes out/lab/lab.html
-npm run lab -- 7 out/lab7 --quick  # another seed, skip the counterfactual sweeps
+npm run lab                         # seed 11, 40 volunteers, offline mock, about 30 s; writes out/lab/lab.html
+npm run lab -- 7 out/lab7 --quick  # another seed, about 5 s: skip the counterfactual sweeps and the developmental studies
 ```
 
 Forty generated volunteers, each with a formative past and a core belief, go through the shock generator (8 of Milgram's conditions), Asch's line judgments (group sizes 1 to 15, an ally, written answers), the seizure and smoke-filled-room studies, and a six-day prison (the Stanford briefing against the BBC study's). Same minds in every room, so you can ask whether the person who went to 450 V also went along with the lines, and how long they sat listening to the seizure.
@@ -169,6 +212,54 @@ Forty generated volunteers, each with a formative past and a core belief, go thr
 The report (`lab.html`) sets every condition beside the human number and opens a case file on anyone: the forces behind their decisive choice, what they said when asked why, what they left out (Nisbett & Wilson), the causal ledger back to the memory that installed their core belief, and the exact counterfactual without that memory. Ablations switch one mechanism off and rerun everyone.
 
 Honest caveat: the situation weights were hand-tuned against the human results, so matching the numbers is a calibration, not a prediction. What is not tuned: the ordering across conditions falls out of the same forces, the same minds are reused across all four studies, and the pasts and trait correlates come from the engine. Code in `packages/engine/src/lab/`.
+
+## Growing up: attachment, childhood, identity, conscience
+
+Everyone in a town now has a development record (`packages/engine/src/develop/`): how they were looked after, what it taught them, what they met on the way, who they decided to be, and what their conscience is about. Founders and newcomers get theirs sketched backwards from who they are. Anyone born in the world lives theirs a season at a time.
+
+- **Care, season by season.** Each caregiver's warmth, steadiness and hard hand that season come from their temperament, their own attachment, what the household is under (hunger, a winter under canvas, a death), core beliefs they have never laid to rest, how they were raised themselves, and how well they and this child happen to suit each other. A hard winter lands harder on a parent whose core belief it confirms.
+- **Attachment** forms from that care, fastest in the first two years: steady warmth gives a secure child, care that comes and goes an anxious one, care that is reliably cool an avoidant one. Nothing copies a parent's attachment into a child. The parent's attachment shapes the care, and the care shapes the child. From six the other children count too, and in adult life a steady partner can undo an insecure start.
+- **Adversity** is counted the way the ACE study counted it. Met with someone warm there it is tolerable, and leaves a child a little surer of themself. Met alone it is toxic: it wears on the body, and from age three it becomes a memory that can install a core belief ("There is never enough to go round"), by the same machinery that gives the founders theirs. Before three there is no memory, only the mark.
+- **Erikson's stages** close one after another, each leaving something in the self: trust, autonomy, initiative, industry, then intimacy, generativity and integrity.
+- **Identity** (Marcia): trying things out needs an open temperament, a home that allowed it and enough to eat; committing comes with a trade, a partner, children. Commitment without exploration is foreclosure. A settled identity holds its own line under pressure, and a blow to the life someone settled into opens the question again.
+- **Conscience** is six moral foundations (care, fairness, loyalty, authority, sanctity, liberty), starting from temperament, taken on from the people who raised them (more fully from warm ones), then from the town. Each choice that upholds or breaks a foundation pulls on a person in proportion to how far they sit from the middle on it, so the terms are zero for the typical person and only tell people apart.
+- **Roots.** Every change records what caused it and through whom, so a person's panel can follow "why is she anxious" from her own childhood into her father's mind (he was strained that winter), to the belief that made the winter worse for him, to the memory that installed it, to whoever told him the story. The causal ledger carries the same links: a choice, the conscience behind it, the memory behind that.
+- **Trauma across generations** therefore travels two ways: out loud, as the bedtime story that passes a belief on, and silently, through the care a strained parent could give.
+
+Open anyone's mind to see **Where they come from**. Three more mechanism switches turn the behavioural side off: attachment, conscience, identity.
+
+![Where Ada comes from: her attachment, who raised her, how each stage went, who she is, and the why-tree back through her father](docs/develop/roots.png)
+
+### The nursery, and what it was checked against
+
+```bash
+npm run lab           # the four classic experiments and the developmental studies, about 30 s; writes out/lab/lab.html
+```
+
+The nursery (`lab/nursery.ts`) raises families with no town around them: rolled settlers are paired off, their children are born and cared for by the same code that raises children in a town, grow up, pair off and raise the third generation. About 1,600 children over three seeds, in a few seconds. `lab/development.ts` then measures them the way developmental psychologists measure children.
+
+| | Humans | Psyche | On seeds held aside |
+| --- | --- | --- | --- |
+| Infants secure / avoidant / resistant (van IJzendoorn & Kroonenberg 1988) | 65 / 21 / 14% | 66 / 21 / 14% | 69 / 20 / 11% |
+| Observed sensitivity and security (De Wolff & van IJzendoorn 1997) | r = .24 | .32 | .32 |
+| Parent and infant agree, secure or not (van IJzendoorn 1995) | 75% | 67% | 65% |
+| Parent security and infant security (Verhage et al. 2016) | r = .31 | .37 | .33 |
+| Same class at seventeen as at one (Waters et al. 2000) | 72% | 70% | 70% |
+| Security at one and later (Fraley 2002) | r = .39 | .39 | .39 |
+| Secure on coming of age (Mickelson, Kessler & Shaver 1997) | 59% | 55% | 56% |
+| Harshly raised parents who raise harshly (Kaufman & Zigler 1987) | about 30% | 30% | 21% |
+
+![Published numbers beside the nursery's, with the held-aside seeds](docs/develop/benchmarks.png)
+
+Sixteen published directions also come out the right way (16 of 16, on both sets of seeds): dismissing parents have avoidant infants and preoccupied parents resistant ones; secure infants who meet an unbuffered hardship lose their security more often; adult distress rises with each further childhood adversity, less when someone warm was there; identity achievement rises through the twenties and a large minority never get there; children take their conscience from warm parents more than cold ones; an insecure adult with a secure partner often becomes secure.
+
+**The counterfactual.** The same families are raised twice with every winter, death and draw of luck identical, once with the founders' formative pasts removed. With the pasts, 48% of their children and 42% of their grandchildren are insecure at seventeen; without, 44% and 36%. About one grandchild in thirteen comes of age with a different attachment class in the two worlds, and the report follows one back. Ysolde is fearful at seventeen, and secure in the world without the pasts. Wynn, who raised Ysolde, was hard to reach. Wynn was raised by Rafe, who was hard to reach. Rafe believed "Family or not, people will cheat you". That goes back to the day Rafe's brother sold their share of the boat in Kilnford, before the crossing, two generations before Ysolde was born.
+
+**Back in the classic lab.** With the deeper minds the four classic experiments sit 3.3 points from the human numbers (3.9 before), with all 60 condition pairs in the human order. Who walks in now matters the way the original studies found: obedient subjects hold authority dearer than defiant ones (Elms & Milgram 1966), people with an achieved identity conform less under Asch's majority (Toder & Marcia 1973), and people whose conscience is about harm help sooner. People born and raised in the nursery and brought to the lab as adults help sooner if they were raised warmly (r = -.51 with seconds before helping). One thing did not come out as Adorno proposed: the harshly raised do not obey more (r = -.10); in this model they push back.
+
+![The same families with and without the founders' pasts, and one grandchild followed back](docs/develop/counterfactual.png)
+
+Honest caveats. The development constants were tuned by hand on three seeds against the benchmark rows above, so that fit is calibration (mean gap 2.9 points), and the held-aside column is the fairer one (4.1 points, three seeds first run after the tuning stopped). The harsh-parenting row rests on about twenty people per sample. How far one afternoon's home visit strays from a caregiver's season is an assumption the sensitivity row depends on. Life among other children from six on is keyed chance, not simulated. One situational weight in Milgram's shabby-office condition was touched up after the new mechanisms went in. The directional findings, the counterfactual and the nursery graduates in the lab were not tuned against. All of it runs on the offline mock.
 
 ## Hollow Bay (C1): the village
 
@@ -227,6 +318,39 @@ A region can now grow to thousands, because only the town you're looking at has 
 
 `npm run century -- 100` runs a century headless: the first two years live, the rest on rules, writing `digest.md` (a decade at a time), `timeline.json` and a save the server can open (`PSYCHE_DATA=out/century npm run dev`). With seed 11 it reaches about 1,800 people in 16 towns, in about 35 seconds, with no model calls.
 
+## The realm: 50,000 minds, running for days
+
+Above the region there is now a realm: many coasts, each a region of up to a dozen towns, each on a worker thread (`packages/engine/src/realm`, `packages/server/src/world`). The full write-up is in [docs/world-server.md](docs/world-server.md).
+
+- **Coasts fill and send colonies over the sea.** A full coast cannot keep a new town, so the town sails: its people, their memories and the stories they were told go with it, and the chronicle records who led them and why.
+- **Boats, grievances and gifts cross between coasts** the same way they do between towns, with the story's teller remembered on the far shore.
+- **The same world on any number of threads.** Regions only meet between seasons, in a fixed order, so one thread or eight give the same world to the byte, as does stopping and picking up from a save.
+- **A server that stays up.** `npm run world` grows the world to 50,000 people, then keeps it to a year a minute. It saves every ten minutes, picks up exactly where it stopped, goes back to its last save if a thread dies, and lets go of the long dead so memory stays level over thousands of years.
+- **A morning digest.** At 7 each morning it writes a page: the dozen things that mattered in the night with the reasons behind each, new shores, what passed between the coasts, every coast in a table, and how the oldest story is told now. http://localhost:8790 shows it live.
+- **$0.** Every town in the realm runs on rules. A model is only called when you export a coast (`npm run world -- export r3`) and open it in the game.
+
+On a 4-core machine, seed 11 grows from the 15 people of the crossing to 50,000 people in about 23 minutes (sim year 279, 36 coasts, 466 towns). At that size a sim year takes about 24 seconds, a save is 180 MB, and nothing is spent. `npm run scale -- 50000 4` measures it on your machine.
+## Markets, sides and wars: the civilization systems
+
+Seven systems run on top of the towns (`packages/engine/src/world/civ/`, written up with screenshots in [docs/civ](docs/civ/README.md)). Each choice in them goes through a mind, and each event keeps its causes.
+
+- **Trades and markets.** Once someone knows how to fire clay or work a loom, a town that is big enough carries a potter or a weaver, and how many it carries follows what sells. On market day each deal is settled with amber, by barter, on credit, out of the household's claim on the common store, or it falls through. In a hungry season each seller chooses whether to ask more, and the buyers remember.
+- **Sides.** Nobody founds a faction. It is read off who likes whom, household by household, and named for what its members share. Sides hold wrongs against each other, vote together, come to blows, and sometimes leave to found a town.
+- **Leaders and laws.** Candidates stand on a promise that comes out of their own life (a debtor promises a clean slate), every grown person names one, and the winner puts the promise to a vote. Hungry years are held against whoever led through them.
+- **Sickness.** Three sicknesses pass from person to person and travel with traders, boats and raiders. The leader chooses whether to shut the landing, and the bereaved look for someone to blame.
+- **Writing.** A written law outlasts its leader, a written craft can be read back after its last knower dies, and a written founding story stops changing. The scribe leaves out what shames their own side, and what was left out is kept too.
+- **Moving, raids and truces.** A household weighs leaving through its head's own mind. A raid needs a grievance, a leader who calls it and people who choose to go; either side can ask for a truce.
+- **Later crafts.** Ten crafts that build on earlier ones, need a town big enough to keep them, and are worked out under pressure.
+
+In the game, the chip in the top bar ("25 in trades · 2 sides") opens a panel for the town you are watching: Market, Sides, Leaders and laws, Sickness, Records, Crafts, Between towns. The systems are on in a region; `PSYCHE_CIV=0` turns them off, and with them off a region runs exactly as it did before.
+
+```bash
+npm run civ -- 100 7 2 out/civ       # a century on the mock, a minute or two; writes civ-report.md and a save
+PSYCHE_DATA=$PWD/out/civ npm run dev
+```
+
+With seed 7 a century ends with 804 people in 11 towns, 8 raids, 2 written truces and 64 outbreaks ([the full report](docs/civ/century-seed7.md)). Centuries differ a good deal by seed.
+
 ## The made world: people come to suspect it
 
 People in Hollow Bay can come to suspect that their world is made, and that someone is watching (`world/heresy.ts`). Nothing in it is scripted. The suspicion is built from things they actually live through, it is held as an ordinary belief, it travels the way any story does, and every step of it opens in the ledger.
@@ -253,12 +377,31 @@ Open **Watch in 3D** in the village or region scenario. The town is laid out on 
 
 - Houses go up block by block in build order as builders work, with the rest of the design shown as a faint outline. Tents come down when a house is finished.
 - People walk between places. Fishers row out in boats, and people carry logs, stone or barley home. Woodcutters stand at the next pines to fall, and felled pines leave stumps.
-- Seasons show in the barley and the snow. Smoke rises from the fire and the chimneys, and rain falls in bad weather.
+- Seasons show in the barley, the colour of the ground and the snow. Smoke rises from the fire and the chimneys, and the weather is drawn in full (next section).
 - Speech bubbles show what people are saying, so you can watch gossip spread. Thought bubbles mark big moments.
 - Click anyone to open their mind or follow them. The moments listed under the view jump to the person each one happened to.
 - In a region, **The whole coast** shows every town small, with trade boats and founding boats. Click a town's name to fly down to it. It comes to life in full, and the town you left carries on by rules.
 
 `packages/web/src/replay.ts` draws a recorded century the same way from a timeline alone, for a standalone page.
+
+## Sky, weather, sound and worlds to share
+
+The live game is meant to be worth looking at for its own sake. Everything in this section is drawn from what the simulation already knows and feeds nothing back into it: the same world plays out the same way with all of it switched off.
+
+- **One sky for everyone.** `skyAt(seed, tick, season, weather)` (`world/sky.ts`) turns the town's clock, season and weather (the engine knows three: fair, rain, gale) into where the sun and moon stand, the moon's phase, how much cloud there is, the wind, what is falling and how hard, morning mist, and whether a gale has thunder in it. It is a pure function of the seed and the time, so every viewer and every replay sees the same afternoon. Days are long in summer and short in winter; the sun comes up over the hills and sets over the sea. Each day has its own character, easing into the next through the evening so nothing jumps at midnight.
+- **Light.** The sun and moon are real lights with soft shadows that follow the camera. The sky is a gradient dome with a sun, a moon that shows its phase, and stars; dawn and dusk go gold and pink, overcast goes grey, nights are blue and lit by the moon and the fire. Blocks are shaded where they meet (per-corner ambient occlusion, baked into the mesh), and wet ground darkens in the rain.
+- **Land and sea.** Grass, sand, stone and leaves vary block to block, and the ground changes with the season: bright in spring, dry by late summer, russet in autumn, snow on every roof and field in winter. The sea is one sheet with moving swell, the sky mirrored at glancing angles, a path of light under the sun or moon, whitecaps when the wind gets up, and foam washing along the same shoreline the land is cut from. Beyond the town the coast carries on into stepped hills and pinewoods, so the horizon is never the edge of a board.
+- **Weather.** Drifting block clouds, rain in slanting streaks, snow, mist on some still mornings in spring and autumn, lightning and thunder in summer gales. Leaves and barley sway with the wind, harder in a gale.
+- **People and the town.** People are jointed figures who walk with a stride, swing an axe, lay blocks, bend to the field, cast a line, row, sit by the fire, gesture when they talk, carry what they are carrying, lie down to sleep and hold a lantern after dark. Boats rock on the swell. The fire burns with flames, embers and smoke when it is dark or people are gathered there; chimneys smoke; windows are lit in the evening and go dark house by house at bedtime; new blocks land with a puff of dust; gulls circle by day and fireflies come out on warm, still nights.
+- **Sound.** The speaker button turns on the town's sounds: sea, wind, rain, thunder, the fire, crickets at night, birds in the morning. All of it is made in the browser from noise and oscillators (`world3d/ambience.ts`); there are no recordings. It is off until you turn it on.
+- **The sky dial.** Beside the clock, a small arc shows where the sun or moon is in its day, with a word for the sky ("clear dusk", "morning mist", "thunderstorm").
+- **Photo mode.** Press P or the camera button. The screen clears, and you can pick the hour and the weather for the picture (the world itself carries on unchanged), frame the shot, and save a PNG with a caption band: the town, the year and season, and the world's code.
+- **Saves with a picture.** Each named save keeps a thumbnail of the view when it was made, the year and how many people there were. The menu also lists the hourly copies, so a long run can be wound back.
+- **World files.** **Download this world** writes a `.psyche` file: the whole world as it stands (every mind and memory, the chronicle, what you changed), gzipped, with a small header. **Open a world file** takes one from someone else and keeps it as a save; nothing loads until you choose it. A file from outside is treated as data from outside: it is size-capped as it uploads and again as it unzips (`PSYCHE_IMPORT_MAX_MB`, default 200), shape-checked before anything is built from it (`world/share.ts`: `checkWorldFile`), and then proved: a region is built from a copy and run for a minute, an island's history is replayed, and everything a viewer would be sent is drawn. The proof runs on the free offline mock, so opening a world never spends anything, even with a key set. If any of it fails, the world you were running is put back and you are told what was wrong; a world that passes loads exactly as it was saved.
+- **World codes.** A code like `region-11` is a kind of world and a seed. Anyone who starts from the same code gets the same land and the same founders; what happens after that is theirs. Click the code in the menu to copy it, or type one to start a new world from it.
+- **A world that won't strand you.** If the autosave can't be read at startup it is set aside (`island.unreadable-...json`) and a fresh world starts, instead of the server refusing to run.
+
+The scene code is in `packages/web/src/world3d` (atmosphere, water, the far land, figures, effects, ambience) and `packages/web/src/polish` (the sky dial, photo mode, the worlds menu). `Town3D` hands out its camera, controls, scene and a per-frame hook through `onStage`, so other features can put things in the same world.
 
 ## Worlds inside the world: engines, and the minds in them
 
@@ -350,6 +493,8 @@ The psychology lives in a deterministic engine (`packages/engine`). Memory stren
 | `packages/faculties` | Claude-backed faculties with structured outputs, plus a deterministic offline mock. |
 | `packages/engine/src/world` | Kettle Island: places, the cast, routines, encounters, conversations, gossip, events, and event-sourced world sessions. |
 | `packages/server` | Hosts the island with a running clock, saved as seed + inputs + recorded calls. |
+| `packages/engine/src/realm` | Many regions as one world: colonies, boats and grievances between coasts, and the digest. |
+| `packages/server/src/world` | The world server: worker threads, saves, crash recovery, pacing, the status page and API. |
 | `packages/web` | The island UI: map, feed, stories, relationships and the brain scan (React + Vite). |
 
 ## One cognitive cycle
@@ -383,6 +528,13 @@ Every number is in `packages/engine/src/params.ts` with its source, or marked as
 | Allostatic load | McEwen 1998 |
 | Trust (ability, benevolence, integrity) and its asymmetry | Mayer, Davis & Schoorman 1995; Slovic 1993 |
 | Adult attachment dimensions | Brennan, Clark & Shaver 1998 |
+| Attachment from caregiving; earned security | Bowlby 1969; Ainsworth, Blehar, Waters & Wall 1978; Roisman et al. 2002 |
+| Caregiving under strain, and from the caregiver's own past | Conger et al. 1994; van IJzendoorn 1995; Main & Hesse 1990; Kaufman & Zigler 1987 |
+| Goodness of fit; differential susceptibility | Thomas & Chess 1977; Belsky & Pluess 2009 |
+| Psychosocial stages | Erikson 1950 |
+| Childhood adversity: counted, buffered or toxic, steeling | Felitti et al. 1998; Shonkoff et al. 2012; Seery, Holman & Silver 2010 |
+| Identity status and narrative identity | Marcia 1966; Erikson 1968; McAdams 2001 |
+| Moral foundations and where they come from | Haidt & Joseph 2004; Graham, Haidt & Nosek 2009; Grusec & Goodnow 1994; Harris 1995 |
 | Motivated reasoning | Kunda 1990 |
 | Dual process | Evans & Stanovich 2013 |
 | Whole trait theory, trait drift | Fleeson 2001; Wrzus & Roberts 2017 |
@@ -394,6 +546,18 @@ Every number is in `packages/engine/src/params.ts` with its source, or marked as
 | Reactance | Brehm 1966 |
 | Commitment after a failed prophecy | Festinger, Riecken & Schachter 1956 |
 | Illusory truth | Hasher, Goldstein & Toppino 1977 |
+| Division of labour, double coincidence of wants | Smith 1776; Jevons 1875 |
+| Redistribution through a common store | Polanyi 1957; Sahlins 1972 |
+| Fairness of raising prices in a shortage | Kahneman, Knetsch & Thaler 1986 |
+| In-group favour, realistic conflict, common enemies | Tajfel & Turner 1979; Sherif 1961 |
+| Voting: warmth and competence, interest, retrospection, rallying | Fiske, Cuddy & Glick 2007; Downs 1957; Fiorina 1981; Mueller 1970 |
+| Clean slates | Hudson 1993 |
+| Contact spread and immunity; trade routes as disease routes | Kermack & McKendrick 1927; McNeill 1976 |
+| Disease, strangers and blame | Schaller 2011; Girard 1982 |
+| What writing fixes in place | Goody & Watt 1963; Schmandt-Besserat 1992 |
+| Population size, pressure and the toolkit | Henrich 2004; Kline & Boyd 2010; Boserup 1965 |
+| Push, pull and exit | Lee 1966; Hirschman 1970 |
+| Parochial altruism and war | Choi & Bowles 2007 |
 
 ## What the tests show
 
@@ -401,6 +565,8 @@ Across 30 seeds of the M0 demo, Mara adopts Jun's rumor ("Theo never showed up")
 
 On the island, the same seed always gives the same island, replay from the log is exact, and rewinding to a morning restores it exactly. Across eight seeds, stories pass beyond the person who first told them, a planted rumor travels on its own in most runs, and people come to remember what they were told about shared events, but never when the misinformation mechanism is switched off.
 
+The causal history keeps choices a town's session has long let go, adds nothing when the same traces are read twice, never follows a cause that had not happened yet, walks a year-four choice back to a memory from before the story, and survives a save, a load and a rewind. The Historian's citations are checked against the brief, so a made-up tag is dropped.
+
 ## Not here yet
 
-There is no writing yet, so nothing outlives its authors except through being told. Inside a town there is no barter yet, only the common store, and roles are picked at coming of age from aptitude and what the town lacks. Rewind is off in a region (towns change each other, so one town's log can't replay it), and a region is saved as it stands rather than replayed. Conversations are still two people (group moments are the fire and the village meeting). The village is not yet on Founders' voxel grid. The mock faculties write plain language and extract little from free text; real perception and speech need Claude. Several parameters are engineering choices that M3's validation suite should calibrate.
+In towns on rules food is rarely short, so the civilization systems' hungry-season paths (asking more for food, the fair price law, raids out of hunger) fire far less often than the rest. Rewind is off in a region (towns change each other, so one town's log can't replay it), and a region is saved as it stands rather than replayed. A coast exported from the realm and watched in the game does not flow back into the running realm. Conversations are still two people (group moments are the fire and the village meeting). The village is not yet on Founders' voxel grid. The mock faculties write plain language and extract little from free text; real perception and speech need Claude. Several parameters are engineering choices that M3's validation suite should calibrate.

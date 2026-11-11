@@ -5,6 +5,7 @@ import type { Faculties } from "../ports.js";
 import { runAsch } from "./asch.js";
 import { runBystander } from "./bystander.js";
 import { pearson, recruit, type ExperimentResult, type SubjectRun, type Volunteer } from "./core.js";
+import { runDepth, runDevelopment, type DepthReport, type DevelopmentReport } from "./development.js";
 import { runMilgram } from "./milgram.js";
 import { runPrison } from "./prison.js";
 
@@ -15,6 +16,12 @@ export interface LabOptions {
   experiments?: ("milgram" | "asch" | "bystander" | "prison")[];
   /** Counterfactual sweeps and ablations (they double or triple the run time). */
   sweeps?: boolean;
+  /**
+   * The developmental wing: raise families in the nursery and measure them against the attachment
+   * and development literature, then check the deeper minds in the classic experiments. On by
+   * default whenever sweeps are; pass seeds to change the sample.
+   */
+  development?: boolean | { seeds?: number[]; couples?: number; holdout?: number[] };
 }
 
 export interface LabReport {
@@ -30,19 +37,17 @@ export interface LabReport {
   crossover?: { rows: { id: string; name: string; milgram?: number; asch?: number; helpSeconds?: number; schema: string }[]; r: { a: string; b: string; r: number }[] };
   /** Across every decisive moment: how much of the push came from forces the person never mentioned. */
   unspoken?: { moments: number; meanHiddenShare: number; byKind: { kind: string; share: number }[] };
+  /** How minds come to be: the nursery studies against the developmental literature. */
+  development?: DevelopmentReport;
+  /** The deeper minds (conscience, attachment, identity) in the classic experiments. */
+  depth?: DepthReport;
+  /** The same scorecard with conscience, the attachment system and identity switched off, for comparison. */
+  shallow?: { meanAbsError: number; agree: number; pairs: number };
 }
 
-export async function runLab(faculties: Faculties, opts: LabOptions = {}): Promise<LabReport> {
-  const seed = opts.seed ?? 11;
-  const pool = recruit(seed, opts.size ?? 40);
-  const want = new Set(opts.experiments ?? ["milgram", "asch", "bystander", "prison"]);
-  const sweeps = opts.sweeps !== false;
-  const experiments: ExperimentResult[] = [];
-  if (want.has("milgram")) experiments.push(await runMilgram(pool, faculties, { sweep: sweeps, ablations: sweeps }));
-  if (want.has("asch")) experiments.push(await runAsch(pool, faculties, { sweep: sweeps, ablations: sweeps }));
-  if (want.has("bystander")) experiments.push(await runBystander(pool, faculties, { sweep: sweeps, ablations: sweeps }));
-  if (want.has("prison")) experiments.push(await runPrison(pool, faculties, { seed: 1971, ablations: sweeps }));
+type Fit = { scorecard: LabReport["scorecard"]; fit: LabReport["fit"] };
 
+function scoreOf(experiments: ExperimentResult[]): Fit {
   const scorecard: LabReport["scorecard"] = [];
   for (const e of experiments) {
     for (const c of e.conditions) {
@@ -66,6 +71,21 @@ export async function runLab(faculties: Faculties, opts: LabOptions = {}): Promi
       }
       return { experiment: e.title, agree, pairs };
     });
+  return { scorecard, fit: { meanAbsError: Number((errs.reduce((a, b) => a + b, 0) / Math.max(1, errs.length)).toFixed(3)), comparisons: errs.length, orderings } };
+}
+
+export async function runLab(faculties: Faculties, opts: LabOptions = {}): Promise<LabReport> {
+  const seed = opts.seed ?? 11;
+  const pool = recruit(seed, opts.size ?? 40);
+  const want = new Set(opts.experiments ?? ["milgram", "asch", "bystander", "prison"]);
+  const sweeps = opts.sweeps !== false;
+  const experiments: ExperimentResult[] = [];
+  if (want.has("milgram")) experiments.push(await runMilgram(pool, faculties, { sweep: sweeps, ablations: sweeps }));
+  if (want.has("asch")) experiments.push(await runAsch(pool, faculties, { sweep: sweeps, ablations: sweeps }));
+  if (want.has("bystander")) experiments.push(await runBystander(pool, faculties, { sweep: sweeps, ablations: sweeps }));
+  if (want.has("prison")) experiments.push(await runPrison(pool, faculties, { seed: 1971, ablations: sweeps }));
+
+  const { scorecard, fit } = scoreOf(experiments);
 
   const report: LabReport = {
     seed,
@@ -73,7 +93,7 @@ export async function runLab(faculties: Faculties, opts: LabOptions = {}): Promi
     pool: pool.map(({ mind: _m, ...v }) => v),
     experiments,
     scorecard,
-    fit: { meanAbsError: Number((errs.reduce((a, b) => a + b, 0) / Math.max(1, errs.length)).toFixed(3)), comparisons: errs.length, orderings },
+    fit,
   };
 
   // The same forty minds went through Milgram, Asch and the seizure study.
@@ -107,6 +127,20 @@ export async function runLab(faculties: Faculties, opts: LabOptions = {}): Promi
       byKind: groupUnspoken(debriefs.map((d) => d!), total),
     };
   }
+
+  const dev = opts.development ?? sweeps;
+  if (dev) {
+    report.development = runDevelopment(typeof dev === "object" ? dev : {});
+    report.depth = await runDepth(faculties, { seed });
+    // The classic scorecard again, on the same people without the new parts of the mind.
+    const plain = recruit(seed, opts.size ?? 40, { moralFoundations: false, attachmentSystem: false, identityFormation: false });
+    const again: ExperimentResult[] = [];
+    if (want.has("milgram")) again.push(await runMilgram(plain, faculties, {}));
+    if (want.has("asch")) again.push(await runAsch(plain, faculties, {}));
+    if (want.has("bystander")) again.push(await runBystander(plain, faculties, {}));
+    const f = scoreOf(again).fit;
+    report.shallow = { meanAbsError: f.meanAbsError, agree: f.orderings.reduce((s, o) => s + o.agree, 0), pairs: f.orderings.reduce((s, o) => s + o.pairs, 0) };
+  }
   return report;
 }
 
@@ -138,3 +172,5 @@ export { runMilgram, runMilgramSubject, MILGRAM_CONDITIONS, deference, empathy, 
 export { runAsch, runAschSubject, ASCH_CONDITIONS, susceptibility, type AschCondition } from "./asch.js";
 export { runBystander, runSeizureSubject, SEIZURE_CONDITIONS, SMOKE_CONDITIONS, type SeizureCondition, type SmokeCondition } from "./bystander.js";
 export { runPrison, runPrisonCondition, PRISON_CONDITIONS, assignRoles, type PrisonCondition } from "./prison.js";
+export { runDevelopment, runDepth, graduate, type DevelopmentReport, type DevStudy, type DevFinding, type DepthReport, type DepthCheck, type TraumaReport, type LineageCase, type DevelopmentOptions } from "./development.js";
+export { runNursery, distressOf, type NurseryRun, type NurseryOptions, type Person } from "./nursery.js";

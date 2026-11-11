@@ -1,0 +1,40 @@
+/* Roots: who someone is, in columns, then the why-tree underneath. Collapses to one column on a phone. */
+.roots { margin-top: 14px; }
+.roots-lede { margin: 0 0 12px; font-size: 15px; max-width: 75ch; }
+.roots-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px 32px; }
+.roots-grid section { min-width: 0; display: grid; gap: 8px; align-content: start; }
+.roots h4 { font: 600 13px var(--display); margin: 0; }
+.roots-line { margin: 0; font-size: 14px; }
+.roots .small { margin: 0; }
+
+.roots-dim, .roots-moral, .roots-stage { display: grid; grid-template-columns: 118px minmax(0, 1fr) 34px; gap: 8px; align-items: center; font-size: 13px; }
+.roots-stage { grid-template-columns: 96px minmax(0, 1fr); }
+.roots .t { position: relative; height: 8px; background: var(--sunk); border-radius: 99px; overflow: hidden; }
+.roots .t i { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 99px; background: var(--accent); }
+.roots .t i.over, .roots .t i.poor { background: var(--feel); }
+.roots .t i.less { background: var(--muted); }
+.roots .t em { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: var(--ink); opacity: 0.5; }
+.roots-moral .t::after { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: var(--ink); opacity: 0.5; }
+.roots .v { font: 11.5px var(--mono); color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.roots-stages, .roots-morals { display: grid; gap: 6px; }
+
+.roots-care { font-size: 12.5px; }
+.roots-care td.n { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.roots-adv, .roots-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13.5px; }
+.roots-adv li { display: grid; gap: 2px; border-left: 3px solid var(--line); padding-left: 10px; justify-items: start; }
+.roots-adv li.toxic { border-left-color: var(--feel); }
+.roots-adv li.buffered { border-left-color: var(--accent); }
+.roots-history li { color: var(--muted); }
+
+.roots-why { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 10px; }
+.roots-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.roots-tabs button { font: 12.5px var(--display); padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--ink); cursor: pointer; text-align: left; }
+.roots-tabs button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.roots-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.roots-tree, .roots-tree ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.roots-tree ul { margin: 6px 0 0 10px; padding-left: 12px; border-left: 1px solid var(--line); }
+.roots-step { font-size: 13.5px; }
+.roots-step > div { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.roots-step.is-belief > div > .kind { background: var(--bel-soft); color: var(--bel); }
+.roots-step.is-memory > div > .kind { background: var(--mem-soft); color: var(--mem); }
+.roots-step.is-person > div > .kind { background: var(--accent-soft); color: var(--accent); }

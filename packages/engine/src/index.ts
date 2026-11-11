@@ -52,7 +52,9 @@ export {
   type Weather,
   type Resource,
 } from "./world/village.js";
-export { townTerrain, terrainOf, townScene, civicPlot, fellingOrder, LOGS_PER_TREE, homePlot, homeOrder, SPOTS, TOWN, type TownTerrain, type Scene3D } from "./world/town3d.js";
+export { townTerrain, terrainOf, townScene, civicPlot, fellingOrder, LOGS_PER_TREE, homePlot, homeOrder, SPOTS, TOWN, shoreAt, naturalHeight, landNoise, type TownTerrain, type Scene3D } from "./world/town3d.js";
+export { skyAt, skyWords, skyHash, type SkyState, type SkySeason, type SkyWeather } from "./world/sky.js";
+export { WORLD_FORMAT, WORLD_VERSION, WORLD_SCENARIOS, worldCode, parseWorldCode, cleanWorldName, cleanThumb, checkWorldFile, type WorldHead, type WorldSummary, type WorldScenario, type WorldCheck } from "./world/share.js";
 export { createSettlers, TRADES, type Settler } from "./world/people.js";
 export { MATERIALS, M, get, generateIsland, encodeGrid, census, standY, type Material, type Grid, type Plot, type Terrain, type Tree } from "./founders/voxel.js";
 export { check, compile, bill, describe, siteOf, PACE, SIDES, type Blueprint, type Side, type Furniture, type Placement, type Part, type Bill, type Item } from "./founders/blueprint.js";
@@ -100,10 +102,11 @@ export {
 export { atlas, divergence, saysVsWas, type AtlasEntry, type AtlasHolder, type Account, type DivergenceEntry, type HiddenCause, type SaysVsWas } from "./analysis.js";
 export { ageOf, isChild, yearOf, schemaLineage, STORE_NORM, CHILDHOOD, type Life, type Norm } from "./world/life.js";
 export { counterfactual, type Counterfactual, type CounterfactualEdit, type ChoiceDiff } from "./world/counterfactual.js";
-export { RegionSession, compareMyths, regionView, carryLineage, belongingOf, leastBelonging, type RegionState, type RegionOptions, type RegionView, type Town, type Trade, type ChronicleEntry, type MythComparison } from "./world/region.js";
+export { RegionSession, compareMyths, regionView, carryLineage, belongingOf, leastBelonging, type RegionState, type RegionOptions, type RegionView, type Town, type Trade, type ChronicleEntry, type MythComparison, type RegionPort, type TownPacket } from "./world/region.js";
+export * as realm from "./realm/index.js";
 export { rootOf, foundingVersion, type Law, type Election, type Civic } from "./world/civic.js";
-export { dematerialize, materialize, aggAdvance, aggSeason, compactMinds, drift, implant, tellFounding } from "./world/aggregate.js";
-export { CRAFTS, craft, craftBonus, craftLineage, knows, townCrafts, knowledgeOf, type Craft, type Know, type Knowledge, type KnowledgeEvent } from "./world/knowledge.js";
+export { dematerialize, materialize, aggAdvance, aggSeason, compactMinds, drift, forget, implant, tellFounding } from "./world/aggregate.js";
+export { TECHS, CRAFTS, craft, craftBonus, craftLineage, knows, townCrafts, knowledgeOf, type Craft, type Know, type Knowledge, type KnowledgeEvent } from "./world/knowledge.js";
 export { digest, timeline, type Timeline } from "./world/digest.js";
 export { luck } from "./world/world.js";
 export { frameDelta, applyDelta, deltaMemory, beats, beatOf, warnings, momentNotices, chronicleNotices, awaySummary, type Frame as GameFrame, type FrameDelta, type DeltaMemory, type Beat, type Notice, type AwaySummary } from "./world/game.js";
@@ -207,3 +210,116 @@ export { parseWriting, quoteFound, worldTopics, shapeBelief, inWorldWords } from
 export { admitPersona, personaMind, personaLife, type PersonaOrigin, type PersonaLife } from "./persona/arrive.js";
 export { SAMPLE_PERSONA, SAMPLE_CHAT } from "./persona/sample.js";
 export { VALUES, PERSONA_TRADES, type RawReading, type PersonaReading, type PersonaReader, type WritingInput, type Quote, type PersonaTrait, type PersonaMemory, type PersonaBelief, type PersonaValue, type PersonaPerson, type ValueName, type PersonaTrade } from "./persona/types.js";
+export * as develop from "./develop/index.js";
+export { developmentView, rootsOf, deepestRoot, strongest, styleOf, STYLE_TEXT, STATUS_TEXT, FOUNDATIONS, FOUNDATION_TEXT, type DevelopmentView, type RootStep, type Development, type Morals, type Foundation, type AttachmentStyle, type IdentityStatus, type Root, type Adversity, type Stage } from "./develop/index.js";
+export { upbringingTurn, ensureDevelopment, householdStressors, grownText } from "./world/upbringing.js";
+export {
+  enableCiv,
+  civSeason,
+  civDay,
+  civRegionSeason,
+  civView,
+  regionCivView,
+  civOf,
+  PROFESSIONS,
+  GOODS,
+  SICKNESSES,
+  marketDay,
+  merchantRun,
+  takeUp,
+  townGini,
+  findFactions,
+  factionsSeason,
+  factionOf as civFactionOf,
+  liveFactions,
+  wrong as factionWrong,
+  electCiv,
+  platformFor,
+  lawInForce,
+  landingClosed,
+  diseaseDay,
+  expose,
+  activeOutbreak,
+  recordsSeason,
+  writeDown,
+  isWritten,
+  writtenFounding,
+  burnRecords,
+  writerOf,
+  techTurn,
+  techTree,
+  openTechs,
+  moveHousehold,
+  migrationSeason,
+  warSeason,
+  raid as civRaid,
+  sue as civSue,
+  recordsView,
+  healthView,
+  economyView,
+  polityView,
+  factionsView,
+  readBack,
+  regionCiv,
+  treatyBetween,
+  type CivState,
+  type CivEvent,
+  type CivView,
+  type RegionCivView,
+  type CivHost,
+  type RegionCiv,
+  type Raid,
+  type Treaty,
+  type Move,
+  type Run,
+  type Economy,
+  type EconomyView,
+  type MarketDay,
+  type Good,
+  type Faction as CivFaction,
+  type FactionView,
+  type Contest,
+  type Candidate,
+  type Platform,
+  type Polity,
+  type PolityView,
+  type Issue,
+  type Health,
+  type Outbreak,
+  type HealthView,
+  type Records,
+  type RecordItem,
+  type RecordsView,
+} from "./world/civ/index.js";
+export {
+  CausalHistory,
+  trail,
+  strongestThread,
+  longestThread,
+  origins,
+  reach,
+  find,
+  whenText,
+  agoText,
+  yearAt,
+  yearMinutes,
+  MOMENT_KINDS,
+  type Calendar,
+  type HistoryNode,
+  type HistoryOptions,
+  type HistorySource,
+  type SavedHistory,
+  type AbsorbReport,
+  type Moment,
+  type MomentKind,
+  type PersonRecord,
+  type Mark,
+  type Weight,
+  type ThreadStep,
+  type TrailOptions,
+  type Origins,
+  type Reach,
+  type Found,
+} from "./history.js";
+export { buildBrief, renderBrief, offlineHistorian, offlineReader, citedIn, type Brief, type BriefNode, type BriefLink, type BriefFocus, type BriefOptions, type Historian, type HistorianAnswer, type HistorianReply } from "./historian.js";
+export { ME, youAct, youCheck, youStep, youView, type YouAct, type YouState, type YouView, type Deed, type Reaction, type Ask, type AskKind, type Verdict, type Theft, type YouDebt } from "./world/you.js";

@@ -4,9 +4,10 @@
 // mind opens in a drawer on the right. The lab (#/lab) keeps every analysis view.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isNight } from "@psyche/engine";
-import { api, type EditReach, type GameView, type Slot } from "./api";
+import { isNight, worldCode } from "@psyche/engine";
+import { api, type EditReach, type GameView } from "./api";
 import { AgentPanel } from "./AgentPanel";
+import { CivChip, CivPanel } from "./Civ";
 import { HeresyChip, HeresyPanel } from "./Heresy";
 import { Coast3D } from "./Coast3D";
 import { MindEditor } from "./MindEditor";
@@ -15,9 +16,14 @@ import { Life } from "./persona/Life";
 import { personaApi } from "./persona/api";
 import { Studio } from "./persona/Studio";
 import { useGameStream } from "./stream";
-import { Town3D, type Shot } from "./Town3D";
+import { Town3D, type Shot, type Stage } from "./Town3D";
 import { Lineage, VoicePanel } from "./Voice";
 import { agentColors, clock, setPlaces } from "./util";
+import { PhotoBar, type Look } from "./polish/Photo";
+import { SkyDial } from "./polish/SkyDial";
+import { Worlds } from "./polish/Worlds";
+import "./polish/polish.css";
+import { WalkIn } from "./you/Walk";
 
 /** The clock's speeds, in sim minutes a real second. 1x is a sim day in about four real minutes. */
 export const GAME_SPEEDS = [
@@ -44,10 +50,29 @@ export function Game() {
   const [focusReq, setFocusReq] = useState<{ id: string; n: number }>();
   const [strip, setStrip] = useState<Strip | "">(() => (localGet("psyche.strip") as Strip | "") ?? "feed");
   const [menu, setMenu] = useState(false);
+  // The town's sounds (off until asked for), and photo mode with the light and weather it is showing.
+  const [sound, setSound] = useState(() => localGet("psyche.sound") === "1");
+  const [photo, setPhoto] = useState(false);
+  const [look, setLook] = useState<Look>({});
   const [heresy, setHeresy] = useState(false);
+  const [civ, setCiv] = useState(false);
   const [nested, setNested] = useState(false);
   // Speaking into the world (voice), and the word whose lineage is open.
   const [voice, setVoice] = useState(false);
+  // Walking in the town yourself (you/Walk.tsx): the director lets go of the camera and WASD moves you.
+  const [walking, setWalking] = useState(false);
+  // How tall the header is right now. It wraps to more rows on a narrower screen or with more buttons, and what opens under it has to clear all of them.
+  const [headH, setHeadH] = useState<number>();
+  const headWatch = useRef<ResizeObserver>();
+  const headRef = useCallback((el: HTMLElement | null) => {
+    headWatch.current?.disconnect();
+    if (!el) return;
+    const read = () => setHeadH(Math.round(el.getBoundingClientRect().height));
+    headWatch.current = new ResizeObserver(read);
+    headWatch.current.observe(el);
+    read();
+  }, []);
+  const [stage, setStage] = useState<Stage>();
   const [traceWord, setTraceWord] = useState<string>();
   const [toasts, setToasts] = useState<{ id: string; text: string; kind: string; town?: string; agent?: string; at: number }[]>([]);
   const [error, setError] = useState<string>();
@@ -56,8 +81,17 @@ export function Game() {
   // A town switch waits for the new town's scene before flying to someone in it.
   const pendingFocus = useRef<{ town: string; agent: string } | undefined>(undefined);
 
+  // A link from the history explorer opens someone's brain scan at a moment: #/?mind=<id>&trace=<trace>.
+  useEffect(() => {
+    const q = new URLSearchParams(location.hash.split("?")[1] ?? "");
+    const id = q.get("mind");
+    if (!id) return;
+    setMind({ id, trace: q.get("trace") ?? undefined });
+    history.replaceState(null, "", "#/");
+  }, []);
   useEffect(() => localSet("psyche.director", director ? "1" : "0"), [director]);
   useEffect(() => localSet("psyche.strip", strip), [strip]);
+  useEffect(() => localSet("psyche.sound", sound ? "1" : "0"), [sound]);
 
   const act = useCallback(async (f: () => Promise<unknown>) => {
     setBusy(true);
@@ -125,18 +159,25 @@ export function Game() {
         e.preventDefault();
         void act(() => api.control({ running: !view.running }));
       } else if (/^[1-4]$/.test(e.key)) void act(() => api.control({ speed: GAME_SPEEDS[Number(e.key) - 1]!.value, running: true }));
+      else if (walking && /^[wasdeqm]$/i.test(e.key)) return; // these move you while you walk
       else if (e.key === "d" || e.key === "D") setDirector((d) => !d);
       else if ((e.key === "m" || e.key === "M") && view.towns) setMode((m) => (m === "town" ? "coast" : "town"));
+      else if (e.key === "p" || e.key === "P") setPhoto((x) => !x);
       else if (e.key === "Escape") {
         if (nested) return;
-        if (menu) setMenu(false);
+        if (photo) setPhoto(false);
+        else if (walking && !mind && !menu && !traceWord) return; // Esc closes the walk menu (Walk.tsx)
+        else if (menu) setMenu(false);
         else if (traceWord) setTraceWord(undefined);
         else setMind(undefined);
       }
     };
     window.addEventListener("keydown", on);
     return () => window.removeEventListener("keydown", on);
-  }, [view, act, menu, traceWord, nested]);
+  }, [view, act, menu, traceWord, nested, photo, walking, mind]);
+
+  // Looking at another town puts you back above it: your body stays where you left it.
+  useEffect(() => setWalking(false), [view?.town]);
 
   const peopleKey = `${view?.town ?? ""}:${view?.agents?.length ?? 0}`;
   useEffect(() => {
@@ -169,10 +210,12 @@ export function Game() {
   const night = isNight(view.tick);
   const village = !!view.scene;
   const free = view.free ?? (view.faculties === "mock" ? "mock" : undefined);
+  // You can only walk a town you are looking at.
+  const strolling = walking && village && mode === "town" && !nested;
   const lagging = view.running && view.speed > 16 && view.pace > 0 && view.pace < view.speed * 0.6;
 
   return (
-    <div className={`game${night ? " g-night" : ""}`}>
+    <div className={`game${night ? " g-night" : ""}${photo ? " g-photo" : ""}${strolling ? " g-walking" : ""}${headH ? " g-fit" : ""}`} style={headH ? ({ "--g-head": `${headH}px` } as React.CSSProperties) : undefined}>
       <style>{colors}</style>
       <div className="g-stage">
         {nested ? null : mode === "coast" && view.towns ? (
@@ -184,8 +227,11 @@ export function Game() {
             pushed
             scene={view.scene}
             beats={view.beats}
-            director={director}
+            director={director && !photo && !strolling}
+            sound={sound}
+            look={photo ? look : undefined}
             onShot={setShot}
+            onStage={setStage}
             focusReq={focusReq}
             onOpen={(id) => setMind({ id })}
           />
@@ -195,9 +241,10 @@ export function Game() {
             <button className="g-btn primary" disabled={busy} onClick={() => act(() => api.reset({ scenario: "region" }))}>Start a civilization</button>
           </div>
         )}
+        <div className="g-vignette" aria-hidden="true" />
       </div>
 
-      <header className="g-top">
+      <header className="g-top" ref={headRef}>
         <div className="g-title">
           <a className="g-brand" href="#/" title="Psyche Live">Psyche</a>
           {view.towns && view.towns.length > 1 ? (
@@ -210,8 +257,8 @@ export function Game() {
           <span className="g-clock">
             {card && <>Year {view.year ?? card.year} · {SEASON_ICON[card.season] ?? ""} {card.season} · </>}
             {clock(view.tick)}
-            {card && card.weather !== "fair" ? ` · ${card.weather}` : ""}
           </span>
+          {card && <SkyDial seed={view.scene?.seed ?? view.seed} tick={view.tick} season={card.season} weather={card.weather} />}
         </div>
         <div className="g-controls">
           <div className="g-transport" role="group" aria-label="Time">
@@ -230,14 +277,20 @@ export function Game() {
               {mode === "coast" ? "Back to town" : "Whole coast"}
             </button>
           )}
-          {view.heresy && <HeresyChip summary={view.heresy} open={heresy} onOpen={() => setHeresy(!heresy)} />}
+          {view.civ && <CivChip summary={view.civ} open={civ} onOpen={() => { setCiv(!civ); setHeresy(false); }} />}
+          {view.heresy && <HeresyChip summary={view.heresy} open={heresy} onOpen={() => { setHeresy(!heresy); setCiv(false); }} />}
           {view.engines && view.engines.length > 0 && (
             <button className={`g-btn ${nested ? "on" : ""}`} onClick={() => setNested(!nested)} title="Engines the towns have built, and the worlds running inside them">
               ⊚ Worlds inside{view.engines.some((e) => e.depth > 0) ? ` · ${Math.max(...view.engines.map((e) => e.depth))} deep` : ""}
             </button>
           )}
+          {village && mode === "town" && !nested && (
+            <button className={`g-btn ${walking ? "on" : "primary"}`} aria-pressed={walking} onClick={() => { setVoice(false); setWalking(!walking); }} title="Step into the town yourself: walk around, talk, trade, help, make trouble, and see how each mind takes it">
+              {walking ? "🚶 Walking" : view.you ? "🚶 Walk back in" : "🚶 Walk in"}
+            </button>
+          )}
           {village && (
-            <button className={`g-btn ${voice ? "on" : ""}`} aria-pressed={voice} onClick={() => setVoice(!voice)} title="Speak into the world: as a stranger, a prophet, a voice from the sky, or a dream">
+            <button className={`g-btn ${voice ? "on" : ""}`} aria-pressed={voice} onClick={() => { setWalking(false); setVoice(!voice); }} title="Speak into the world: as a stranger, a prophet, a voice from the sky, or a dream">
               🗣 Speak
             </button>
           )}
@@ -249,7 +302,17 @@ export function Game() {
           <button className={`g-btn ${director ? "on" : ""}`} aria-pressed={director} onClick={() => setDirector(!director)} title="The director cuts to whatever matters most (D)">
             🎬 Director
           </button>
-          <button className={`g-btn ${menu ? "on" : ""}`} aria-expanded={menu} onClick={() => setMenu(!menu)}>
+          {village && (
+            <button className={`g-btn ${sound ? "on" : ""}`} aria-pressed={sound} aria-label="Sound" onClick={() => setSound(!sound)} title="The town's sounds: sea, wind, rain, the fire, birds. Made in your browser, no recordings.">
+              {sound ? "🔊" : "🔈"}
+            </button>
+          )}
+          {village && (
+            <button className="g-btn" aria-label="Photo mode" onClick={() => setPhoto(true)} title="Photo mode: clear the screen, pick the light, save a picture (P)">
+              📷
+            </button>
+          )}
+          <button className={`g-btn ${menu ? "on" : ""}`} aria-expanded={menu} onClick={() => setMenu(!menu)} title="Worlds: save, load, share">
             ☰
           </button>
         </div>
@@ -260,7 +323,7 @@ export function Game() {
       {!connected && <div className="g-lag g-warn">Lost the connection to the world. Reconnecting...</div>}
       {error && <div className="g-lag g-warn" role="alert" onClick={() => setError(undefined)}>{error}</div>}
 
-      {card && mode === "town" && !voice && <TownCard view={view} onGo={(t) => goTo(undefined, t)} onLook={(id) => setFocusReq({ id: `at:${id}`, n: Date.now() })} />}
+      {card && mode === "town" && !voice && !strolling && <TownCard view={view} onGo={(t) => goTo(undefined, t)} onLook={(id) => setFocusReq({ id: `at:${id}`, n: Date.now() })} />}
       {voice && mode === "town" && village && <VoicePanel view={view} busy={busy} act={act} onClose={() => setVoice(false)} onMind={(id, trace) => setMind({ id, trace })} onTrace={setTraceWord} />}
 
       <div className="g-toasts" aria-live="polite">
@@ -272,7 +335,7 @@ export function Game() {
         ))}
       </div>
 
-      {director && shot && mode === "town" && (
+      {director && shot && mode === "town" && !strolling && (
         <div className={`g-caption g-${shot.kind}`}>
           {shot.name && !shot.title.startsWith(shot.name) && <b>{shot.name}</b>}
           <span>{shot.title}</span>
@@ -280,11 +343,14 @@ export function Game() {
           {shot.agent && <button onClick={() => setMind({ id: shot.agent! })}>Open their mind</button>}
         </div>
       )}
-      {director && !shot && mode === "town" && village && <div className="g-caption g-hands">You have the camera. The director takes it back after 20 seconds.</div>}
+      {director && !shot && mode === "town" && village && !strolling && <div className="g-caption g-hands">You have the camera. The director takes it back after 20 seconds.</div>}
+
+      {village && <WalkIn view={view} stage={strolling ? stage : undefined} walking={strolling} setWalking={setWalking} onMind={(id, trace) => setMind({ id, trace })} covered={!!mind || menu || !!traceWord} />}
 
       <BottomStrip view={view} strip={strip} setStrip={setStrip} names={names} onGo={goTo} onMind={(id, trace) => setMind({ id, trace })} onRipple={(id, ripple) => setMind({ id, edit: true, ripple })} />
 
       {heresy && <HeresyPanel tick={view.tick} onMind={(id, trace) => setMind({ id, trace })} onClose={() => setHeresy(false)} />}
+      {civ && view.civ && <CivPanel tick={view.tick} onMind={(id, trace) => setMind({ id, trace })} onClose={() => setCiv(false)} />}
 
       {mind && (
         <aside className="g-mind" aria-label={`Inside ${names[mind.id] ?? mind.id}'s head`}>
@@ -320,7 +386,15 @@ export function Game() {
       )}
       {traceWord && <Lineage id={traceWord} tick={view.tick} onClose={() => setTraceWord(undefined)} onMind={(id, trace) => setMind({ id, trace })} />}
 
-      {menu && <Menu view={view} busy={busy} act={act} onClose={() => setMenu(false)} />}
+      {menu && <Worlds view={view} busy={busy} act={act} onClose={() => setMenu(false)} />}
+      {photo && village && (
+        <PhotoBar
+          look={look}
+          setLook={setLook}
+          onClose={() => setPhoto(false)}
+          caption={{ title: view.name, line: `${card ? `Year ${view.year ?? card.year}, ${card.season} · ` : ""}${card?.people ?? view.agents?.length ?? 0} people`, code: worldCode(view.scenario, view.seed) }}
+        />
+      )}
       {studio && (
         <Studio
           town={view.name}
@@ -461,7 +535,8 @@ function BottomStrip({ view, strip, setStrip, names, onGo, onMind, onRipple }: {
             {label}
           </button>
         ))}
-        <span className="g-keys">Space pause · 1 to 4 speed · D director{view.towns ? " · M coast" : ""}</span>
+        <span className="g-keys">Space pause · 1 to 4 speed · D director{view.towns ? " · M coast" : ""} · P photo</span>
+        <a href="#/history" className="g-lab" title="The causal history: every kept choice on one timeline, and the why behind each, walked back through the years">History →</a>
         <a href="#/lab" className="g-lab" title="Every analysis view: stories going round, who feels what, fears across generations, how each town tells it">Lab →</a>
       </div>
       {strip === "feed" && (
@@ -473,7 +548,7 @@ function BottomStrip({ view, strip, setStrip, names, onGo, onMind, onRipple }: {
                 <span>{f.title}</span>
                 {f.line && <q>{f.line.text}</q>}
               </button>
-              {f.agents[0] && names[f.agents[0]] && <button className="g-mini" onClick={() => onMind(f.agents[0]!, f.refs?.[0]?.trace)} title={`Open ${names[f.agents[0]]}'s mind at this moment`}>mind</button>}
+              {f.agents[0] && names[f.agents[0]] && <button className="g-mini" onClick={() => onMind(f.agents[0]!, f.refs?.find((r) => r.agent === f.agents[0])?.trace)} title={`Open ${names[f.agents[0]]}'s mind at this moment`}>mind</button>}
             </li>
           ))}
         </ol>
@@ -533,62 +608,6 @@ function Changes({ tick, onMind, onRipple }: { tick: number; onMind: (id: string
       ))}
       {edits && !edits.length && <li className="g-quiet">You haven't changed anyone yet. Open someone's mind and pick "Change them": make them braver, give them a fear, make them forget, whisper a thought. Then watch what the town does with it.</li>}
     </ol>
-  );
-}
-
-function Menu({ view, busy, act, onClose }: { view: GameView; busy: boolean; act: (f: () => Promise<unknown>) => Promise<void>; onClose: () => void }) {
-  const [slots, setSlots] = useState<Slot[]>();
-  const [name, setName] = useState("");
-  const [seed, setSeed] = useState(view.seed + 1);
-  useEffect(() => {
-    api.slots().then((r) => setSlots(r.slots), () => setSlots([]));
-  }, []);
-  const people = view.towns ? view.towns.reduce((n, t) => n + t.people, 0) : view.card?.people;
-  return (
-    <div className="g-menu" role="dialog" aria-label="Worlds and saves">
-      <div className="g-menu-head">
-        <b>Worlds</b>
-        <button className="g-btn" onClick={onClose} aria-label="Close">✕</button>
-      </div>
-      <p className="g-small">
-        Now: {view.name}, year {view.year ?? "?"}, {people} people{view.towns && view.towns.length > 1 ? ` in ${view.towns.length} towns` : ""}. Seed {view.seed}. It saves itself every minute and keeps an hourly copy.
-      </p>
-      <form
-        className="g-row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (name.trim()) void act(async () => setSlots((await api.saveSlot(name.trim())).slots)).then(() => setName(""));
-        }}
-      >
-        <input type="text" placeholder="Name this world to save it" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} aria-label="Save name" />
-        <button className="g-btn primary" disabled={busy || !name.trim()}>Save</button>
-      </form>
-      <ul className="g-slots">
-        {slots?.map((s) => (
-          <li key={s.name}>
-            <div>
-              <b>{s.name}</b>
-              <span className="g-small">
-                {s.year !== undefined ? `Year ${s.year}` : s.scenario}
-                {s.people !== undefined ? ` · ${s.people} people` : ""}
-                {s.towns && s.towns > 1 ? ` · ${s.towns} towns` : ""} · saved {new Date(s.savedAt).toLocaleString()}
-              </span>
-            </div>
-            <button className="g-btn" disabled={busy} onClick={() => confirm(`Load "${s.name}"? The world now running is replaced (save it first if you want to keep it).`) && void act(async () => { await api.loadSlot(s.name); onClose(); })}>Load</button>
-            <button className="g-btn" disabled={busy} onClick={() => confirm(`Delete the save "${s.name}"?`) && void act(async () => setSlots((await api.deleteSlot(s.name)).slots))} aria-label={`Delete ${s.name}`}>🗑</button>
-          </li>
-        ))}
-        {slots && !slots.length && <li className="g-quiet">No saves yet. Save this world to branch it: load it later and play it out differently.</li>}
-      </ul>
-      <div className="g-row">
-        <label className="g-small" htmlFor="g-seed">New civilization from seed</label>
-        <input id="g-seed" type="number" value={seed} onChange={(e) => setSeed(Number(e.target.value))} style={{ width: 90 }} />
-        <button className="g-btn" disabled={busy} onClick={() => confirm(`Start a new civilization from seed ${seed}? The world now running is replaced (save it first if you want to keep it).`) && void act(async () => { await api.reset({ scenario: "region", seed }); onClose(); })}>Start</button>
-      </div>
-      <p className="g-small">
-        <a href="#/lab">The lab</a> has every analysis view, other worlds (Kettle Island, a single village) and the mechanism switches. <a href="#/founders">Founders</a> is one mind building a house.
-      </p>
-    </div>
   );
 }
 

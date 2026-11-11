@@ -69,7 +69,7 @@ export const MILGRAM_CONDITIONS: MilgramCondition[] = [
   { id: "proximity", label: "Same room", description: "The learner sits a few feet away. The teacher sees and hears everything.", feedback: "proximity", authority: 1, legitimacy: 0.66, human: { value: 0.4, text: "40% went to 450 V (16 of 40)", source: `${M74}, experiment 3`, n: 40 } },
   { id: "touch", label: "Touch", description: "Past 150 V the learner won't keep his hand on the plate. The teacher has to force it down.", feedback: "touch", authority: 1, legitimacy: 0.66, human: { value: 0.3, text: "30% went to 450 V (12 of 40)", source: `${M74}, experiment 4`, n: 40 } },
   { id: "absent", label: "Orders by phone", description: "The experimenter leaves after the instructions and gives orders by telephone.", feedback: "voice", authority: 0.7, legitimacy: 0.66, human: { value: 0.225, text: "22.5% went to 450 V (9 of 40)", source: `${M74}, experiment 7`, n: 40 } },
-  { id: "office", label: "Shabby office", description: "Not a university: a run-down office in a commercial building, run by a firm nobody has heard of.", feedback: "voice", authority: 0.92, legitimacy: 0.55, human: { value: 0.475, text: "47.5% went to 450 V (19 of 40)", source: `${M74}, experiment 10`, n: 40 } },
+  { id: "office", label: "Shabby office", description: "Not a university: a run-down office in a commercial building, run by a firm nobody has heard of.", feedback: "voice", authority: 0.97, legitimacy: 0.6, human: { value: 0.475, text: "47.5% went to 450 V (19 of 40)", source: `${M74}, experiment 10`, n: 40 } },
   { id: "peers", label: "Two peers rebel", description: "Two fellow teachers (confederates) refuse to go on, one at 150 V, the other at 210 V.", feedback: "voice", authority: 1, legitimacy: 0.66, peersRebel: true, human: { value: 0.1, text: "10% went to 450 V (4 of 40)", source: `${M74}, experiment 17`, n: 40 } },
   { id: "free", label: "Free choice", description: "No orders. The teacher may use any level they like on each trial.", feedback: "voice", authority: 0, legitimacy: 0.66, freeChoice: true, human: { value: 0.025, text: "2.5% went to 450 V (1 of 40)", source: `${M74}, experiment 11`, n: 40 } },
 ];
@@ -197,14 +197,16 @@ export async function runMilgramSubject(v: Volunteer, c: MilgramCondition, facul
     if (c.peersRebel && volts > 150) forStop.push({ name: volts > 210 ? "both other teachers refused" : "one teacher refused", value: (volts > 210 ? 0.5 : 0.25) * (0.6 + m.traits.agreeableness * 0.6), ref: "lab:peers" });
     if (prod === 4) forStop.push({ name: "told there's no choice", value: 0.3 * (0.6 + m.traits.openness) * (0.5 + m.needs.autonomy), ref: "lab:reactance" });
 
+    // What each choice means to conscience (develop/morals.ts): obeying honours authority and costs care, the more he suffers.
+    const harm = 0.25 + 0.6 * Math.min(1, hurt);
     const options: ActionOption[] = c.freeChoice
       ? [
-          { id: "continue", label: `Go up to ${volts} V`, verb: `go up to ${volts} volts`, description: `Press the ${volts} V switch.`, prosocial: -0.15, assertive: 0.2, avoidant: 0, disclosure: 0, situation: forContinue, act: `presses the ${volts} V switch` },
-          { id: "stop", label: "Stay low", verb: "keep the shocks low", description: "Use a low level instead.", prosocial: 0.2, assertive: 0, avoidant: 0.2, disclosure: 0, situation: forStop, act: "keeps to a low switch" },
+          { id: "continue", label: `Go up to ${volts} V`, verb: `go up to ${volts} volts`, description: `Press the ${volts} V switch.`, prosocial: -0.15, assertive: 0.2, avoidant: 0, disclosure: 0, situation: forContinue, moral: { care: -harm }, act: `presses the ${volts} V switch` },
+          { id: "stop", label: "Stay low", verb: "keep the shocks low", description: "Use a low level instead.", prosocial: 0.2, assertive: 0, avoidant: 0.2, disclosure: 0, situation: forStop, moral: { care: harm }, act: "keeps to a low switch" },
         ]
       : [
-          { id: "continue", label: `Press ${volts} V`, verb: `press the ${volts} volt switch`, description: `Read the next word pair and press the ${volts} V switch (${bandOf(volts)}).`, prosocial: 0.4, assertive: 0, avoidant: 0.1, disclosure: 0, comply: true, situation: forContinue, act: `presses the ${volts} V switch` },
-          { id: "stop", label: "Refuse to go on", verb: "refuse to go on", description: "Push back from the board and say no more.", prosocial: -0.3, assertive: 0.6, avoidant: 0.3, disclosure: 0.2, situation: forStop, act: "pushes back from the shock board" },
+          { id: "continue", label: `Press ${volts} V`, verb: `press the ${volts} volt switch`, description: `Read the next word pair and press the ${volts} V switch (${bandOf(volts)}).`, prosocial: 0.4, assertive: 0, avoidant: 0.1, disclosure: 0, comply: true, situation: forContinue, moral: { authority: 0.7 * c.authority, care: -harm }, act: `presses the ${volts} V switch` },
+          { id: "stop", label: "Refuse to go on", verb: "refuse to go on", description: "Push back from the board and say no more.", prosocial: -0.3, assertive: 0.6, avoidant: 0.3, disclosure: 0.2, situation: forStop, moral: { authority: -0.5 * c.authority, care: harm, liberty: prod ? 0.5 : 0.15 }, act: "pushes back from the shock board" },
         ];
     const order = c.freeChoice ? "The experimenter: \"You may use any level you like.\"" : prod ? `The experimenter: "${PRODS[prod - 1]}"` : `The experimenter: "Next one. ${volts} volts."`;
     const t = await live(

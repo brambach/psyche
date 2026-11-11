@@ -19,6 +19,7 @@ import { nextId } from "../rng.js";
 import type { Contribution, Trace } from "../trace.js";
 import { EMOTION_NAMES, TRAIT_NAMES, type Ablations, type MindState, type OtherModel, type TraitName, type Traits } from "../types.js";
 import { createSettlers } from "../world/people.js";
+import type { Foundation } from "../develop/types.js";
 
 export const DAY = 1440;
 /** Lab sessions start at ten in the morning on day one. */
@@ -136,7 +137,7 @@ export async function pass(mind: MindState, minutes: number, faculties: Facultie
 
 // ---------------------------------------------------------------- reading a decision
 
-export type ForceKind = "situation" | "core belief" | "trait" | "relation" | "feeling" | "norm" | "memory" | "state" | "habit" | "chance";
+export type ForceKind = "situation" | "core belief" | "trait" | "relation" | "feeling" | "norm" | "memory" | "state" | "habit" | "chance" | "conscience" | "attachment";
 
 export interface Force {
   name: string;
@@ -193,7 +194,7 @@ export interface Debrief {
  * anonymity, labels. Traits, core beliefs, mood, habit and chance are unspoken by kind.
  */
 export const UNNOTICED = new Set(["lab:commitment", "lab:consistency", "lab:record", "lab:diffusion", "lab:numbers", "lab:anonymous", "lab:overreact", "lab:shift", "lab:responsibility"]);
-const UNSPOKEN_KINDS = new Set<ForceKind>(["core belief", "trait", "state", "chance", "habit", "norm"]);
+const UNSPOKEN_KINDS = new Set<ForceKind>(["core belief", "trait", "state", "chance", "habit", "norm", "conscience", "attachment"]);
 const isUnspoken = (f: Force & { ref?: string }) => UNSPOKEN_KINDS.has(f.kind) || (f.ref !== undefined && UNNOTICED.has(f.ref));
 
 /** Situational force descriptions, by ref, for the Why view. */
@@ -241,6 +242,14 @@ function classify(mind: MindState, name: string, ref: string | undefined, situat
     const ep = s?.origin?.length ? mind.episodes.find((e) => e.id === s.origin![0]) : undefined;
     const years = ep ? Math.round((mind.tick - ep.tick) / (365 * DAY)) : 0;
     return { kind: "core belief", root: ep ? `installed by "${ep.gist}" (${years} year${years === 1 ? "" : "s"} ago)` : undefined };
+  }
+  // What their upbringing left in them: the root is the strongest cause on record for it.
+  if (ref?.startsWith("dev:") && mind.dev) {
+    const key = ref.slice(4);
+    const target = key.startsWith("moral.") ? key.slice(6) : key === "attachment.avoidance" ? "avoidance" : "anxiety";
+    const top = mind.dev.roots.filter((r) => r.target === target).sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta))[0];
+    const level = key.startsWith("moral.") ? `${target} ${mind.dev.morals[target as Foundation]?.toFixed(2)}` : `anxiety ${mind.attachment.anxiety.toFixed(2)}, avoidance ${mind.attachment.avoidance.toFixed(2)}`;
+    return { kind: key.startsWith("moral.") ? "conscience" : "attachment", root: `${level}${top ? `: ${top.text.replace(/\.$/, "")}` : ""}` };
   }
   if (name.startsWith("trust in ")) {
     const o = ref?.startsWith("other:") ? mind.others[ref.slice(6)] : undefined;

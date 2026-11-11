@@ -15,7 +15,7 @@ import { influence, nodeId, type Ledger } from "../ledger.js";
 import { TRAIT_NAMES, type AgentId, type Episode, type Goal, type MindState, type Schema, type Tick, type TraitName } from "../types.js";
 import { baseMind } from "../world/cast.js";
 import type { EditRecord, MindEdit } from "../world/edits.js";
-import { crossingMemory, other, routineFor, TRADES, uniqueId } from "../world/people.js";
+import { crossingMemory, mintBase, other, routineFor, TRADES, uniqueId } from "../world/people.js";
 import type { FeedItem, Sink, WorldState } from "../world/world.js";
 import type { Household } from "../world/village.js";
 import type { PersonaReading } from "./types.js";
@@ -150,12 +150,12 @@ export function admitPersona(world: WorldState, reading: PersonaReading, sink: S
   if (!v) throw new Error("Only a village or a town can take in a newcomer.");
   const taken = new Set([...Object.keys(world.minds), ...Object.keys(v.households), ...(v.reserved?.ids ?? [])]);
   const base = first(reading).toLowerCase().normalize("NFKD").replace(/[^a-z]/g, "") || "newcomer";
-  const id = uniqueId(base, taken);
+  const id = uniqueId(mintBase(v, base), taken);
   const now = world.tick;
   const { mind, origin, records } = personaMind(world, reading, id, now);
 
   // A tent of their own, in the next free plot.
-  const hid = uniqueId(`${base}hh`, taken);
+  const hid = uniqueId(mintBase(v, `${base}hh`), taken);
   const home = `home_${hid}`;
   const k = Object.keys(v.households).length + Object.keys(world.places).filter((p) => p.startsWith("home_")).length;
   const row = Math.floor(k / 5);

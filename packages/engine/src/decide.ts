@@ -2,6 +2,7 @@
 // System 1 takes the best-scoring option; System 2 (an LLM deliberation over the workspace)
 // engages on conflict, novelty or stakes, scaled by remaining capacity (Evans & Stanovich 2013).
 
+import { depthTerms } from "./develop/behaviour.js";
 import { clamp } from "./memory.js";
 import { PARAMS } from "./params.js";
 import type { ActionOption, Faculties, Percept, StableIdentity, StyleVector } from "./ports.js";
@@ -134,6 +135,8 @@ export function scoreOption(mind: MindState, p: Percept, opt: OptionSpec, ws: Wo
     if (opt.coping && p.topics.includes(h.cue) && h.action === opt.coping) add(`habit: ${h.cue}`, h.strength * 0.4, h.id);
   }
   for (const f of opt.situation ?? []) add(f.name, f.value, f.ref);
+  // Conscience and attachment: what their upbringing left in them (develop/). Nothing for a mind without that record.
+  for (const t of depthTerms(mind, p, opt)) add(t.name, t.value, t.ref);
   add("noise", gaussian(mind) * D.noise);
   return { id: opt.id, label: opt.label, description: opt.description, utility: terms.reduce((s, t) => s + t.value, 0), terms };
 }

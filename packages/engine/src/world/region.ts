@@ -28,6 +28,8 @@ import { carryWords, quietSpread } from "./voice.js";
 import { createVillage, foundVillage, type Household } from "./village.js";
 import { enableHeresy } from "./heresy.js";
 import { eventPercept, feed, personName, record, thirdPerson, type Sink, type Why, type WorldState } from "./world.js";
+import type { CivHost } from "./civ/host.js";
+import { civAfterTrade, civBlocksTrade, civFound, civRegionSeason, enableCiv } from "./civ/index.js";
 
 export interface Town {
   id: string;
@@ -41,6 +43,10 @@ export interface Town {
   history: { tick: Tick; year: number; people: number; children: number; food: number; store: number; leader?: AgentId; houses?: number; tents?: number; shunned?: string[] }[];
   /** Where the town sits: how far along the coast (0 to 1) and how far inland (0 to 1). */
   site?: { along: number; inland: number };
+  /** In a realm: the town's own mark on every id made in it (see VillageState.idTag). */
+  tag?: string;
+  /** Set when the founders sailed here from another region (realm/): which one. */
+  fromRegion?: { id: string; name: string };
 }
 
 export interface Trade {
@@ -60,11 +66,13 @@ export interface ChronicleEntry {
   tick: Tick;
   year: number;
   town?: string;
-  kind: "founding" | "leader" | "law" | "death" | "trade" | "quarrel" | "peace" | "hunger" | "craft" | "lost" | "work" | "ruin" | "faith" | "engine" | "heresy" | "money";
+  kind: "founding" | "leader" | "law" | "death" | "trade" | "quarrel" | "peace" | "hunger" | "craft" | "lost" | "work" | "ruin" | "faith" | "engine" | "heresy" | "money" | "market" | "faction" | "election" | "plague" | "migration" | "record" | "war" | "truce";
   text: string;
   agents?: AgentId[];
   /** What led to it, as far back as the records go: the people, their reasons and the memories behind them. */
   why?: Why[];
+  /** Counts up for the life of the region, so a reader can tell what it has not seen yet even after old entries are let go. */
+  seq?: number;
 }
 
 export interface RegionState {
@@ -82,6 +90,16 @@ export interface RegionState {
   last: { day: number; season: string; feed: Record<string, number> };
   /** Trade runs between towns, as `from>to` to the count in each year (for the map). */
   routes?: Record<string, Record<number, number>>;
+  /** How many chronicle entries this region has ever written. */
+  chronicled?: number;
+  /** When a town was last founded here, kept once that town has sailed on to another region. */
+  lastFounding?: number;
+  /** How many towns this region has given a mark of their own (Town.tag). */
+  tagged?: number;
+  /** How many towns this region has named (with `nameTown`). */
+  named?: number;
+  /** Towns in other regions this one has dealt with (realm/): where each is. */
+  abroad?: Record<string, { name: string; region: string; regionName: string }>;
 }
 
 export interface RegionOptions {
@@ -93,12 +111,45 @@ export interface RegionOptions {
   live?: number;
   /** Faculties for aggregated towns (the few things that still go through a mind there). Default: the region's own. */
   cheap?: Faculties;
+  /** Names for new towns (the nth this region has named). Default: the sixteen names of the first coast. */
+  nameTown?: (n: number) => string;
+  /** In a realm: this region's letters. Each town founded here gets them and a number as its own mark (Town.tag). */
+  idTag?: string;
+  /** Run the civilization systems (civ/): trades and markets, factions, contested elections, sickness, migration, records, raids. Default: off. */
+  civ?: boolean;
+}
+
+/**
+ * What a layer above the region (realm/) needs to act between regions with the region's own
+ * machinery: the same sinks, faculties, chance, chronicle and grievances the region uses between
+ * its own towns.
+ */
+export interface RegionPort {
+  sink(town: string): Sink;
+  faculties(town: string): Faculties;
+  rand(): number;
+  chronicle(e: Omit<ChronicleEntry, "tick" | "year" | "seq">): void;
+  /** A town that was wronged remembers it, and comes to believe it of the other town (which may be abroad). */
+  grievance(victim: Town, other: Pick<Town, "id" | "name">, culprit: AgentId, text: string): Promise<void>;
+  /** Hold, or strengthen, a belief about a town (which may be abroad). */
+  believeOf(m: MindState, town: Pick<Town, "id" | "name">, valence: number, confidence: number, evidence: string[], tick: Tick, proposition: string): void;
+  /** Beliefs about other towns changed: regard needs working out again. */
+  touch(): void;
+  /** Let the chronicle read what the towns' feeds recorded. */
+  harvest(): void;
+}
+
+/** A town taken out of one region to be set down in another: its record, its world, and any world inside its engine. */
+export interface TownPacket {
+  town: Town;
+  world: WorldState;
+  nested?: WorldState;
 }
 
 const TOWN_NAMES = ["Saltmarsh", "Greyhaven", "Wickstead", "Thornmouth", "Fennick Cove", "Larkhollow", "Corrie", "Seal Point", "Kittiwake", "Brindle", "Ashgrove", "Westering", "Mullion", "Gannet Rock", "Dunlin", "Tarn"];
 const SPLIT_AT = 26;
 const MAX_TOWNS = 4;
-const townBelief = (t: Town) => `town:${t.id}`;
+const townBelief = (t: Pick<Town, "id">) => `town:${t.id}`;
 
 export class RegionSession {
   region: RegionState;
@@ -128,6 +179,7 @@ export class RegionSession {
   static create(seed = 11, faculties: Faculties, opts: RegionOptions = {}): RegionSession {
     const w = createVillage(seed);
     w.village!.town = "hollow";
+    if (opts.civ) enableCiv(w);
     const region: RegionState = {
       seed,
       tick: w.tick,
@@ -210,6 +262,88 @@ export class RegionSession {
     return this.towns[id] ? this.faculties : (this.opts.cheap ?? this.faculties);
   }
 
+  // ------------------------------------------------------------ between regions (realm/)
+
+  /** A region that begins with one town that sailed in from elsewhere. */
+  static found(seed: number, packet: TownPacket, faculties: Faculties, opts: RegionOptions = {}): RegionSession {
+    const { town, world } = packet;
+    const region: RegionState = {
+      seed,
+      tick: world.tick,
+      rng: (Math.imul(seed, 2654435761) ^ world.rng) >>> 0,
+      idCounter: 0,
+      towns: [{ ...town, site: { along: 0.5, inland: 0.15 } }],
+      regard: {},
+      trades: [],
+      chronicle: [],
+      departed: {},
+      last: { day: dayOf(world.tick), season: world.village!.season, feed: { [town.id]: 0 } },
+    };
+    if (packet.nested) region.nested = { [town.id]: packet.nested };
+    return new RegionSession(region, { [town.id]: world }, faculties, opts);
+  }
+
+  /** Take a town out of the region whole (its people sail on). The region's first town stays. */
+  detachTown(id: string): TownPacket {
+    const r = this.region;
+    const i = r.towns.findIndex((t) => t.id === id);
+    if (i <= 0) throw new Error(i < 0 ? `No town ${id}.` : `${r.towns[0]!.name} is where this region began; it stays.`);
+    this.harvest();
+    const town = r.towns[i]!;
+    const world = this.world(id);
+    r.towns.splice(i, 1);
+    r.lastFounding = Math.max(r.lastFounding ?? -Infinity, town.founded);
+    delete this.towns[id];
+    delete this.aggs[id];
+    delete this.sinks[id];
+    delete r.last.feed[id];
+    for (const k of Object.keys(r.regard)) if (k.startsWith(`${id}>`) || k.endsWith(`>${id}`)) delete r.regard[k];
+    this.watched = this.watched.filter((x) => x !== id);
+    const nested = r.nested?.[id];
+    if (r.nested) delete r.nested[id];
+    world.village!.reserved = undefined;
+    return { town, world, nested };
+  }
+
+  /** Set a town from elsewhere down in this region, on whichever tier it was on. */
+  attachTown(packet: TownPacket, from?: { id: string; name: string }): Town {
+    const r = this.region;
+    const { world } = packet;
+    if (r.towns.some((t) => t.id === packet.town.id)) throw new Error(`There is already a ${packet.town.name} here.`);
+    if (world.tick !== r.tick) throw new Error(`${packet.town.name} is at another moment (${world.tick}, here ${r.tick}).`);
+    const near = r.towns[Math.floor(this.rand() * r.towns.length)]!;
+    const town: Town = { ...packet.town, site: this.siteNear(near), fromRegion: from ?? packet.town.fromRegion };
+    r.towns.push(town);
+    r.last.feed[town.id] = 0;
+    if (packet.nested) (r.nested ??= {})[town.id] = packet.nested;
+    if (town.agg) this.aggs[town.id] = world.village!.aggregate ? world : dematerialize(world);
+    else this.towns[town.id] = new WorldSession(world, this.faculties, this.opts.session);
+    for (const o of r.towns) {
+      if (o.id === town.id) continue;
+      r.regard[`${town.id}>${o.id}`] = 0;
+      r.regard[`${o.id}>${town.id}`] = 0;
+    }
+    this.dirty = true;
+    this.budget();
+    return town;
+  }
+
+  /** The region's own machinery, for whatever happens between regions. */
+  get port(): RegionPort {
+    return {
+      sink: (town) => this.sinkOf(town),
+      faculties: (town) => this.facultiesOf(town),
+      rand: () => this.rand(),
+      chronicle: (e) => this.chronicle(e),
+      grievance: (victim, other, culprit, text) => this.grievance(victim, this.world(victim.id), other, culprit, text),
+      believeOf,
+      touch: () => {
+        this.dirty = true;
+      },
+      harvest: () => this.harvest(),
+    };
+  }
+
   /** Every mind in the region, the living copy first, then the dead, departed and remembered. */
   minds(): Record<AgentId, MindState> {
     const out: Record<AgentId, MindState> = {};
@@ -235,7 +369,7 @@ export class RegionSession {
   /** Advance every town together, then do what happens between them. */
   async advance(minutes: number, opts: { snapshot?: boolean } = {}): Promise<void> {
     for (const t of this.region.towns) {
-      this.reserve(t.id);
+      this.reserve(t);
       if (this.towns[t.id]) await this.towns[t.id]!.apply({ type: "advance", minutes }, opts);
       else {
         await aggAdvance(this.aggs[t.id]!, minutes, this.facultiesOf(t.id), this.sinkOf(t.id));
@@ -256,25 +390,33 @@ export class RegionSession {
     }
   }
 
-  private reserve(town: string): void {
+  /**
+   * Tell a town which ids and names are in use elsewhere in the region, so a birth never takes
+   * another town's. A town with a mark of its own (Town.tag) makes ids nobody else can, so it only
+   * needs the names.
+   */
+  private reserve(town: Town): void {
     const ids: string[] = [];
-    const names: string[] = [];
+    const names = new Set<string>();
     for (const t of this.region.towns) {
-      if (t.id === town) continue;
+      if (t.id === town.id) continue;
       const w = this.world(t.id);
-      ids.push(...Object.keys(w.minds), ...Object.keys(w.village!.households));
-      names.push(...Object.values(w.minds).map((m) => m.name));
+      if (!town.tag) ids.push(...Object.keys(w.minds), ...Object.keys(w.village!.households));
+      for (const id in w.minds) names.add(w.minds[id]!.name);
     }
-    this.world(town).village!.reserved = { ids, names: [...new Set(names)] };
+    const v = this.world(town.id).village!;
+    v.reserved = { ids, names: [...names] };
+    if (town.tag) v.idTag = town.tag;
   }
 
   private rand(): number {
     return nextRandom(this.region as unknown as { rng: number });
   }
 
-  private chronicle(e: Omit<ChronicleEntry, "tick" | "year">): void {
+  private chronicle(e: Omit<ChronicleEntry, "tick" | "year" | "seq">): void {
     const w = this.world(this.region.towns[0]!.id);
-    this.region.chronicle.push({ tick: this.region.tick, year: yearOf(w), ...e, text: cap(e.text) });
+    const seq = (this.region.chronicled = (this.region.chronicled ?? 0) + 1);
+    this.region.chronicle.push({ tick: this.region.tick, year: yearOf(w), ...e, text: cap(e.text), seq });
     if (this.region.chronicle.length > 2000) this.region.chronicle.splice(0, this.region.chronicle.length - 2000);
   }
 
@@ -292,6 +434,8 @@ export class RegionSession {
       for (const t of r.towns) this.sample(t);
       if (first.season === "spring") await this.maybeSplit();
       await this.mend();
+      // Merchants, households that move, raids and truces (civ/): only where towns run those systems.
+      await civRegionSeason(this.civHost());
       // Engines, and the worlds inside them (nested.ts): those always run on the cheap faculties.
       const counting = () => r.towns.filter((t) => this.world(t.id).village!.nested?.machine).length;
       for (const t of r.towns) await nestedSeason(this.world(t.id), this.opts.cheap ?? this.faculties, this.sinkOf(t.id), (r.nested ??= {}), { counting: counting() });
@@ -347,7 +491,7 @@ export class RegionSession {
   private async maybeSplit(): Promise<void> {
     const r = this.region;
     if (r.towns.length >= (this.opts.maxTowns ?? MAX_TOWNS)) return;
-    const last = Math.max(...r.towns.map((t) => t.founded));
+    const last = Math.max(r.lastFounding ?? -Infinity, ...r.towns.map((t) => t.founded));
     const yearTicks = this.world(r.towns[0]!.id).village!.seasonDays * 4 * 1440;
     if (r.tick - last < 2 * yearTicks) return;
     for (const t of r.towns) {
@@ -365,7 +509,7 @@ export class RegionSession {
   splitWatch(): { town: string; people: number; leaver: AgentId; belonging: number } | undefined {
     const r = this.region;
     if (r.towns.length >= (this.opts.maxTowns ?? MAX_TOWNS)) return undefined;
-    const last = Math.max(...r.towns.map((t) => t.founded));
+    const last = Math.max(r.lastFounding ?? -Infinity, ...r.towns.map((t) => t.founded));
     const yearTicks = this.world(r.towns[0]!.id).village!.seasonDays * 4 * 1440;
     if (r.tick - last < 2 * yearTicks - yearTicks / 4) return undefined;
     for (const t of r.towns) {
@@ -377,32 +521,39 @@ export class RegionSession {
     return undefined;
   }
 
-  private async split(from: Town, w: WorldState): Promise<void> {
+  /**
+   * A group leaves to found a town. Left to itself the group forms around whoever belongs least;
+   * `preset` names a group that has already decided to go together (a faction leaving, civ/migration.ts).
+   */
+  private async split(from: Town, w: WorldState, preset?: { group: Household[]; seed: AgentId; reason: string; why: Why[] }): Promise<Town | undefined> {
     const r = this.region;
     const v = w.village!;
     const adults = w.order.filter((x) => !isChild(w, x) && ageOf(w, x) >= 18);
     const belonging = (id: AgentId) => belongingOf(w, id, adults);
     const hhOf = (id: AgentId) => Object.values(v.households).find((h) => h.members.includes(id));
-    const seed = leastBelonging(w)?.id;
-    if (!seed) return;
+    const seed = preset?.seed ?? leastBelonging(w)?.id;
+    if (!seed) return undefined;
     const S = w.minds[seed]!;
-    const group: Household[] = [hhOf(seed)!];
+    const group: Household[] = preset ? [...preset.group] : [hhOf(seed)!];
     const size = () => group.reduce((s, h) => s + h.members.length, 0);
-    const close = Object.values(v.households)
-      .filter((h) => !group.includes(h))
-      .map((h) => ({ h, pull: Math.max(...h.members.filter((m) => !isChild(w, m)).map((m) => w.minds[m]!.others[seed]?.liking ?? 0), 0) - Math.max(...h.members.map((m) => belonging(m) - 0.5), 0) }))
-      .sort((a, b) => b.pull - a.pull || a.h.id.localeCompare(b.h.id));
+    const close = preset
+      ? []
+      : Object.values(v.households)
+          .filter((h) => !group.includes(h))
+          .map((h) => ({ h, pull: Math.max(...h.members.filter((m) => !isChild(w, m)).map((m) => w.minds[m]!.others[seed]?.liking ?? 0), 0) - Math.max(...h.members.map((m) => belonging(m) - 0.5), 0) }))
+          .sort((a, b) => b.pull - a.pull || a.h.id.localeCompare(b.h.id));
     for (const { h, pull } of close) {
       if (size() >= w.order.length * 0.3 || pull < 0.45) break;
       if (size() + h.members.length > w.order.length * 0.45) continue;
       group.push(h);
     }
-    if (size() < 5) return;
+    if (size() < 5) return undefined;
     const leavers = group.flatMap((h) => h.members);
-    const tname = TOWN_NAMES[r.towns.length - 1] ?? `New ${w.name} ${r.towns.length}`;
+    const tname = this.opts.nameTown ? this.opts.nameTown((r.named = (r.named ?? 0) + 1) - 1) : (TOWN_NAMES[r.towns.length - 1] ?? `New ${w.name} ${r.towns.length}`);
     const town: Town = { id: tname.toLowerCase().replace(/\s+/g, "_"), name: tname, founded: r.tick, from: from.id, founders: leavers, history: [], site: this.siteNear(from) };
-    const why = this.splitWhy(w, seed, belonging(seed), group.slice(1), adults);
-    const reason = belonging(seed) < 0.45 ? `${S.name} never felt welcome at the fire in ${w.name}` : `there was no more room at ${w.name} for all of us`;
+    if (this.opts.idTag) town.tag = `${this.opts.idTag}${(r.tagged = (r.tagged ?? 0) + 1)}`;
+    const why = preset?.why ?? this.splitWhy(w, seed, belonging(seed), group.slice(1), adults);
+    const reason = preset?.reason ?? (belonging(seed) < 0.45 ? `${S.name} never felt welcome at the fire in ${w.name}` : `there was no more room at ${w.name} for all of us`);
     const leaving = `ep_leaving_${town.id}`;
     const share = v.store.food * (leavers.length / w.order.length) * 0.5;
     v.store.food = Number((v.store.food - share).toFixed(1));
@@ -415,7 +566,7 @@ export class RegionSession {
       agents[id] = structuredClone(w.agents[id]!);
     }
     const fac = this.facultiesOf(from.id);
-    const nw = foundVillage({ name: town.name, town: town.id, seed: w.seed * 7 + r.towns.length, tick: w.tick, rng: w.rng ^ Math.imul(r.towns.length + 1, 2246822519), from: v, households: group.map((h) => structuredClone(h)), minds, agents, order: leavers, food: share, founding: leaving });
+    const nw = foundVillage({ name: town.name, town: town.id, seed: w.seed * 7 + r.towns.length + (r.tagged ?? 0) * 7919, tick: w.tick, rng: w.rng ^ Math.imul(r.towns.length + 1, 2246822519), from: v, households: group.map((h) => structuredClone(h)), minds, agents, order: leavers, food: share, founding: leaving });
     carryLineage(w.minds, nw, leavers.flatMap((id) => w.minds[id]!.episodes.filter((e) => e.source.kind === "told").map((e) => ({ agent: id, ep: e }))));
 
     // Gone from the old town: kept in memory there, as the dead are, but no longer part of its days.
@@ -443,6 +594,8 @@ export class RegionSession {
     // The session works on its own copy; everything from here on happens to that one.
     const nwLive = this.towns[town.id]!.world;
     this.watched = this.watched.filter((x) => x !== town.id);
+    // A daughter of a town with trades, sides and records has them too, and takes what was its people's.
+    civFound(w, nwLive, group);
 
     // Both sides remember it. The leavers share one memory of leaving: the new town's founding story.
     const counts = new Map<string, number>();
@@ -476,6 +629,26 @@ export class RegionSession {
     r.regard[`${from.id}>${town.id}`] = 0;
     this.dirty = true;
     this.budget();
+    return town;
+  }
+
+  /** What the between-town civilization systems (civ/) may ask of the region. */
+  /** What the between-town civ systems (migration, raids, truces, merchants) are given to work with. */
+  civHost(): CivHost {
+    return {
+      region: this.region,
+      world: (id) => this.world(id),
+      sink: (id) => this.sinkOf(id),
+      faculties: (id) => this.facultiesOf(id),
+      live: (id) => !!this.towns[id],
+      rand: () => this.rand(),
+      chronicle: (e) => this.chronicle(e),
+      touch: () => {
+        this.dirty = true;
+      },
+      canFound: () => this.region.towns.length < (this.opts.maxTowns ?? MAX_TOWNS),
+      found: (from, group, seed, reason, why) => this.split(from, this.world(from.id), { group, seed, reason, why }),
+    };
   }
 
   /** A new town's place: further along the coast from where they left, on whichever side has room. */
@@ -535,6 +708,8 @@ export class RegionSession {
         const B = this.world(b.id);
         const perHead = (w: WorldState) => w.village!.store.food / Math.max(1, w.order.length);
         if (perHead(A) < 3 || perHead(A) < perHead(B) * 1.6 || B.village!.stock.timber < 20) continue;
+        // A landing shut for a sickness takes no boats (civ/disease.ts).
+        if (civBlocksTrade(A, B)) continue;
         if (r.trades.some((t) => t.from === a.id && t.to === b.id && r.tick - t.tick < B.village!.seasonDays * 1440)) continue;
         if (this.rand() > 0.5) continue;
         await this.exchange(a, A, b, B);
@@ -563,6 +738,8 @@ export class RegionSession {
     r.trades.push(trade);
     // A trader who believes your words carries them too.
     carryWords(A, B, trader);
+    // And sometimes a sickness (civ/disease.ts).
+    civAfterTrade(a, A, b, B, trader, this.sinkOf(a.id), this.sinkOf(b.id));
     const yr = yearOf(A);
     const route = ((r.routes ??= {})[`${a.id}>${b.id}`] ??= {});
     route[yr] = (route[yr] ?? 0) + 1;
@@ -620,7 +797,7 @@ export class RegionSession {
   }
 
   /** A town that was wronged remembers it, and comes to believe it of the other town. */
-  private async grievance(victim: Town, V: WorldState, other: Town, culprit: AgentId, text: string): Promise<void> {
+  private async grievance(victim: Town, V: WorldState, other: Pick<Town, "id" | "name">, culprit: AgentId, text: string): Promise<void> {
     const sV = this.sinkOf(victim.id);
     const fV = this.facultiesOf(victim.id);
     this.dirty = true;
@@ -740,7 +917,7 @@ const unstop = (s: string) => s.replace(/[.\s]+$/, "");
 const story = (t: Trade) => (t.story ? ` At the fire, ${t.story.replace(/\.$/, "")}.` : "");
 
 /** Hold, or strengthen, a belief about another town, with the memory behind it as evidence. */
-function believeOf(m: MindState, town: Town, valence: number, confidence: number, evidence: string[], tick: Tick, proposition: string): void {
+function believeOf(m: MindState, town: Pick<Town, "id" | "name">, valence: number, confidence: number, evidence: string[], tick: Tick, proposition: string): void {
   const about = townBelief(town);
   const same = m.beliefs.find((b) => b.about === about && Math.sign(b.valence) === Math.sign(valence));
   const opposite = m.beliefs.find((b) => b.about === about && Math.sign(b.valence) !== Math.sign(valence));
@@ -809,7 +986,15 @@ export interface MythVersion {
   text: string;
   holders: number;
   /** All versions in the town, most held first. */
-  versions: { text: string; holders: AgentId[]; root: { agent: AgentId; name: string; text: string }; chain: { agent: AgentId; name: string; text: string }[] }[];
+  versions: {
+    text: string;
+    holders: AgentId[];
+    root: { agent: AgentId; name: string; text: string };
+    /** The tellers still remembered, from a holder back to the root. */
+    chain: { agent: AgentId; name: string; text: string }[];
+    /** How many tellings the version took to reach that holder, counting tellers no longer remembered (Source.elided). */
+    tellings: number;
+  }[];
 }
 
 export interface MythComparison {
@@ -845,10 +1030,13 @@ export function compareMyths(rs: RegionSession, founding = CROSSING): MythCompar
         at = next ? { agent: src.from!, ep: next } : undefined;
       }
       const root = rootOf(minds, id, ep);
-      const v = by.get(text) ?? { text, holders: [], root: { agent: root.agent, name: minds[root.agent]!.name, text: chain.at(-1)!.text }, chain };
+      const v = by.get(text) ?? { text, holders: [], root: { agent: root.agent, name: minds[root.agent]!.name, text: chain.at(-1)!.text }, chain, tellings: root.hops };
       v.holders.push(id);
       // Show the longest road the version took to reach someone.
-      if (chain.length > v.chain.length) v.chain = chain;
+      if (root.hops > v.tellings || (root.hops === v.tellings && chain.length > v.chain.length)) {
+        v.chain = chain;
+        v.tellings = root.hops;
+      }
       by.set(text, v);
     }
     const versions = [...by.values()].sort((a, b) => b.holders.length - a.holders.length || a.text.localeCompare(b.text));
