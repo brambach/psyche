@@ -52,7 +52,9 @@ export {
   type Weather,
   type Resource,
 } from "./world/village.js";
-export { townTerrain, terrainOf, townScene, civicPlot, fellingOrder, LOGS_PER_TREE, homePlot, homeOrder, SPOTS, TOWN, type TownTerrain, type Scene3D } from "./world/town3d.js";
+export { townTerrain, terrainOf, townScene, civicPlot, fellingOrder, LOGS_PER_TREE, homePlot, homeOrder, SPOTS, TOWN, shoreAt, naturalHeight, landNoise, type TownTerrain, type Scene3D } from "./world/town3d.js";
+export { skyAt, skyWords, skyHash, type SkyState, type SkySeason, type SkyWeather } from "./world/sky.js";
+export { WORLD_FORMAT, WORLD_VERSION, WORLD_SCENARIOS, worldCode, parseWorldCode, cleanWorldName, cleanThumb, checkWorldFile, type WorldHead, type WorldSummary, type WorldScenario, type WorldCheck } from "./world/share.js";
 export { createSettlers, TRADES, type Settler } from "./world/people.js";
 export { MATERIALS, M, get, generateIsland, encodeGrid, census, standY, type Material, type Grid, type Plot, type Terrain, type Tree } from "./founders/voxel.js";
 export { check, compile, bill, describe, siteOf, PACE, SIDES, type Blueprint, type Side, type Furniture, type Placement, type Part, type Bill, type Item } from "./founders/blueprint.js";
