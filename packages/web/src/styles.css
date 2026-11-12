@@ -800,3 +800,18 @@ a.btn { color: inherit; text-decoration: none; display: inline-block; }
   .vl-box { border-radius: 0; height: 100%; padding: 16px; }
   .vl-tree > li { margin-left: 0 !important; }
 }
+
+/* No WebGL in this browser: say so in the middle of the view, not under the feed. */
+.t3-error.t3-no3d {
+  top: 40%;
+  bottom: auto;
+  left: 50%;
+  right: auto;
+  transform: translate(-50%, -50%);
+  max-width: min(560px, calc(100% - 32px));
+  padding: 14px 18px;
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
+  z-index: 5;
+}

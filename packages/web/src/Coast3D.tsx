@@ -10,6 +10,7 @@ import type { Timeline } from "@psyche/engine";
 import { api } from "./api";
 import { boatAt, buildCoast, D, H, hash, SEA, strHash, townsAt, W, type TownNow } from "./coastScene";
 import { buildMesh, COLOR } from "./voxelMesh";
+import { makeRenderer, NO_3D } from "./world3d/gl";
 
 export function Coast3D({ seed, current, onVisit, game }: { seed: number; current?: string; onVisit: (town: string) => void; game?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
@@ -48,7 +49,11 @@ export function Coast3D({ seed, current, onVisit, game }: { seed: number; curren
 
   useEffect(() => {
     const el = host.current!;
-    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    const renderer = makeRenderer({ antialias: true, preserveDrawingBuffer: true });
+    if (!renderer) {
+      setError(NO_3D);
+      return;
+    }
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
     el.prepend(renderer.domElement);
     const scene = new THREE.Scene();
@@ -149,6 +154,7 @@ export function Coast3D({ seed, current, onVisit, game }: { seed: number; curren
       ro.disconnect();
       controls.dispose();
       renderer.dispose();
+      renderer.forceContextLoss();
       renderer.domElement.remove();
     };
   }, []);
@@ -238,7 +244,7 @@ export function Coast3D({ seed, current, onVisit, game }: { seed: number; curren
             </span>
           </div>
         )}
-        {error && <div className="t3-hud t3-error">{error}</div>}
+        {error && <div className={`t3-hud t3-error${error === NO_3D ? " t3-no3d" : ""}`}>{error}</div>}
       </div>
       {!game && <p className="t3-help">Each little block house is a house in that town. Boats run between towns that trade; towns that have fallen out send none (their names are outlined in red). Click a town's name to fly down to it: it comes to life, and the town you left carries on by rules.</p>}
     </div>

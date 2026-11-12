@@ -1,4 +1,4 @@
-import { lazy, StrictMode, Suspense, useEffect, useState } from "react";
+import { Component, lazy, StrictMode, Suspense, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { Game } from "./Game";
@@ -31,8 +31,43 @@ function Root() {
   );
 }
 
+/**
+ * The last line of defence: if anything throws while drawing, say so on the page with the error,
+ * instead of React unmounting everything and leaving a blank white screen.
+ */
+class Crash extends Component<{ children: ReactNode }, { error?: Error }> {
+  state: { error?: Error } = {};
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error) {
+    console.error("Psyche crashed while drawing:", error);
+  }
+  render() {
+    const { error } = this.state;
+    if (!error) return this.props.children;
+    return (
+      <div className="app crash" style={{ maxWidth: 720, margin: "64px auto", padding: "0 16px", fontFamily: "system-ui, sans-serif", color: "#222" }}>
+        <h1 style={{ fontSize: 22 }}>Psyche hit an error while drawing the page</h1>
+        <p>The world is still running on the server. This is what went wrong in the browser:</p>
+        <pre style={{ whiteSpace: "pre-wrap", background: "#f4f1ea", padding: 12, borderRadius: 6, fontSize: 13 }}>
+          {String(error.message || error)}
+          {"\n\n"}
+          {(error.stack ?? "").split("\n").slice(1, 6).join("\n")}
+        </pre>
+        <p>
+          <button onClick={() => location.reload()}>Reload</button>{" "}
+          <a href="#/lab" onClick={() => setTimeout(() => location.reload(), 0)}>Open the lab instead</a>
+        </p>
+      </div>
+    );
+  }
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <Root />
+    <Crash>
+      <Root />
+    </Crash>
   </StrictMode>,
 );

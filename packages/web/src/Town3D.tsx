@@ -16,6 +16,7 @@ import { Gulls, Life, Precipitation, Windows, windowsOf } from "./world3d/effect
 import { FarLand } from "./world3d/farLand";
 import { disposeFigure, isWater, makeFigure, stepFigure, type Figure } from "./world3d/figures";
 import { Sea } from "./world3d/water";
+import { makeRenderer, NO_3D } from "./world3d/gl";
 
 const CANVAS = MATERIALS.indexOf("canvas");
 const id = (m: string) => MATERIALS.indexOf(m as never);
@@ -222,7 +223,11 @@ export function Town3D(props: {
   // The renderer, built once.
   useEffect(() => {
     const el = host.current!;
-    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    const renderer = makeRenderer({ antialias: true, preserveDrawingBuffer: true });
+    if (!renderer) {
+      setError(NO_3D);
+      return;
+    }
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
     el.prepend(renderer.domElement);
     const sc = new THREE.Scene();
@@ -494,6 +499,7 @@ export function Town3D(props: {
       landMesh.geometry.dispose();
       landMesh.material.dispose();
       renderer.dispose();
+      renderer.forceContextLoss();
       renderer.domElement.remove();
     };
   }, []);
@@ -772,7 +778,7 @@ export function Town3D(props: {
             </div>
           </div>
         )}
-        {error && <div className="t3-hud t3-error">{error}</div>}
+        {error && <div className={`t3-hud t3-error${error === NO_3D ? " t3-no3d" : ""}`}>{error}</div>}
       </div>
       {!game && !!scene?.moments.length && (
         <div className="t3-moments">
