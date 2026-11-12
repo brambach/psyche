@@ -1,4 +1,4 @@
-// Walking into the world yourself. The 3D body is in walk.ts; this is everything around it: giving
+// Walking into the world yourself. The 3D body is in walker.ts; this is everything around it: giving
 // yourself a name, the pack and place line at the bottom, the menu of things you can do to whoever
 // you are standing with, the people who come over wanting an answer, and (the point of it all) the
 // card that shows what each person made of what you just did: what they felt, what they chose and
@@ -10,7 +10,7 @@ import { api, type GameView } from "../api";
 import type { Stage } from "../Town3D";
 import { clock } from "../util";
 import { youApi, type Deed, type Reaction, type YouAct, type YouView } from "./api";
-import { REACH, Walker } from "./walk";
+import { REACH, Walker } from "./walker";
 import "./you.css";
 
 /** The clock while you are on foot, in sim minutes a real second: a quarter of the watcher's 1x. */
